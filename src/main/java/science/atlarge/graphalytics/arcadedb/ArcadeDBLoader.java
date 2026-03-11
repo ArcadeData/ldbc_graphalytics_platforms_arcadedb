@@ -17,7 +17,7 @@ package science.atlarge.graphalytics.arcadedb;
 
 import com.arcadedb.database.Database;
 import com.arcadedb.database.DatabaseFactory;
-import com.arcadedb.database.MutableVertex;
+import com.arcadedb.graph.MutableVertex;
 import com.arcadedb.graph.Vertex;
 import com.arcadedb.index.IndexCursor;
 import com.arcadedb.schema.Schema;
@@ -146,10 +146,10 @@ public class ArcadeDBLoader {
 
                 if (weighted && parts.length > 2) {
                     double weight = Double.parseDouble(parts[2]);
-                    src.newEdge(ArcadeDBConstants.EDGE_TYPE, dst, true,
+                    src.newEdge(ArcadeDBConstants.EDGE_TYPE, dst,
                             ArcadeDBConstants.WEIGHT_PROPERTY, weight);
                 } else {
-                    src.newEdge(ArcadeDBConstants.EDGE_TYPE, dst, true);
+                    src.newEdge(ArcadeDBConstants.EDGE_TYPE, dst);
                 }
 
                 count++;

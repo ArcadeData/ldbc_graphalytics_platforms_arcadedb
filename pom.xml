@@ -227,7 +227,7 @@
 							<goal>create</goal>
 						</goals>
 						<configuration>
-							<doCheck>true</doCheck>
+							<doCheck>false</doCheck>
 						</configuration>
 					</execution>
 				</executions>
