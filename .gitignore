@@ -1,0 +1,10 @@
+target/
+*.iml
+.idea/
+*.class
+*.jar
+*.tar.gz
+graphalytics-*/
+intermediate/
+output/
+config/
