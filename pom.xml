@@ -16,7 +16,7 @@
 		<hamcrest.version>1.3</hamcrest.version>
 		<junit.version>4.11</junit.version>
 		<log4j.version>2.5</log4j.version>
-		<arcadedb.version>26.4.1</arcadedb.version>
+		<arcadedb.version>25.4.1</arcadedb.version>
 	</properties>
 
 	<name>Graphalytics Platform ArcadeDB</name>
