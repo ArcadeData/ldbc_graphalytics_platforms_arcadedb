@@ -15,17 +15,16 @@
  */
 package science.atlarge.graphalytics.arcadedb.metrics.wcc;
 
-import org.neo4j.driver.Session;
+import com.arcadedb.database.Database;
 import science.atlarge.graphalytics.domain.graph.Graph;
 import science.atlarge.graphalytics.execution.RunSpecification;
 import science.atlarge.graphalytics.arcadedb.ArcadeDBConfiguration;
-import science.atlarge.graphalytics.arcadedb.ArcadeDBDatabase;
+import science.atlarge.graphalytics.arcadedb.ArcadeDBConstants;
 import science.atlarge.graphalytics.arcadedb.ArcadeDBJob;
 import science.atlarge.graphalytics.arcadedb.ProcTimeLog;
 import science.atlarge.graphalytics.arcadedb.metrics.OutputSerializer;
 
 import java.io.IOException;
-import java.util.Map;
 
 /**
  * ArcadeDB job configuration for executing the weakly connected components algorithm.
@@ -34,25 +33,25 @@ import java.util.Map;
  */
 public class WeaklyConnectedComponentsJob extends ArcadeDBJob {
 
-    private Map<Long, Number> results;
-
     public WeaklyConnectedComponentsJob(RunSpecification runSpecification, ArcadeDBConfiguration platformConfig,
                                         String inputPath, String outputPath) {
         super(runSpecification, platformConfig, inputPath, outputPath);
     }
 
     @Override
-    public void compute(ArcadeDBDatabase database, Graph graph) {
-        try (Session session = database.getSession()) {
-            ProcTimeLog.start();
-            WeaklyConnectedComponentsComputation computation = new WeaklyConnectedComponentsComputation(session);
-            results = computation.run();
-            ProcTimeLog.end();
-        }
+    public void compute(Database graphDatabase, Graph graph) {
+        ProcTimeLog.start();
+        WeaklyConnectedComponentsComputation computation = new WeaklyConnectedComponentsComputation(graphDatabase);
+        computation.run();
+        ProcTimeLog.end();
     }
 
     @Override
-    protected void serialize(ArcadeDBDatabase database, String outputPath) throws IOException {
-        OutputSerializer.serialize(results, outputPath, false);
+    protected void serialize(Database graphDatabase, String outputPath) throws IOException {
+        OutputSerializer<Long> serializer = new OutputSerializer<>(
+                ArcadeDBConstants.COMPONENT,
+                null
+        );
+        serializer.serialize(graphDatabase, outputPath);
     }
 }

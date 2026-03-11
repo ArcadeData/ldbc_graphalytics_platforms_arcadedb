@@ -15,18 +15,17 @@
  */
 package science.atlarge.graphalytics.arcadedb.metrics.bfs;
 
-import org.neo4j.driver.Session;
+import com.arcadedb.database.Database;
 import science.atlarge.graphalytics.domain.algorithms.BreadthFirstSearchParameters;
 import science.atlarge.graphalytics.domain.graph.Graph;
 import science.atlarge.graphalytics.execution.RunSpecification;
 import science.atlarge.graphalytics.arcadedb.ArcadeDBConfiguration;
-import science.atlarge.graphalytics.arcadedb.ArcadeDBDatabase;
+import science.atlarge.graphalytics.arcadedb.ArcadeDBConstants;
 import science.atlarge.graphalytics.arcadedb.ArcadeDBJob;
 import science.atlarge.graphalytics.arcadedb.ProcTimeLog;
 import science.atlarge.graphalytics.arcadedb.metrics.OutputSerializer;
 
 import java.io.IOException;
-import java.util.Map;
 
 /**
  * ArcadeDB job configuration for executing the breadth-first search algorithm.
@@ -36,7 +35,6 @@ import java.util.Map;
 public class BreadthFirstSearchJob extends ArcadeDBJob {
 
     private final BreadthFirstSearchParameters parameters;
-    private Map<Long, Number> results;
 
     public BreadthFirstSearchJob(RunSpecification runSpecification, ArcadeDBConfiguration platformConfig,
                                  String inputPath, String outputPath) {
@@ -47,22 +45,23 @@ public class BreadthFirstSearchJob extends ArcadeDBJob {
     }
 
     @Override
-    public void compute(ArcadeDBDatabase database, Graph graph) {
-        try (Session session = database.getSession()) {
-            ProcTimeLog.start();
-            BreadthFirstSearchComputation computation = new BreadthFirstSearchComputation(
-                    session,
-                    parameters.getSourceVertex(),
-                    graph.isDirected()
-            );
-            results = computation.run();
-            OutputSerializer.fillDefaults(session, results, Long.MAX_VALUE);
-            ProcTimeLog.end();
-        }
+    public void compute(Database graphDatabase, Graph graph) {
+        ProcTimeLog.start();
+        BreadthFirstSearchComputation computation = new BreadthFirstSearchComputation(
+                graphDatabase,
+                parameters.getSourceVertex(),
+                graph.isDirected()
+        );
+        computation.run();
+        ProcTimeLog.end();
     }
 
     @Override
-    protected void serialize(ArcadeDBDatabase database, String outputPath) throws IOException {
-        OutputSerializer.serialize(results, outputPath, false);
+    protected void serialize(Database graphDatabase, String outputPath) throws IOException {
+        OutputSerializer<Long> serializer = new OutputSerializer<>(
+                ArcadeDBConstants.DISTANCE,
+                Long.MAX_VALUE
+        );
+        serializer.serialize(graphDatabase, outputPath);
     }
 }

@@ -15,18 +15,19 @@
  */
 package science.atlarge.graphalytics.arcadedb.metrics.lcc;
 
+import com.arcadedb.database.Database;
+import com.arcadedb.graph.MutableVertex;
+import com.arcadedb.graph.Vertex;
+import com.arcadedb.query.sql.executor.Result;
+import com.arcadedb.query.sql.executor.ResultSet;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.neo4j.driver.Record;
-import org.neo4j.driver.Result;
-import org.neo4j.driver.Session;
 
-import java.util.Map;
-import java.util.TreeMap;
+import static science.atlarge.graphalytics.arcadedb.ArcadeDBConstants.*;
 
 /**
  * Implementation of the local clustering coefficient algorithm using ArcadeDB's
- * native algo.localClusteringCoefficient procedure via Cypher/Bolt.
+ * native algo.localClusteringCoefficient procedure.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -34,36 +35,36 @@ public class LocalClusteringCoefficientComputation {
 
     private static final Logger LOG = LogManager.getLogger();
 
-    private final Session session;
+    private final Database graphDatabase;
     private final boolean directed;
 
-    public LocalClusteringCoefficientComputation(Session session, boolean directed) {
-        this.session = session;
+    public LocalClusteringCoefficientComputation(Database graphDatabase, boolean directed) {
+        this.graphDatabase = graphDatabase;
         this.directed = directed;
     }
 
-    /**
-     * Executes the LCC algorithm and returns a map of vertex ID to clustering coefficient.
-     */
-    public Map<Long, Number> run() {
+    public void run() {
         LOG.debug("- Starting Local Clustering Coefficient algorithm");
 
-        Map<Long, Number> results = new TreeMap<>();
-
         String query =
-                "CALL algo.localClusteringCoefficient(['EDGE'])\n" +
-                "YIELD node, localClusteringCoefficient\n" +
+                "CALL algo.localClusteringCoefficient(['EDGE']) " +
+                "YIELD node, localClusteringCoefficient " +
                 "RETURN node.VID AS id, localClusteringCoefficient AS value";
 
-        Result result = session.run(query);
+        graphDatabase.begin();
+        ResultSet result = graphDatabase.command("cypher", query);
         while (result.hasNext()) {
-            Record record = result.next();
-            long id = record.get("id").asLong();
-            double lcc = record.get("value").asDouble();
-            results.put(id, lcc);
-        }
+            Result record = result.next();
+            long vid = record.getProperty("id");
+            double lcc = ((Number) record.getProperty("value")).doubleValue();
 
-        LOG.debug("- Completed LCC algorithm, {} vertices computed", results.size());
-        return results;
+            Vertex vertex = graphDatabase.lookupByKey(VERTEX_TYPE, ID_PROPERTY, vid).next().asVertex();
+            MutableVertex mv = vertex.modify();
+            mv.set(LCC, lcc);
+            mv.save();
+        }
+        graphDatabase.commit();
+
+        LOG.debug("- Completed LCC algorithm");
     }
 }

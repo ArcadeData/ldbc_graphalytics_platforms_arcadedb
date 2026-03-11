@@ -15,18 +15,17 @@
  */
 package science.atlarge.graphalytics.arcadedb.metrics.pr;
 
-import org.neo4j.driver.Session;
+import com.arcadedb.database.Database;
 import science.atlarge.graphalytics.domain.algorithms.PageRankParameters;
 import science.atlarge.graphalytics.domain.graph.Graph;
 import science.atlarge.graphalytics.execution.RunSpecification;
 import science.atlarge.graphalytics.arcadedb.ArcadeDBConfiguration;
-import science.atlarge.graphalytics.arcadedb.ArcadeDBDatabase;
+import science.atlarge.graphalytics.arcadedb.ArcadeDBConstants;
 import science.atlarge.graphalytics.arcadedb.ArcadeDBJob;
 import science.atlarge.graphalytics.arcadedb.ProcTimeLog;
 import science.atlarge.graphalytics.arcadedb.metrics.OutputSerializer;
 
 import java.io.IOException;
-import java.util.Map;
 
 /**
  * ArcadeDB job configuration for calculating PageRank values.
@@ -36,7 +35,6 @@ import java.util.Map;
 public class PageRankJob extends ArcadeDBJob {
 
     private final PageRankParameters parameters;
-    private Map<Long, Number> results;
 
     public PageRankJob(RunSpecification runSpecification, ArcadeDBConfiguration platformConfig,
                        String inputPath, String outputPath) {
@@ -47,22 +45,24 @@ public class PageRankJob extends ArcadeDBJob {
     }
 
     @Override
-    public void compute(ArcadeDBDatabase database, Graph graph) {
-        try (Session session = database.getSession()) {
-            ProcTimeLog.start();
-            PageRankComputation computation = new PageRankComputation(
-                    session,
-                    parameters.getNumberOfIterations(),
-                    parameters.getDampingFactor(),
-                    graph.isDirected()
-            );
-            results = computation.run();
-            ProcTimeLog.end();
-        }
+    public void compute(Database graphDatabase, Graph graph) {
+        ProcTimeLog.start();
+        PageRankComputation computation = new PageRankComputation(
+                graphDatabase,
+                parameters.getNumberOfIterations(),
+                parameters.getDampingFactor(),
+                graph.isDirected()
+        );
+        computation.run();
+        ProcTimeLog.end();
     }
 
     @Override
-    protected void serialize(ArcadeDBDatabase database, String outputPath) throws IOException {
-        OutputSerializer.serialize(results, outputPath, true);
+    protected void serialize(Database graphDatabase, String outputPath) throws IOException {
+        OutputSerializer<Double> serializer = new OutputSerializer<>(
+                ArcadeDBConstants.PAGERANK,
+                null
+        );
+        serializer.serialize(graphDatabase, outputPath);
     }
 }

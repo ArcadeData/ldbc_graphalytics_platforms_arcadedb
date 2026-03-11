@@ -15,18 +15,17 @@
  */
 package science.atlarge.graphalytics.arcadedb.metrics.cdlp;
 
-import org.neo4j.driver.Session;
+import com.arcadedb.database.Database;
 import science.atlarge.graphalytics.domain.algorithms.CommunityDetectionLPParameters;
 import science.atlarge.graphalytics.domain.graph.Graph;
 import science.atlarge.graphalytics.execution.RunSpecification;
 import science.atlarge.graphalytics.arcadedb.ArcadeDBConfiguration;
-import science.atlarge.graphalytics.arcadedb.ArcadeDBDatabase;
+import science.atlarge.graphalytics.arcadedb.ArcadeDBConstants;
 import science.atlarge.graphalytics.arcadedb.ArcadeDBJob;
 import science.atlarge.graphalytics.arcadedb.ProcTimeLog;
 import science.atlarge.graphalytics.arcadedb.metrics.OutputSerializer;
 
 import java.io.IOException;
-import java.util.Map;
 
 /**
  * ArcadeDB job configuration for executing the community detection algorithm.
@@ -36,7 +35,6 @@ import java.util.Map;
 public class CommunityDetectionLPJob extends ArcadeDBJob {
 
     private final CommunityDetectionLPParameters parameters;
-    private Map<Long, Number> results;
 
     public CommunityDetectionLPJob(RunSpecification runSpecification, ArcadeDBConfiguration platformConfig,
                                    String inputPath, String outputPath) {
@@ -47,21 +45,23 @@ public class CommunityDetectionLPJob extends ArcadeDBJob {
     }
 
     @Override
-    public void compute(ArcadeDBDatabase database, Graph graph) {
-        try (Session session = database.getSession()) {
-            ProcTimeLog.start();
-            CommunityDetectionLPComputation computation = new CommunityDetectionLPComputation(
-                    session,
-                    parameters.getMaxIterations(),
-                    graph.isDirected()
-            );
-            results = computation.run();
-            ProcTimeLog.end();
-        }
+    public void compute(Database graphDatabase, Graph graph) {
+        ProcTimeLog.start();
+        CommunityDetectionLPComputation computation = new CommunityDetectionLPComputation(
+                graphDatabase,
+                parameters.getMaxIterations(),
+                graph.isDirected()
+        );
+        computation.run();
+        ProcTimeLog.end();
     }
 
     @Override
-    protected void serialize(ArcadeDBDatabase database, String outputPath) throws IOException {
-        OutputSerializer.serialize(results, outputPath, false);
+    protected void serialize(Database graphDatabase, String outputPath) throws IOException {
+        OutputSerializer<Long> serializer = new OutputSerializer<>(
+                ArcadeDBConstants.LABEL,
+                null
+        );
+        serializer.serialize(graphDatabase, outputPath);
     }
 }

@@ -15,17 +15,16 @@
  */
 package science.atlarge.graphalytics.arcadedb.metrics.lcc;
 
-import org.neo4j.driver.Session;
+import com.arcadedb.database.Database;
 import science.atlarge.graphalytics.domain.graph.Graph;
 import science.atlarge.graphalytics.execution.RunSpecification;
 import science.atlarge.graphalytics.arcadedb.ArcadeDBConfiguration;
-import science.atlarge.graphalytics.arcadedb.ArcadeDBDatabase;
+import science.atlarge.graphalytics.arcadedb.ArcadeDBConstants;
 import science.atlarge.graphalytics.arcadedb.ArcadeDBJob;
 import science.atlarge.graphalytics.arcadedb.ProcTimeLog;
 import science.atlarge.graphalytics.arcadedb.metrics.OutputSerializer;
 
 import java.io.IOException;
-import java.util.Map;
 
 /**
  * ArcadeDB job configuration for calculating the local clustering coefficient.
@@ -34,28 +33,28 @@ import java.util.Map;
  */
 public class LocalClusteringCoefficientJob extends ArcadeDBJob {
 
-    private Map<Long, Number> results;
-
     public LocalClusteringCoefficientJob(RunSpecification runSpecification, ArcadeDBConfiguration platformConfig,
                                          String inputPath, String outputPath) {
         super(runSpecification, platformConfig, inputPath, outputPath);
     }
 
     @Override
-    public void compute(ArcadeDBDatabase database, Graph graph) {
-        try (Session session = database.getSession()) {
-            ProcTimeLog.start();
-            LocalClusteringCoefficientComputation computation = new LocalClusteringCoefficientComputation(
-                    session,
-                    graph.isDirected()
-            );
-            results = computation.run();
-            ProcTimeLog.end();
-        }
+    public void compute(Database graphDatabase, Graph graph) {
+        ProcTimeLog.start();
+        LocalClusteringCoefficientComputation computation = new LocalClusteringCoefficientComputation(
+                graphDatabase,
+                graph.isDirected()
+        );
+        computation.run();
+        ProcTimeLog.end();
     }
 
     @Override
-    protected void serialize(ArcadeDBDatabase database, String outputPath) throws IOException {
-        OutputSerializer.serialize(results, outputPath, true);
+    protected void serialize(Database graphDatabase, String outputPath) throws IOException {
+        OutputSerializer<Double> serializer = new OutputSerializer<>(
+                ArcadeDBConstants.LCC,
+                null
+        );
+        serializer.serialize(graphDatabase, outputPath);
     }
 }

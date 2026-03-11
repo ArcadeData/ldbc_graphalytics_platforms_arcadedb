@@ -34,18 +34,10 @@ public final class ArcadeDBConfiguration {
 
     private static final String BENCHMARK_PROPERTIES_FILE = "benchmark.properties";
     private static final String HOME_PATH_KEY = "platform.arcadedb.home";
-    private static final String BOLT_URI_KEY = "platform.arcadedb.bolt-uri";
-    private static final String HTTP_URI_KEY = "platform.arcadedb.http-uri";
-    private static final String USERNAME_KEY = "platform.arcadedb.username";
-    private static final String PASSWORD_KEY = "platform.arcadedb.password";
 
     private String loaderPath;
     private String unloaderPath;
     private String homePath;
-    private String boltUri;
-    private String httpUri;
-    private String username;
-    private String password;
 
     public ArcadeDBConfiguration() {
     }
@@ -74,38 +66,6 @@ public final class ArcadeDBConfiguration {
         this.homePath = homePath;
     }
 
-    public String getBoltUri() {
-        return boltUri;
-    }
-
-    public void setBoltUri(String boltUri) {
-        this.boltUri = boltUri;
-    }
-
-    public String getHttpUri() {
-        return httpUri;
-    }
-
-    public void setHttpUri(String httpUri) {
-        this.httpUri = httpUri;
-    }
-
-    public String getUsername() {
-        return username;
-    }
-
-    public void setUsername(String username) {
-        this.username = username;
-    }
-
-    public String getPassword() {
-        return password;
-    }
-
-    public void setPassword(String password) {
-        this.password = password;
-    }
-
     public static ArcadeDBConfiguration parsePropertiesFile() {
 
         ArcadeDBConfiguration platformConfig = new ArcadeDBConfiguration();
@@ -128,18 +88,6 @@ public final class ArcadeDBConfiguration {
         if (homePath != null) {
             platformConfig.setHomePath(homePath);
         }
-
-        String boltUri = configuration.getString(BOLT_URI_KEY, "bolt://localhost:7687");
-        platformConfig.setBoltUri(boltUri);
-
-        String httpUri = configuration.getString(HTTP_URI_KEY, "http://localhost:2480");
-        platformConfig.setHttpUri(httpUri);
-
-        String username = configuration.getString(USERNAME_KEY, "root");
-        platformConfig.setUsername(username);
-
-        String password = configuration.getString(PASSWORD_KEY, "playwithdata");
-        platformConfig.setPassword(password);
 
         return platformConfig;
     }

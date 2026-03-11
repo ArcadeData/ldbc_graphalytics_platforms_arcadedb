@@ -15,81 +15,70 @@
  */
 package science.atlarge.graphalytics.arcadedb.metrics;
 
-import org.neo4j.driver.Record;
-import org.neo4j.driver.Result;
-import org.neo4j.driver.Session;
+import com.arcadedb.database.Database;
+import com.arcadedb.graph.Vertex;
 
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.Iterator;
+
+import static science.atlarge.graphalytics.arcadedb.ArcadeDBConstants.ID_PROPERTY;
 
 /**
- * Serializer for algorithm results. Collects results from Cypher procedure
- * YIELD output and writes them to the Graphalytics output format.
+ * Generic class for serializing the output of a metric.
+ * Reads results stored as properties on vertices and writes them
+ * to the Graphalytics output format.
+ *
+ * @param <N> the type of the result value
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
-public class OutputSerializer {
+public class OutputSerializer<N extends Number> {
+
+    private final String property;
+    private final N defaultValue;
 
     /**
-     * Collects all vertex results from a Cypher query into a sorted map.
-     * The query must return columns named 'id' (Long) and 'value' (Number).
-     *
-     * @param session the Bolt session
-     * @param query   the Cypher query
-     * @return a sorted map of vertex ID to result value
+     * @param property     the name of the property storing the result
+     * @param defaultValue a value to use if the property is not set on a vertex
      */
-    public static Map<Long, Number> collectResults(Session session, String query) {
-        Map<Long, Number> results = new TreeMap<>();
-        Result result = session.run(query);
-        while (result.hasNext()) {
-            Record record = result.next();
-            long id = record.get("id").asLong();
-            Number value = record.get("value").asNumber();
-            results.put(id, value);
-        }
-        return results;
+    public OutputSerializer(String property, N defaultValue) {
+        this.property = property;
+        this.defaultValue = defaultValue;
     }
 
     /**
-     * Writes collected results to the output file in Graphalytics format.
-     * Format: "vertexId value" per line, where floating-point values use scientific notation.
+     * Serializes the graph database results into the output file.
+     * Floating-point values use scientific notation, integers use decimal.
      *
-     * @param results    the algorithm results (vertex ID -> value)
-     * @param outputPath the output file path
-     * @param isFloating whether values should be written in scientific notation
+     * @param graphDatabase the database to serialize
+     * @param outputPath    the path where the output file should be written
      */
-    public static void serialize(Map<Long, Number> results, String outputPath, boolean isFloating) throws IOException {
+    public void serialize(Database graphDatabase, String outputPath) throws IOException {
         try (FileWriter writer = new FileWriter(outputPath)) {
-            for (Map.Entry<Long, Number> entry : results.entrySet()) {
-                if (isFloating) {
-                    writer.write(String.format("%d %e\n", entry.getKey(), entry.getValue().doubleValue()));
-                } else {
-                    writer.write(String.format("%d %d\n", entry.getKey(), entry.getValue().longValue()));
-                }
+            Iterator<Vertex> vertices = graphDatabase.iterateType("Vertex", false);
+            while (vertices.hasNext()) {
+                Vertex vertex = vertices.next();
+                writer.write(serializeValue(vertex) + "\n");
             }
         }
     }
 
-    /**
-     * Fills in default values for vertices not present in the results.
-     * Queries all vertices and adds default value for any missing ones.
-     *
-     * @param session      the Bolt session
-     * @param results      the existing results map (modified in place)
-     * @param defaultValue the default value for vertices without results
-     */
-    public static void fillDefaults(Session session, Map<Long, Number> results, Number defaultValue) {
-        Result allVertices = session.run(
-                "MATCH (n:Vertex) RETURN n.VID AS id ORDER BY id"
-        );
-        while (allVertices.hasNext()) {
-            Record record = allVertices.next();
-            long id = record.get("id").asLong();
-            if (!results.containsKey(id)) {
-                results.put(id, defaultValue);
-            }
+    @SuppressWarnings("unchecked")
+    private String serializeValue(Vertex vertex) {
+        long id = ((Number) vertex.get(ID_PROPERTY)).longValue();
+        N value;
+        Object prop = vertex.get(property);
+        if (prop != null) {
+            value = (N) prop;
+        } else {
+            value = defaultValue;
+        }
+
+        if (value instanceof Double || value instanceof Float) {
+            return String.format("%d %e", id, value.doubleValue());
+        } else {
+            return String.format("%d %d", id, value.longValue());
         }
     }
 }

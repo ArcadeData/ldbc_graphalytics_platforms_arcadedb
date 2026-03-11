@@ -15,18 +15,19 @@
  */
 package science.atlarge.graphalytics.arcadedb.metrics.pr;
 
+import com.arcadedb.database.Database;
+import com.arcadedb.graph.MutableVertex;
+import com.arcadedb.graph.Vertex;
+import com.arcadedb.query.sql.executor.Result;
+import com.arcadedb.query.sql.executor.ResultSet;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.neo4j.driver.Record;
-import org.neo4j.driver.Result;
-import org.neo4j.driver.Session;
 
-import java.util.Map;
-import java.util.TreeMap;
+import static science.atlarge.graphalytics.arcadedb.ArcadeDBConstants.*;
 
 /**
  * Implementation of the PageRank algorithm using ArcadeDB's native
- * algo.pagerank procedure via Cypher/Bolt.
+ * algo.pagerank procedure. Stores scores as vertex properties.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -34,43 +35,42 @@ public class PageRankComputation {
 
     private static final Logger LOG = LogManager.getLogger();
 
-    private final Session session;
+    private final Database graphDatabase;
     private final int maxIterations;
     private final float dampingFactor;
     private final boolean directed;
 
-    public PageRankComputation(Session session, int maxIterations, float dampingFactor, boolean directed) {
-        this.session = session;
+    public PageRankComputation(Database graphDatabase, int maxIterations, float dampingFactor, boolean directed) {
+        this.graphDatabase = graphDatabase;
         this.maxIterations = maxIterations;
         this.dampingFactor = dampingFactor;
         this.directed = directed;
     }
 
-    /**
-     * Executes the PageRank algorithm and returns a map of vertex ID to PageRank score.
-     */
-    public Map<Long, Number> run() {
+    public void run() {
         LOG.debug("- Starting PageRank algorithm (iterations={}, damping={})", maxIterations, dampingFactor);
 
-        Map<Long, Number> results = new TreeMap<>();
-
         String query = String.format(
-                "CALL algo.pagerank({dampingFactor: %f, maxIterations: %d})\n" +
-                "YIELD node, score\n" +
+                "CALL algo.pagerank({dampingFactor: %f, maxIterations: %d}) " +
+                "YIELD node, score " +
                 "RETURN node.VID AS id, score AS value",
-                dampingFactor,
-                maxIterations
+                dampingFactor, maxIterations
         );
 
-        Result result = session.run(query);
+        graphDatabase.begin();
+        ResultSet result = graphDatabase.command("cypher", query);
         while (result.hasNext()) {
-            Record record = result.next();
-            long id = record.get("id").asLong();
-            double score = record.get("value").asDouble();
-            results.put(id, score);
-        }
+            Result record = result.next();
+            long vid = record.getProperty("id");
+            double score = ((Number) record.getProperty("value")).doubleValue();
 
-        LOG.debug("- Completed PageRank algorithm, {} vertices scored", results.size());
-        return results;
+            Vertex vertex = graphDatabase.lookupByKey(VERTEX_TYPE, ID_PROPERTY, vid).next().asVertex();
+            MutableVertex mv = vertex.modify();
+            mv.set(PAGERANK, score);
+            mv.save();
+        }
+        graphDatabase.commit();
+
+        LOG.debug("- Completed PageRank algorithm");
     }
 }

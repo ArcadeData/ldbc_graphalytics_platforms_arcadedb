@@ -15,18 +15,21 @@
  */
 package science.atlarge.graphalytics.arcadedb.metrics.bfs;
 
+import com.arcadedb.database.Database;
+import com.arcadedb.graph.MutableVertex;
+import com.arcadedb.graph.Vertex;
+import com.arcadedb.query.sql.executor.Result;
+import com.arcadedb.query.sql.executor.ResultSet;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.neo4j.driver.Record;
-import org.neo4j.driver.Result;
-import org.neo4j.driver.Session;
 
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.Iterator;
+
+import static science.atlarge.graphalytics.arcadedb.ArcadeDBConstants.*;
 
 /**
- * Implementation of the breadth-first search algorithm using ArcadeDB's
- * native algo.bfs procedure via Cypher/Bolt.
+ * Implementation of the breadth-first search algorithm using ArcadeDB's native
+ * algo.bfs procedure. Stores distance results as vertex properties.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -34,43 +37,53 @@ public class BreadthFirstSearchComputation {
 
     private static final Logger LOG = LogManager.getLogger();
 
-    private final Session session;
+    private final Database graphDatabase;
     private final long startVertexId;
     private final boolean directed;
 
-    public BreadthFirstSearchComputation(Session session, long startVertexId, boolean directed) {
-        this.session = session;
+    public BreadthFirstSearchComputation(Database graphDatabase, long startVertexId, boolean directed) {
+        this.graphDatabase = graphDatabase;
         this.startVertexId = startVertexId;
         this.directed = directed;
     }
 
-    /**
-     * Executes the BFS algorithm and returns a map of vertex ID to distance from source.
-     */
-    public Map<Long, Number> run() {
+    public void run() {
         LOG.debug("- Starting BFS algorithm from vertex {}", startVertexId);
 
-        Map<Long, Number> results = new TreeMap<>();
+        // Initialize all vertices with max distance
+        graphDatabase.begin();
+        Iterator<Vertex> allVertices = graphDatabase.iterateType(VERTEX_TYPE, false);
+        while (allVertices.hasNext()) {
+            MutableVertex v = allVertices.next().modify();
+            v.set(DISTANCE, Long.MAX_VALUE);
+            v.save();
+        }
+        graphDatabase.commit();
 
+        // Run BFS using ArcadeDB's native algorithm
         String direction = directed ? "'OUTGOING'" : "'BOTH'";
         String query = String.format(
-                "MATCH (start:Vertex {VID: %d})\n" +
-                "CALL algo.bfs(start, ['EDGE'], %s)\n" +
-                "YIELD node, depth\n" +
+                "MATCH (start:Vertex {VID: %d}) " +
+                "CALL algo.bfs(start, ['EDGE'], %s) " +
+                "YIELD node, depth " +
                 "RETURN node.VID AS id, depth AS value",
-                startVertexId,
-                direction
+                startVertexId, direction
         );
 
-        Result result = session.run(query);
+        graphDatabase.begin();
+        ResultSet result = graphDatabase.command("cypher", query);
         while (result.hasNext()) {
-            Record record = result.next();
-            long id = record.get("id").asLong();
-            long depth = record.get("value").asLong();
-            results.put(id, depth);
-        }
+            Result record = result.next();
+            long vid = record.getProperty("id");
+            long depth = ((Number) record.getProperty("value")).longValue();
 
-        LOG.debug("- Completed BFS algorithm, {} vertices reached", results.size());
-        return results;
+            Vertex vertex = graphDatabase.lookupByKey(VERTEX_TYPE, ID_PROPERTY, vid).next().asVertex();
+            MutableVertex mv = vertex.modify();
+            mv.set(DISTANCE, depth);
+            mv.save();
+        }
+        graphDatabase.commit();
+
+        LOG.debug("- Completed BFS algorithm");
     }
 }

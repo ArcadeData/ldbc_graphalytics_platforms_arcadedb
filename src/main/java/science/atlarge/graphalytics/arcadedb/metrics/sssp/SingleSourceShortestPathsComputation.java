@@ -15,18 +15,21 @@
  */
 package science.atlarge.graphalytics.arcadedb.metrics.sssp;
 
+import com.arcadedb.database.Database;
+import com.arcadedb.graph.MutableVertex;
+import com.arcadedb.graph.Vertex;
+import com.arcadedb.query.sql.executor.Result;
+import com.arcadedb.query.sql.executor.ResultSet;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.neo4j.driver.Record;
-import org.neo4j.driver.Result;
-import org.neo4j.driver.Session;
 
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.Iterator;
+
+import static science.atlarge.graphalytics.arcadedb.ArcadeDBConstants.*;
 
 /**
  * Implementation of the single source shortest paths algorithm using ArcadeDB's
- * native algo.dijkstra.singleSource procedure via Cypher/Bolt.
+ * native algo.dijkstra.singleSource procedure.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -34,43 +37,53 @@ public class SingleSourceShortestPathsComputation {
 
     private static final Logger LOG = LogManager.getLogger();
 
-    private final Session session;
+    private final Database graphDatabase;
     private final long startVertexId;
     private final boolean directed;
 
-    public SingleSourceShortestPathsComputation(Session session, long startVertexId, boolean directed) {
-        this.session = session;
+    public SingleSourceShortestPathsComputation(Database graphDatabase, long startVertexId, boolean directed) {
+        this.graphDatabase = graphDatabase;
         this.startVertexId = startVertexId;
         this.directed = directed;
     }
 
-    /**
-     * Executes the SSSP algorithm and returns a map of vertex ID to shortest distance.
-     */
-    public Map<Long, Number> run() {
+    public void run() {
         LOG.debug("- Starting Single Source Shortest Paths algorithm from vertex {}", startVertexId);
 
-        Map<Long, Number> results = new TreeMap<>();
+        // Initialize all vertices with infinity
+        graphDatabase.begin();
+        Iterator<Vertex> allVertices = graphDatabase.iterateType(VERTEX_TYPE, false);
+        while (allVertices.hasNext()) {
+            MutableVertex v = allVertices.next().modify();
+            v.set(SSSP, Double.POSITIVE_INFINITY);
+            v.save();
+        }
+        graphDatabase.commit();
 
+        // Run SSSP using ArcadeDB's native Dijkstra algorithm
         String direction = directed ? "'OUTGOING'" : "'BOTH'";
         String query = String.format(
-                "MATCH (start:Vertex {VID: %d})\n" +
-                "CALL algo.dijkstra.singleSource(start, ['EDGE'], 'WEIGHT', %s)\n" +
-                "YIELD node, cost\n" +
+                "MATCH (start:Vertex {VID: %d}) " +
+                "CALL algo.dijkstra.singleSource(start, ['EDGE'], 'WEIGHT', %s) " +
+                "YIELD node, cost " +
                 "RETURN node.VID AS id, cost AS value",
-                startVertexId,
-                direction
+                startVertexId, direction
         );
 
-        Result result = session.run(query);
+        graphDatabase.begin();
+        ResultSet result = graphDatabase.command("cypher", query);
         while (result.hasNext()) {
-            Record record = result.next();
-            long id = record.get("id").asLong();
-            double cost = record.get("value").asDouble();
-            results.put(id, cost);
-        }
+            Result record = result.next();
+            long vid = record.getProperty("id");
+            double cost = ((Number) record.getProperty("value")).doubleValue();
 
-        LOG.debug("- Completed SSSP algorithm, {} vertices reached", results.size());
-        return results;
+            Vertex vertex = graphDatabase.lookupByKey(VERTEX_TYPE, ID_PROPERTY, vid).next().asVertex();
+            MutableVertex mv = vertex.modify();
+            mv.set(SSSP, cost);
+            mv.save();
+        }
+        graphDatabase.commit();
+
+        LOG.debug("- Completed SSSP algorithm");
     }
 }

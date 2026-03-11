@@ -16,7 +16,7 @@
 		<hamcrest.version>1.3</hamcrest.version>
 		<junit.version>4.11</junit.version>
 		<log4j.version>2.5</log4j.version>
-		<neo4j.driver.version>4.4.12</neo4j.driver.version>
+		<arcadedb.version>26.4.1</arcadedb.version>
 	</properties>
 
 	<name>Graphalytics Platform ArcadeDB</name>
@@ -83,11 +83,16 @@
 			<version>20160810</version>
 		</dependency>
 
-		<!-- Neo4j Java Driver (Bolt protocol) for connecting to ArcadeDB -->
+		<!-- ArcadeDB Embedded Dependencies -->
 		<dependency>
-			<groupId>org.neo4j.driver</groupId>
-			<artifactId>neo4j-java-driver</artifactId>
-			<version>${neo4j.driver.version}</version>
+			<groupId>com.arcadedb</groupId>
+			<artifactId>arcadedb-engine</artifactId>
+			<version>${arcadedb.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>com.arcadedb</groupId>
+			<artifactId>arcadedb-gremlin</artifactId>
+			<version>${arcadedb.version}</version>
 		</dependency>
 
 	</dependencies>
@@ -99,8 +104,8 @@
 				<artifactId>maven-compiler-plugin</artifactId>
 				<version>3.1</version>
 				<configuration>
-					<source>1.8</source>
-					<target>1.8</target>
+					<source>11</source>
+					<target>11</target>
 				</configuration>
 			</plugin>
 

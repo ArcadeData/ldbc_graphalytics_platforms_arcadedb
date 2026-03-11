@@ -15,59 +15,7 @@
 # limitations under the License.
 #
 
-set -e
-
-rootdir=$(dirname $(readlink -f ${BASH_SOURCE[0]}))/../..
-
-# Parse commandline instructions (provided by Graphalytics).
-while [[ $# -gt 1 ]]
-  do
-  key="$1"
-  value="$2"
-
-  case $key in
-
-    --graph-name)
-      GRAPH_NAME="$value"
-      shift;;
-
-    --output-path)
-      OUTPUT_PATH="$value"
-      shift;;
-
-    --http-uri)
-      HTTP_URI="$value"
-      shift;;
-
-    *)
-      echo "Error: invalid option: " "$key"
-      exit 1
-      ;;
-  esac
-  shift
-done
-
-HTTP_URI=${HTTP_URI:-http://localhost:2480}
-
-# Read the database name from the output path
-if [ -f "${OUTPUT_PATH}/database_name" ]; then
-  DB_NAME=$(cat "${OUTPUT_PATH}/database_name")
-else
-  DB_NAME=${GRAPH_NAME//[^a-zA-Z0-9_]/_}
-fi
-
-echo "Dropping ArcadeDB database: ${DB_NAME}"
-
-# Drop the database
-curl -s -X POST "${HTTP_URI}/api/v1/server" \
-  -H "Content-Type: application/json" \
-  -u "root:playwithdata" \
-  -d "{\"command\": \"drop database ${DB_NAME}\"}" 2>/dev/null || true
-
-# Clean up output path
-if [[ ! -z "${GRAPH_NAME}" && "${OUTPUT_PATH}" == *"${GRAPH_NAME}"* ]]; then
-  rm -r "$OUTPUT_PATH"
-else
-  echo "Failed to delete graph ${GRAPH_NAME}, path ${OUTPUT_PATH} does not contain graph name (unsafe)."
-  exit 1
-fi
+# Graph unloading is handled directly by the ArcadeDB Java API in embedded mode.
+# This script is a no-op placeholder for compatibility with the Graphalytics framework.
+echo "Graph unloading is performed in-process by ArcadeDBLoader (embedded mode)."
+exit 0

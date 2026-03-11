@@ -15,18 +15,19 @@
  */
 package science.atlarge.graphalytics.arcadedb.metrics.wcc;
 
+import com.arcadedb.database.Database;
+import com.arcadedb.graph.MutableVertex;
+import com.arcadedb.graph.Vertex;
+import com.arcadedb.query.sql.executor.Result;
+import com.arcadedb.query.sql.executor.ResultSet;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.neo4j.driver.Record;
-import org.neo4j.driver.Result;
-import org.neo4j.driver.Session;
 
-import java.util.Map;
-import java.util.TreeMap;
+import static science.atlarge.graphalytics.arcadedb.ArcadeDBConstants.*;
 
 /**
  * Implementation of the weakly connected components algorithm using ArcadeDB's
- * native algo.wcc procedure via Cypher/Bolt.
+ * native algo.wcc procedure. Stores component IDs as vertex properties.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -34,34 +35,34 @@ public class WeaklyConnectedComponentsComputation {
 
     private static final Logger LOG = LogManager.getLogger();
 
-    private final Session session;
+    private final Database graphDatabase;
 
-    public WeaklyConnectedComponentsComputation(Session session) {
-        this.session = session;
+    public WeaklyConnectedComponentsComputation(Database graphDatabase) {
+        this.graphDatabase = graphDatabase;
     }
 
-    /**
-     * Executes the WCC algorithm and returns a map of vertex ID to component ID.
-     */
-    public Map<Long, Number> run() {
+    public void run() {
         LOG.debug("- Starting Weakly Connected Components algorithm");
 
-        Map<Long, Number> results = new TreeMap<>();
-
         String query =
-                "CALL algo.wcc()\n" +
-                "YIELD node, componentId\n" +
+                "CALL algo.wcc() " +
+                "YIELD node, componentId " +
                 "RETURN node.VID AS id, componentId AS value";
 
-        Result result = session.run(query);
+        graphDatabase.begin();
+        ResultSet result = graphDatabase.command("cypher", query);
         while (result.hasNext()) {
-            Record record = result.next();
-            long id = record.get("id").asLong();
-            long componentId = record.get("value").asLong();
-            results.put(id, componentId);
-        }
+            Result record = result.next();
+            long vid = record.getProperty("id");
+            long componentId = ((Number) record.getProperty("value")).longValue();
 
-        LOG.debug("- Completed WCC algorithm, {} vertices classified", results.size());
-        return results;
+            Vertex vertex = graphDatabase.lookupByKey(VERTEX_TYPE, ID_PROPERTY, vid).next().asVertex();
+            MutableVertex mv = vertex.modify();
+            mv.set(COMPONENT, componentId);
+            mv.save();
+        }
+        graphDatabase.commit();
+
+        LOG.debug("- Completed WCC algorithm");
     }
 }

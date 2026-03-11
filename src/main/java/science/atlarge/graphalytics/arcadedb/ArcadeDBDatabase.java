@@ -15,52 +15,36 @@
  */
 package science.atlarge.graphalytics.arcadedb;
 
-import org.neo4j.driver.AuthTokens;
-import org.neo4j.driver.Driver;
-import org.neo4j.driver.GraphDatabase;
-import org.neo4j.driver.Session;
-import org.neo4j.driver.SessionConfig;
+import com.arcadedb.database.Database;
+import com.arcadedb.database.DatabaseFactory;
 
 /**
- * Wrapper class for managing a Bolt connection to an ArcadeDB server.
- * Uses the Neo4j Java driver to connect via the Bolt protocol.
+ * Wrapper class for the initialization and safe shutdown of an embedded ArcadeDB database.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
 public class ArcadeDBDatabase implements AutoCloseable {
 
-    private final Driver driver;
-    private final String databaseName;
+    private final Database database;
 
     /**
-     * Initializes a Bolt connection to the ArcadeDB server.
+     * Opens an existing embedded ArcadeDB database from the specified path.
      *
-     * @param boltUri      the Bolt URI (e.g., bolt://localhost:7687)
-     * @param databaseName the name of the ArcadeDB database
-     * @param username     the username for authentication
-     * @param password     the password for authentication
+     * @param databasePath the path of the pre-loaded graph database
      */
-    public ArcadeDBDatabase(String boltUri, String databaseName, String username, String password) {
-        this.driver = GraphDatabase.driver(boltUri, AuthTokens.basic(username, password));
-        this.databaseName = databaseName;
+    public ArcadeDBDatabase(String databasePath) {
+        this.database = new DatabaseFactory(databasePath).open();
     }
 
     /**
-     * @return a new Bolt session connected to the database
+     * @return a handle to the ArcadeDB database
      */
-    public Session getSession() {
-        return driver.session(SessionConfig.forDatabase(databaseName));
-    }
-
-    /**
-     * @return the database name
-     */
-    public String getDatabaseName() {
-        return databaseName;
+    public Database get() {
+        return database;
     }
 
     @Override
     public void close() {
-        driver.close();
+        database.close();
     }
 }

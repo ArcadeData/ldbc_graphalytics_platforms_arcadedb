@@ -30,8 +30,7 @@ import java.nio.file.Paths;
 
 /**
  * ArcadeDB platform driver for the LDBC Graphalytics benchmark.
- * Connects to ArcadeDB via the Neo4j-compatible Bolt protocol
- * and uses ArcadeDB's native graph algorithms.
+ * Uses ArcadeDB in embedded mode with native graph algorithms.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -52,9 +51,10 @@ public class ArcadeDBPlatform implements Platform {
 
 		LOG.info("Loading graph " + formattedGraph.getName());
 		Path loadedPath = Paths.get("./intermediate").resolve(formattedGraph.getName());
+		String databasePath = loadedPath.resolve("database").toString();
 
 		try {
-			int exitCode = loader.load(loadedPath.toString());
+			int exitCode = loader.load(databasePath);
 			if (exitCode != 0) {
 				throw new PlatformExecutionException("ArcadeDB exited with an error code: " + exitCode);
 			}
@@ -63,7 +63,7 @@ public class ArcadeDBPlatform implements Platform {
 		}
 		LOG.info("Loaded graph " + formattedGraph.getName());
 
-		return new LoadedGraph(formattedGraph, loadedPath.toString());
+		return new LoadedGraph(formattedGraph, databasePath);
 	}
 
 	@Override

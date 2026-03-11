@@ -2,7 +2,7 @@
 
 Platform driver implementation for the [LDBC Graphalytics](https://graphalytics.org) benchmark using [ArcadeDB](https://arcadedb.com).
 
-This driver connects to ArcadeDB via the **Neo4j-compatible Bolt protocol** and uses ArcadeDB's **native graph algorithms** for all six benchmark algorithms.
+Uses ArcadeDB in **embedded mode** with native graph algorithms invoked via Cypher.
 
 ## Supported Algorithms
 
@@ -17,41 +17,29 @@ This driver connects to ArcadeDB via the **Neo4j-compatible Bolt protocol** and 
 
 ## Prerequisites
 
-- ArcadeDB server running with Bolt protocol enabled (default port 7687)
-- Java 8 or later
+- Java 11 or later
 - Maven 3.x
 
 ## Quick Start
 
 ```bash
 # 1. Build the project
-./init.sh ~/graphs ~/arcadedb
+./init.sh ~/graphs
 
 # 2. Run the benchmark
 cd graphalytics-1.3.0-arcadedb-0.1-SNAPSHOT/
 bin/sh/run-benchmark.sh
 ```
 
-## Configuration
-
-Edit `config/platform.properties`:
-
-```properties
-platform.arcadedb.home = /path/to/arcadedb
-platform.arcadedb.bolt-uri = bolt://localhost:7687
-platform.arcadedb.http-uri = http://localhost:2480
-platform.arcadedb.username = root
-platform.arcadedb.password = playwithdata
-```
-
 ## Architecture
 
-The driver uses a client-server architecture:
-- **Graph Loading**: Creates a database and imports vertices/edges via the ArcadeDB HTTP API
-- **Algorithm Execution**: Connects via Bolt, invokes ArcadeDB's native `algo.*` Cypher procedures
-- **Result Collection**: Streams algorithm results directly from procedure YIELD output
+The driver uses an embedded architecture (no server needed):
 
-This is in contrast to the Neo4j driver which uses embedded mode. The client-server approach is more representative of real-world deployments.
+1. **Graph Loading**: `ArcadeDBLoader` creates an embedded database and imports vertices/edges directly using the ArcadeDB Java API with batched transactions
+2. **Algorithm Execution**: Opens the pre-loaded database in embedded mode, invokes `algo.*` Cypher procedures via `database.command("cypher", ...)`, stores results as vertex properties
+3. **Result Serialization**: `OutputSerializer` reads result properties from vertices and writes them to the Graphalytics output format
+
+This mirrors the Neo4j driver's embedded approach for maximum performance.
 
 ## License
 

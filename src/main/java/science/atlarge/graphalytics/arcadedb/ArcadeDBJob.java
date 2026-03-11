@@ -15,21 +15,20 @@
  */
 package science.atlarge.graphalytics.arcadedb;
 
+import com.arcadedb.database.Database;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.neo4j.driver.Session;
 import science.atlarge.graphalytics.domain.benchmark.BenchmarkRun;
 import science.atlarge.graphalytics.domain.graph.Graph;
 import science.atlarge.graphalytics.execution.BenchmarkRunSetup;
 import science.atlarge.graphalytics.execution.RunSpecification;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 
 /**
- * Base class for all jobs in the ArcadeDB platform driver. Configures and executes a platform job
- * using the parameters and executable specified by the subclass for a specific algorithm.
+ * Base class for all jobs in the ArcadeDB platform driver. Configures and executes
+ * a platform job using the parameters and executable specified by the subclass
+ * for a specific algorithm.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -50,8 +49,8 @@ public abstract class ArcadeDBJob {
      *
      * @param runSpecification the benchmark run specification
      * @param platformConfig   the platform configuration
-     * @param inputPath        the path of the loaded graph
-     * @param outputPath       the file path of the output
+     * @param inputPath        the file path of the input graph dataset
+     * @param outputPath       the file path of the output graph dataset
      */
     public ArcadeDBJob(RunSpecification runSpecification,
                        ArcadeDBConfiguration platformConfig,
@@ -69,30 +68,8 @@ public abstract class ArcadeDBJob {
 
         this.graph = benchmarkRun.getGraph();
 
-        // Read the database name from the loaded graph path
-        String databaseName = readDatabaseName(inputPath);
-
-        LOG.info("Connecting to ArcadeDB database: " + databaseName + " at " + platformConfig.getBoltUri());
-        this.database = new ArcadeDBDatabase(
-                platformConfig.getBoltUri(),
-                databaseName,
-                platformConfig.getUsername(),
-                platformConfig.getPassword()
-        );
-    }
-
-    private String readDatabaseName(String inputPath) {
-        try {
-            java.nio.file.Path dbNameFile = Paths.get(inputPath).resolve("database_name");
-            if (Files.exists(dbNameFile)) {
-                return new String(Files.readAllBytes(dbNameFile)).trim();
-            }
-        } catch (IOException e) {
-            LOG.warn("Failed to read database name file, deriving from path", e);
-        }
-        // Fallback: derive from path
-        String name = Paths.get(inputPath).getFileName().toString();
-        return name.replaceAll("[^a-zA-Z0-9_]", "_");
+        LOG.info("Opening embedded database from path: " + inputPath);
+        this.database = new ArcadeDBDatabase(inputPath);
     }
 
     /**
@@ -102,8 +79,14 @@ public abstract class ArcadeDBJob {
      */
     public int execute() throws IOException {
         try {
-            compute(database, graph);
-            serialize(database, outputPath);
+            compute(
+                    database.get(),
+                    graph
+            );
+            serialize(
+                    database.get(),
+                    outputPath
+            );
         } finally {
             database.close();
         }
@@ -111,12 +94,12 @@ public abstract class ArcadeDBJob {
     }
 
     protected abstract void compute(
-            ArcadeDBDatabase database,
+            Database graphDatabase,
             Graph graph
     ) throws IOException;
 
     protected void serialize(
-            ArcadeDBDatabase database,
+            Database graphDatabase,
             String outputPath
     ) throws IOException { }
 
