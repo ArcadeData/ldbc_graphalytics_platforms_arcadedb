@@ -44,8 +44,9 @@ public class WeaklyConnectedComponentsComputation {
     }
 
     public void run() {
-        LOG.debug("- Starting Weakly Connected Components algorithm");
+        LOG.info("- Starting Weakly Connected Components algorithm");
 
+        LOG.info("  [Step 1/3] Collecting vertices...");
         Map<RID, Long> ridToVid = new HashMap<>();
         Map<RID, Long> componentMap = new HashMap<>();
         List<Vertex> allVertices = new ArrayList<>();
@@ -57,7 +58,10 @@ public class WeaklyConnectedComponentsComputation {
             long vid = v.getLong(ID_PROPERTY);
             ridToVid.put(v.getIdentity(), vid);
         }
+        int totalVertices = allVertices.size();
+        LOG.info("  [Step 1/3] Collected {} vertices.", String.format("%,d", totalVertices));
 
+        LOG.info("  [Step 2/3] Discovering components...");
         Set<RID> visited = new HashSet<>();
         long componentId = 0;
 
@@ -91,17 +95,31 @@ public class WeaklyConnectedComponentsComputation {
                 }
             }
             componentId++;
+            if (visited.size() % 100000 < 1000) {
+                LOG.info("  [Step 2/3] Discovering components: {}% ({}/{} vertices assigned, {} components found)",
+                        String.format("%.1f", 100.0 * visited.size() / totalVertices),
+                        String.format("%,d", visited.size()), String.format("%,d", totalVertices), componentId);
+            }
         }
+        LOG.info("  [Step 2/3] Component discovery complete: {} components found.", componentId);
 
         // Write results
+        LOG.info("  [Step 3/3] Writing results...");
         graphDatabase.begin();
+        int written = 0;
         for (Vertex v : allVertices) {
             MutableVertex mv = v.modify();
             mv.set(COMPONENT, componentMap.get(v.getIdentity()));
             mv.save();
+            written++;
+            if (written % 100000 == 0) {
+                LOG.info("  [Step 3/3] Writing results: {}% ({}/{})",
+                        String.format("%.1f", 100.0 * written / totalVertices),
+                        String.format("%,d", written), String.format("%,d", totalVertices));
+            }
         }
         graphDatabase.commit();
 
-        LOG.debug("- Completed WCC algorithm ({} components)", componentId);
+        LOG.info("- Completed WCC algorithm ({} components)", componentId);
     }
 }

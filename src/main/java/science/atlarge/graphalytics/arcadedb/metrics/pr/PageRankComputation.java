@@ -50,9 +50,10 @@ public class PageRankComputation {
     }
 
     public void run() {
-        LOG.debug("- Starting PageRank algorithm (iterations={}, damping={})", maxIterations, dampingFactor);
+        LOG.info("- Starting PageRank algorithm (iterations={}, damping={})", maxIterations, dampingFactor);
 
         // Collect all vertices and build adjacency
+        LOG.info("  [Step 1/3] Collecting vertices...");
         List<Vertex> vertices = new ArrayList<>();
         Map<RID, Integer> ridToIndex = new HashMap<>();
         Iterator<Vertex> it = graphDatabase.iterateType(VERTEX_TYPE, false);
@@ -63,6 +64,7 @@ public class PageRankComputation {
         }
 
         int n = vertices.size();
+        LOG.info("  [Step 1/3] Collected {} vertices. Building adjacency...", String.format("%,d", n));
         double[] ranks = new double[n];
         double[] newRanks = new double[n];
         int[] outDegree = new int[n];
@@ -94,6 +96,11 @@ public class PageRankComputation {
                 }
             }
             outDegree[i] = outCount;
+            if ((i + 1) % 100000 == 0) {
+                LOG.info("  [Step 1/3] Building adjacency: {}% ({}/{})",
+                        String.format("%.1f", 100.0 * (i + 1) / n),
+                        String.format("%,d", i + 1), String.format("%,d", n));
+            }
         }
 
         // If undirected, outDegree needs to count both directions
@@ -107,9 +114,11 @@ public class PageRankComputation {
                     outDegree[i]++;
             }
         }
+        LOG.info("  [Step 1/3] Adjacency structure built.");
 
         // Iterate
         for (int iter = 0; iter < maxIterations; iter++) {
+            LOG.info("  [Step 2/3] PageRank iteration {}/{}", iter + 1, maxIterations);
             double danglingSum = 0;
             for (int i = 0; i < n; i++) {
                 if (outDegree[i] == 0)
@@ -128,14 +137,20 @@ public class PageRankComputation {
         }
 
         // Write results
+        LOG.info("  [Step 3/3] Writing results...");
         graphDatabase.begin();
         for (int i = 0; i < n; i++) {
             MutableVertex mv = vertices.get(i).modify();
             mv.set(PAGERANK, ranks[i]);
             mv.save();
+            if ((i + 1) % 100000 == 0) {
+                LOG.info("  [Step 3/3] Writing results: {}% ({}/{})",
+                        String.format("%.1f", 100.0 * (i + 1) / n),
+                        String.format("%,d", i + 1), String.format("%,d", n));
+            }
         }
         graphDatabase.commit();
 
-        LOG.debug("- Completed PageRank algorithm");
+        LOG.info("- Completed PageRank algorithm ({} iterations on {} vertices)", maxIterations, String.format("%,d", n));
     }
 }

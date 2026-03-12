@@ -21,5 +21,8 @@ if [ ! -f "$config/platform.properties" ]; then
 	exit 1
 fi
 
+# Set JVM memory options
+export java_opts="-Xms16g -Xmx16g"
+
 # Set library jar
 export LIBRARY_JAR=`ls lib/graphalytics-*default*.jar`

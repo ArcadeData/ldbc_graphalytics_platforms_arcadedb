@@ -48,30 +48,42 @@ public class BreadthFirstSearchComputation {
     }
 
     public void run() {
-        LOG.debug("- Starting BFS algorithm from vertex {}", startVertexId);
+        LOG.info("- Starting BFS algorithm from vertex {}", startVertexId);
 
         // Initialize all vertices with max distance
+        LOG.info("  [Step 1/3] Initializing vertices...");
         graphDatabase.begin();
+        int totalVertices = 0;
         Iterator<Vertex> allVertices = graphDatabase.iterateType(VERTEX_TYPE, false);
         while (allVertices.hasNext()) {
             MutableVertex v = allVertices.next().modify();
             v.set(DISTANCE, Long.MAX_VALUE);
             v.save();
+            totalVertices++;
         }
         graphDatabase.commit();
+        LOG.info("  [Step 1/3] Initialized {} vertices.", String.format("%,d", totalVertices));
 
         // Find start vertex
         Vertex startVertex = graphDatabase.lookupByKey(VERTEX_TYPE, ID_PROPERTY, startVertexId).next().asVertex();
 
         // BFS
+        LOG.info("  [Step 2/3] Running BFS traversal...");
         Map<RID, Long> distances = new HashMap<>();
         Queue<Vertex> queue = new LinkedList<>();
         queue.add(startVertex);
         distances.put(startVertex.getIdentity(), 0L);
+        int processed = 0;
 
         while (!queue.isEmpty()) {
             Vertex current = queue.poll();
             long currentDist = distances.get(current.getIdentity());
+            processed++;
+
+            if (processed % 100000 == 0) {
+                LOG.info("  [Step 2/3] BFS traversal: {} vertices visited ({} in queue)",
+                        String.format("%,d", processed), String.format("%,d", queue.size()));
+            }
 
             // Outgoing edges
             for (Edge edge : current.getEdges(Vertex.DIRECTION.OUT, EDGE_TYPE)) {
@@ -93,17 +105,26 @@ public class BreadthFirstSearchComputation {
                 }
             }
         }
+        LOG.info("  [Step 2/3] BFS traversal complete: {} vertices reached.", String.format("%,d", distances.size()));
 
         // Write results
+        LOG.info("  [Step 3/3] Writing results...");
         graphDatabase.begin();
+        int written = 0;
         for (Map.Entry<RID, Long> entry : distances.entrySet()) {
             Vertex v = graphDatabase.lookupByRID(entry.getKey(), true).asVertex();
             MutableVertex mv = v.modify();
             mv.set(DISTANCE, entry.getValue());
             mv.save();
+            written++;
+            if (written % 100000 == 0) {
+                LOG.info("  [Step 3/3] Writing results: {}% ({}/{})",
+                        String.format("%.1f", 100.0 * written / distances.size()),
+                        String.format("%,d", written), String.format("%,d", distances.size()));
+            }
         }
         graphDatabase.commit();
 
-        LOG.debug("- Completed BFS algorithm");
+        LOG.info("- Completed BFS algorithm ({} vertices reached)", String.format("%,d", distances.size()));
     }
 }

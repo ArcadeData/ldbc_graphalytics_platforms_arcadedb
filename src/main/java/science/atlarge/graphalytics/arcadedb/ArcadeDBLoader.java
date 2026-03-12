@@ -53,6 +53,11 @@ public class ArcadeDBLoader {
     public int load(String loadedInputPath) throws Exception {
         LOG.info("Creating embedded ArcadeDB database at: " + loadedInputPath);
 
+        long totalVertices = formattedGraph.getNumberOfVertices();
+        long totalEdges = formattedGraph.getNumberOfEdges();
+        LOG.info("Graph '{}': {} vertices, {} edges", formattedGraph.getName(),
+                String.format("%,d", totalVertices), String.format("%,d", totalEdges));
+
         // Ensure parent directory exists
         new File(loadedInputPath).getParentFile().mkdirs();
 
@@ -65,8 +70,8 @@ public class ArcadeDBLoader {
         // Create and configure the database
         try (Database database = factory.create()) {
             createSchema(database);
-            loadVertices(database);
-            loadEdges(database);
+            loadVertices(database, totalVertices);
+            loadEdges(database, totalEdges);
         }
 
         LOG.info("Graph loading complete: " + formattedGraph.getName());
@@ -91,8 +96,8 @@ public class ArcadeDBLoader {
                 ArcadeDBConstants.VERTEX_TYPE, ArcadeDBConstants.EDGE_TYPE);
     }
 
-    private void loadVertices(Database database) throws IOException {
-        LOG.info("Loading vertices from: " + formattedGraph.getVertexFilePath());
+    private void loadVertices(Database database, long totalVertices) throws IOException {
+        LOG.info("[Step 1/2] Loading vertices from: {}", formattedGraph.getVertexFilePath());
 
         int count = 0;
         database.begin();
@@ -114,17 +119,21 @@ public class ArcadeDBLoader {
                 if (count % BATCH_SIZE == 0) {
                     database.commit();
                     database.begin();
-                    LOG.info("  Loaded {} vertices...", count);
+                    if (totalVertices > 0) {
+                        LOG.info("[Step 1/2] Loading vertices: {}% ({}/{})",
+                                String.format("%.1f", 100.0 * count / totalVertices),
+                                String.format("%,d", count), String.format("%,d", totalVertices));
+                    }
                 }
             }
         }
 
         database.commit();
-        LOG.info("Loaded {} vertices total.", count);
+        LOG.info("[Step 1/2] Loading vertices: 100% - {} vertices loaded.", String.format("%,d", count));
     }
 
-    private void loadEdges(Database database) throws IOException {
-        LOG.info("Loading edges from: " + formattedGraph.getEdgeFilePath());
+    private void loadEdges(Database database, long totalEdges) throws IOException {
+        LOG.info("[Step 2/2] Loading edges from: {}", formattedGraph.getEdgeFilePath());
         boolean weighted = formattedGraph.hasEdgeProperties();
 
         int count = 0;
@@ -156,13 +165,17 @@ public class ArcadeDBLoader {
                 if (count % BATCH_SIZE == 0) {
                     database.commit();
                     database.begin();
-                    LOG.info("  Loaded {} edges...", count);
+                    if (totalEdges > 0) {
+                        LOG.info("[Step 2/2] Loading edges: {}% ({}/{})",
+                                String.format("%.1f", 100.0 * count / totalEdges),
+                                String.format("%,d", count), String.format("%,d", totalEdges));
+                    }
                 }
             }
         }
 
         database.commit();
-        LOG.info("Loaded {} edges total.", count);
+        LOG.info("[Step 2/2] Loading edges: 100% - {} edges loaded.", String.format("%,d", count));
     }
 
     private Vertex lookupVertex(Database database, long vid) {

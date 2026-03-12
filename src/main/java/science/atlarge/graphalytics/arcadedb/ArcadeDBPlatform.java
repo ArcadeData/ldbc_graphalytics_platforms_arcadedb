@@ -40,6 +40,8 @@ public class ArcadedbPlatform implements Platform {
 	private static final String PLATFORM_NAME = "arcadedb";
 
 	public ArcadeDBLoader loader;
+	private int jobCounter = 0;
+	private int totalJobs = 0;
 
 	@Override
 	public void verifySetup() { }
@@ -129,22 +131,28 @@ public class ArcadedbPlatform implements Platform {
 				throw new PlatformExecutionException("Failed to load algorithm implementation.");
 		}
 
-		LOG.info("Executing benchmark with algorithm \"{}\" on graph \"{}\".",
+		jobCounter++;
+		if (totalJobs == 0) totalJobs = 6; // default for custom benchmark
+
+		LOG.info("=== [Job {}/{}] Running {} on graph \"{}\" ===",
+				jobCounter, totalJobs,
 				benchmarkRun.getAlgorithm().getName(),
 				benchmarkRun.getFormattedGraph().getName());
 
 		try {
+			long startTime = System.currentTimeMillis();
 			int exitCode = job.execute();
+			long elapsed = System.currentTimeMillis() - startTime;
 			if (exitCode != 0) {
 				throw new PlatformExecutionException("ArcadeDB exited with an error code: " + exitCode);
 			}
+			LOG.info("=== [Job {}/{}] Completed {} in {}.{}s ===",
+					jobCounter, totalJobs,
+					benchmarkRun.getAlgorithm().getName(),
+					elapsed / 1000, String.format("%03d", elapsed % 1000));
 		} catch (Exception e) {
 			throw new PlatformExecutionException("Failed to execute an ArcadeDB job.", e);
 		}
-
-		LOG.info("Executed benchmark with algorithm \"{}\" on graph \"{}\".",
-				benchmarkRun.getAlgorithm().getName(),
-				benchmarkRun.getFormattedGraph().getName());
 	}
 
 	@Override

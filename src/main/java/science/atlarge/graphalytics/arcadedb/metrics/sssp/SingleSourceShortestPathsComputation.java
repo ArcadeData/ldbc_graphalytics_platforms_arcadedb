@@ -48,19 +48,24 @@ public class SingleSourceShortestPathsComputation {
     }
 
     public void run() {
-        LOG.debug("- Starting Single Source Shortest Paths algorithm from vertex {}", startVertexId);
+        LOG.info("- Starting Single Source Shortest Paths algorithm from vertex {}", startVertexId);
 
         // Initialize all vertices with infinity
+        LOG.info("  [Step 1/3] Initializing vertices...");
+        int totalVertices = 0;
         graphDatabase.begin();
         Iterator<Vertex> allVertices = graphDatabase.iterateType(VERTEX_TYPE, false);
         while (allVertices.hasNext()) {
             MutableVertex v = allVertices.next().modify();
             v.set(SSSP, Double.POSITIVE_INFINITY);
             v.save();
+            totalVertices++;
         }
         graphDatabase.commit();
+        LOG.info("  [Step 1/3] Initialized {} vertices.", String.format("%,d", totalVertices));
 
         // Dijkstra
+        LOG.info("  [Step 2/3] Running Dijkstra...");
         Vertex startVertex = graphDatabase.lookupByKey(VERTEX_TYPE, ID_PROPERTY, startVertexId).next().asVertex();
 
         Map<RID, Double> distances = new HashMap<>();
@@ -70,6 +75,7 @@ public class SingleSourceShortestPathsComputation {
         distances.put(startVertex.getIdentity(), 0.0);
         // Store [bucketId, position, distance] but we just need RID->distance
         pq.add(new double[]{startVertex.getIdentity().getBucketId(), startVertex.getIdentity().getPosition(), 0.0});
+        int processed = 0;
 
         while (!pq.isEmpty()) {
             double[] entry = pq.poll();
@@ -78,6 +84,12 @@ public class SingleSourceShortestPathsComputation {
 
             if (currentDist > distances.getOrDefault(currentRid, Double.POSITIVE_INFINITY))
                 continue;
+
+            processed++;
+            if (processed % 100000 == 0) {
+                LOG.info("  [Step 2/3] Dijkstra: {} vertices settled ({} in queue)",
+                        String.format("%,d", processed), String.format("%,d", pq.size()));
+            }
 
             Vertex current = graphDatabase.lookupByRID(currentRid, true).asVertex();
 
@@ -109,17 +121,26 @@ public class SingleSourceShortestPathsComputation {
                 }
             }
         }
+        LOG.info("  [Step 2/3] Dijkstra complete: {} vertices reached.", String.format("%,d", distances.size()));
 
         // Write results
+        LOG.info("  [Step 3/3] Writing results...");
         graphDatabase.begin();
+        int written = 0;
         for (Map.Entry<RID, Double> e : distances.entrySet()) {
             Vertex v = graphDatabase.lookupByRID(e.getKey(), true).asVertex();
             MutableVertex mv = v.modify();
             mv.set(SSSP, e.getValue());
             mv.save();
+            written++;
+            if (written % 100000 == 0) {
+                LOG.info("  [Step 3/3] Writing results: {}% ({}/{})",
+                        String.format("%.1f", 100.0 * written / distances.size()),
+                        String.format("%,d", written), String.format("%,d", distances.size()));
+            }
         }
         graphDatabase.commit();
 
-        LOG.debug("- Completed SSSP algorithm");
+        LOG.info("- Completed SSSP algorithm ({} vertices reached)", String.format("%,d", distances.size()));
     }
 }

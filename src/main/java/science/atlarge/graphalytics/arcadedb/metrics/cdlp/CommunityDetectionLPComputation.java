@@ -48,9 +48,10 @@ public class CommunityDetectionLPComputation {
     }
 
     public void run() {
-        LOG.debug("- Starting Community Detection Label Propagation algorithm (maxIterations={})", maxIterations);
+        LOG.info("- Starting Community Detection Label Propagation algorithm (maxIterations={})", maxIterations);
 
         // Collect vertices and initialize labels with VID
+        LOG.info("  [Step 1/3] Collecting vertices and initializing labels...");
         List<Vertex> vertices = new ArrayList<>();
         Map<RID, Long> labels = new HashMap<>();
 
@@ -60,9 +61,12 @@ public class CommunityDetectionLPComputation {
             vertices.add(v);
             labels.put(v.getIdentity(), v.getLong(ID_PROPERTY));
         }
+        int n = vertices.size();
+        LOG.info("  [Step 1/3] Initialized {} vertices.", String.format("%,d", n));
 
         // Iterate
         for (int iter = 0; iter < maxIterations; iter++) {
+            LOG.info("  [Step 2/3] CDLP iteration {}/{} ...", iter + 1, maxIterations);
             Map<RID, Long> newLabels = new HashMap<>();
 
             for (Vertex v : vertices) {
@@ -113,14 +117,22 @@ public class CommunityDetectionLPComputation {
         }
 
         // Write results
+        LOG.info("  [Step 3/3] Writing results...");
         graphDatabase.begin();
+        int written = 0;
         for (Vertex v : vertices) {
             MutableVertex mv = v.modify();
             mv.set(LABEL, labels.get(v.getIdentity()));
             mv.save();
+            written++;
+            if (written % 100000 == 0) {
+                LOG.info("  [Step 3/3] Writing results: {}% ({}/{})",
+                        String.format("%.1f", 100.0 * written / n),
+                        String.format("%,d", written), String.format("%,d", n));
+            }
         }
         graphDatabase.commit();
 
-        LOG.debug("- Completed CDLP algorithm");
+        LOG.info("- Completed CDLP algorithm ({} iterations on {} vertices)", maxIterations, String.format("%,d", n));
     }
 }

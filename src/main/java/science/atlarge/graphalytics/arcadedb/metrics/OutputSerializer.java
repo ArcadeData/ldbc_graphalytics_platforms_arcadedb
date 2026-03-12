@@ -18,6 +18,9 @@ package science.atlarge.graphalytics.arcadedb.metrics;
 import com.arcadedb.database.Database;
 import com.arcadedb.graph.Vertex;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.Iterator;
@@ -34,6 +37,8 @@ import static science.atlarge.graphalytics.arcadedb.ArcadeDBConstants.ID_PROPERT
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
 public class OutputSerializer<N extends Number> {
+
+    private static final Logger LOG = LogManager.getLogger();
 
     private final String property;
     private final N defaultValue;
@@ -55,13 +60,20 @@ public class OutputSerializer<N extends Number> {
      * @param outputPath    the path where the output file should be written
      */
     public void serialize(Database graphDatabase, String outputPath) throws IOException {
+        LOG.info("  Serializing results to: {}", outputPath);
+        int count = 0;
         try (FileWriter writer = new FileWriter(outputPath)) {
             Iterator<Vertex> vertices = graphDatabase.iterateType("Vertex", false);
             while (vertices.hasNext()) {
                 Vertex vertex = vertices.next();
                 writer.write(serializeValue(vertex) + "\n");
+                count++;
+                if (count % 100000 == 0) {
+                    LOG.info("  Serialized {} vertices...", String.format("%,d", count));
+                }
             }
         }
+        LOG.info("  Serialization complete: {} vertices written.", String.format("%,d", count));
     }
 
     @SuppressWarnings("unchecked")

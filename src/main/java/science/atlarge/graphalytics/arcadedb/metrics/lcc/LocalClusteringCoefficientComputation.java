@@ -46,19 +46,23 @@ public class LocalClusteringCoefficientComputation {
     }
 
     public void run() {
-        LOG.debug("- Starting Local Clustering Coefficient algorithm");
+        LOG.info("- Starting Local Clustering Coefficient algorithm");
 
+        LOG.info("  [Step 1/3] Collecting vertices...");
         List<Vertex> vertices = new ArrayList<>();
         Iterator<Vertex> it = graphDatabase.iterateType(VERTEX_TYPE, false);
         while (it.hasNext()) {
             vertices.add(it.next());
         }
+        int n = vertices.size();
+        LOG.info("  [Step 1/3] Collected {} vertices. Building neighborhoods...", String.format("%,d", n));
 
         // Build undirected neighborhood for each vertex (both directions)
         Map<RID, Set<RID>> neighbors = new HashMap<>();
         // Build directed out-neighbors for directed triangle counting
         Map<RID, Set<RID>> outNeighbors = new HashMap<>();
 
+        int built = 0;
         for (Vertex v : vertices) {
             Set<RID> neighborSet = new HashSet<>();
             Set<RID> outSet = new HashSet<>();
@@ -73,10 +77,19 @@ public class LocalClusteringCoefficientComputation {
             }
             neighbors.put(v.getIdentity(), neighborSet);
             outNeighbors.put(v.getIdentity(), outSet);
+            built++;
+            if (built % 100000 == 0) {
+                LOG.info("  [Step 1/3] Building neighborhoods: {}% ({}/{})",
+                        String.format("%.1f", 100.0 * built / n),
+                        String.format("%,d", built), String.format("%,d", n));
+            }
         }
+        LOG.info("  [Step 1/3] Neighborhoods built.");
 
         // Compute LCC for each vertex
+        LOG.info("  [Step 2/3] Computing LCC...");
         graphDatabase.begin();
+        int computed = 0;
         for (Vertex v : vertices) {
             Set<RID> neighborSet = neighbors.get(v.getIdentity());
             int degree = neighborSet.size();
@@ -119,9 +132,15 @@ public class LocalClusteringCoefficientComputation {
             MutableVertex mv = v.modify();
             mv.set(LCC, lcc);
             mv.save();
+            computed++;
+            if (computed % 100000 == 0) {
+                LOG.info("  [Step 2/3] Computing LCC: {}% ({}/{})",
+                        String.format("%.1f", 100.0 * computed / n),
+                        String.format("%,d", computed), String.format("%,d", n));
+            }
         }
         graphDatabase.commit();
 
-        LOG.debug("- Completed LCC algorithm");
+        LOG.info("- Completed LCC algorithm ({} vertices)", String.format("%,d", n));
     }
 }
