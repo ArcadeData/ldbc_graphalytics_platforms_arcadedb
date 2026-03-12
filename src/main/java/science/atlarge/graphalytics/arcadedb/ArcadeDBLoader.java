@@ -17,9 +17,9 @@ package science.atlarge.graphalytics.arcadedb;
 
 import com.arcadedb.database.Database;
 import com.arcadedb.database.DatabaseFactory;
+import com.arcadedb.database.RID;
 import com.arcadedb.graph.MutableVertex;
 import com.arcadedb.graph.Vertex;
-import com.arcadedb.index.IndexCursor;
 import com.arcadedb.schema.Schema;
 import com.arcadedb.schema.Type;
 import org.apache.logging.log4j.LogManager;
@@ -30,6 +30,8 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Graph loader for ArcadeDB. Creates an embedded database and imports vertex/edge
@@ -40,7 +42,9 @@ import java.io.IOException;
 public class ArcadeDBLoader {
 
     private static final Logger LOG = LogManager.getLogger();
-    private static final int BATCH_SIZE = 10000;
+    private static final int VERTEX_BATCH_SIZE = 10000;
+    private static final int EDGE_BATCH_SIZE = 20000;
+    private static final int BUCKETS = 8;
 
     protected FormattedGraph formattedGraph;
     protected ArcadeDBConfiguration platformConfig;
@@ -70,8 +74,8 @@ public class ArcadeDBLoader {
         // Create and configure the database
         try (Database database = factory.create()) {
             createSchema(database);
-            loadVertices(database, totalVertices);
-            loadEdges(database, totalEdges);
+            Map<Long, RID> vidToRid = loadVertices(database, totalVertices);
+            loadEdges(database, totalEdges, vidToRid);
         }
 
         LOG.info("Graph loading complete: " + formattedGraph.getName());
@@ -79,8 +83,8 @@ public class ArcadeDBLoader {
     }
 
     private void createSchema(Database database) {
-        database.getSchema().createVertexType(ArcadeDBConstants.VERTEX_TYPE);
-        database.getSchema().createEdgeType(ArcadeDBConstants.EDGE_TYPE);
+        database.getSchema().createVertexType(ArcadeDBConstants.VERTEX_TYPE, BUCKETS);
+        database.getSchema().createEdgeType(ArcadeDBConstants.EDGE_TYPE, BUCKETS);
 
         database.getSchema().getType(ArcadeDBConstants.VERTEX_TYPE)
                 .createProperty(ArcadeDBConstants.ID_PROPERTY, Type.LONG);
@@ -92,13 +96,14 @@ public class ArcadeDBLoader {
                     .createProperty(ArcadeDBConstants.WEIGHT_PROPERTY, Type.DOUBLE);
         }
 
-        LOG.info("Schema created: vertex type '{}', edge type '{}'",
-                ArcadeDBConstants.VERTEX_TYPE, ArcadeDBConstants.EDGE_TYPE);
+        LOG.info("Schema created: vertex type '{}' ({} buckets), edge type '{}' ({} buckets)",
+                ArcadeDBConstants.VERTEX_TYPE, BUCKETS, ArcadeDBConstants.EDGE_TYPE, BUCKETS);
     }
 
-    private void loadVertices(Database database, long totalVertices) throws IOException {
+    private Map<Long, RID> loadVertices(Database database, long totalVertices) throws IOException {
         LOG.info("[Step 1/2] Loading vertices from: {}", formattedGraph.getVertexFilePath());
 
+        Map<Long, RID> vidToRid = new HashMap<>();
         int count = 0;
         database.begin();
 
@@ -114,9 +119,10 @@ public class ArcadeDBLoader {
                 MutableVertex vertex = database.newVertex(ArcadeDBConstants.VERTEX_TYPE);
                 vertex.set(ArcadeDBConstants.ID_PROPERTY, vid);
                 vertex.save();
+                vidToRid.put(vid, vertex.getIdentity());
 
                 count++;
-                if (count % BATCH_SIZE == 0) {
+                if (count % VERTEX_BATCH_SIZE == 0) {
                     database.commit();
                     database.begin();
                     if (totalVertices > 0) {
@@ -130,10 +136,12 @@ public class ArcadeDBLoader {
 
         database.commit();
         LOG.info("[Step 1/2] Loading vertices: 100% - {} vertices loaded.", String.format("%,d", count));
+        return vidToRid;
     }
 
-    private void loadEdges(Database database, long totalEdges) throws IOException {
-        LOG.info("[Step 2/2] Loading edges from: {}", formattedGraph.getEdgeFilePath());
+    private void loadEdges(Database database, long totalEdges, Map<Long, RID> vidToRid) throws IOException {
+        LOG.info("[Step 2/2] Loading edges from: {} (VID->RID cache: {} entries)",
+                formattedGraph.getEdgeFilePath(), String.format("%,d", vidToRid.size()));
         boolean weighted = formattedGraph.hasEdgeProperties();
 
         int count = 0;
@@ -150,8 +158,15 @@ public class ArcadeDBLoader {
                 long srcId = Long.parseLong(parts[0]);
                 long dstId = Long.parseLong(parts[1]);
 
-                Vertex src = lookupVertex(database, srcId);
-                Vertex dst = lookupVertex(database, dstId);
+                RID srcRid = vidToRid.get(srcId);
+                RID dstRid = vidToRid.get(dstId);
+                if (srcRid == null)
+                    throw new RuntimeException("Vertex not found with VID=" + srcId);
+                if (dstRid == null)
+                    throw new RuntimeException("Vertex not found with VID=" + dstId);
+
+                Vertex src = srcRid.asVertex();
+                Vertex dst = dstRid.asVertex();
 
                 if (weighted && parts.length > 2) {
                     double weight = Double.parseDouble(parts[2]);
@@ -162,7 +177,7 @@ public class ArcadeDBLoader {
                 }
 
                 count++;
-                if (count % BATCH_SIZE == 0) {
+                if (count % EDGE_BATCH_SIZE == 0) {
                     database.commit();
                     database.begin();
                     if (totalEdges > 0) {
@@ -176,15 +191,6 @@ public class ArcadeDBLoader {
 
         database.commit();
         LOG.info("[Step 2/2] Loading edges: 100% - {} edges loaded.", String.format("%,d", count));
-    }
-
-    private Vertex lookupVertex(Database database, long vid) {
-        IndexCursor cursor = database.lookupByKey(ArcadeDBConstants.VERTEX_TYPE,
-                ArcadeDBConstants.ID_PROPERTY, vid);
-        if (cursor.hasNext()) {
-            return cursor.next().asVertex();
-        }
-        throw new RuntimeException("Vertex not found with VID=" + vid);
     }
 
     public int unload(String loadedInputPath) throws Exception {
