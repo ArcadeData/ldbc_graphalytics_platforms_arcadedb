@@ -55,8 +55,6 @@ public class ArcadeDBLoader {
     }
 
     public int load(String loadedInputPath) throws Exception {
-        LOG.info("Creating embedded ArcadeDB database at: " + loadedInputPath);
-
         long totalVertices = formattedGraph.getNumberOfVertices();
         long totalEdges = formattedGraph.getNumberOfEdges();
         LOG.info("Graph '{}': {} vertices, {} edges", formattedGraph.getName(),
@@ -65,17 +63,18 @@ public class ArcadeDBLoader {
         // Ensure parent directory exists
         new File(loadedInputPath).getParentFile().mkdirs();
 
-        // Drop existing database if present
         DatabaseFactory factory = new DatabaseFactory(loadedInputPath);
         if (factory.exists()) {
-            factory.open().drop();
-        }
-
-        // Create and configure the database
-        try (Database database = factory.create()) {
-            createSchema(database);
-            Map<Long, RID> vidToRid = loadVertices(database, totalVertices);
-            loadEdges(database, totalEdges, vidToRid);
+            // Reuse existing database
+            LOG.info("Database already exists at: {} - reusing it.", loadedInputPath);
+        } else {
+            // Create and load from scratch
+            LOG.info("Creating embedded ArcadeDB database at: " + loadedInputPath);
+            try (Database database = factory.create()) {
+                createSchema(database);
+                Map<Long, RID> vidToRid = loadVertices(database, totalVertices);
+                loadEdges(database, totalEdges, vidToRid);
+            }
         }
 
         LOG.info("Graph loading complete: " + formattedGraph.getName());
