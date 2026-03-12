@@ -16,18 +16,20 @@
 package science.atlarge.graphalytics.arcadedb.metrics.cdlp;
 
 import com.arcadedb.database.Database;
+import com.arcadedb.database.RID;
+import com.arcadedb.graph.Edge;
 import com.arcadedb.graph.MutableVertex;
 import com.arcadedb.graph.Vertex;
-import com.arcadedb.query.sql.executor.Result;
-import com.arcadedb.query.sql.executor.ResultSet;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import java.util.*;
 
 import static science.atlarge.graphalytics.arcadedb.ArcadeDBConstants.*;
 
 /**
- * Implementation of the community detection (label propagation) algorithm using
- * ArcadeDB's native algo.labelpropagation procedure.
+ * Implementation of the community detection (label propagation) algorithm
+ * using the ArcadeDB Java graph API.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -48,24 +50,73 @@ public class CommunityDetectionLPComputation {
     public void run() {
         LOG.debug("- Starting Community Detection Label Propagation algorithm (maxIterations={})", maxIterations);
 
-        String direction = directed ? "'OUTGOING'" : "'BOTH'";
-        String query = String.format(
-                "CALL algo.labelpropagation({maxIterations: %d, direction: %s}) " +
-                "YIELD node, communityId " +
-                "RETURN node.VID AS id, communityId AS value",
-                maxIterations, direction
-        );
+        // Collect vertices and initialize labels with VID
+        List<Vertex> vertices = new ArrayList<>();
+        Map<RID, Long> labels = new HashMap<>();
 
+        Iterator<Vertex> it = graphDatabase.iterateType(VERTEX_TYPE, false);
+        while (it.hasNext()) {
+            Vertex v = it.next();
+            vertices.add(v);
+            labels.put(v.getIdentity(), v.getLong(ID_PROPERTY));
+        }
+
+        // Iterate
+        for (int iter = 0; iter < maxIterations; iter++) {
+            Map<RID, Long> newLabels = new HashMap<>();
+
+            for (Vertex v : vertices) {
+                // Count neighbor labels
+                Map<Long, Integer> labelCounts = new HashMap<>();
+
+                if (directed) {
+                    // For directed: use incoming edges
+                    for (Edge edge : v.getEdges(Vertex.DIRECTION.IN, EDGE_TYPE)) {
+                        Long neighborLabel = labels.get(edge.getOutVertex().getIdentity());
+                        if (neighborLabel != null)
+                            labelCounts.merge(neighborLabel, 1, Integer::sum);
+                    }
+                    for (Edge edge : v.getEdges(Vertex.DIRECTION.OUT, EDGE_TYPE)) {
+                        Long neighborLabel = labels.get(edge.getInVertex().getIdentity());
+                        if (neighborLabel != null)
+                            labelCounts.merge(neighborLabel, 1, Integer::sum);
+                    }
+                } else {
+                    for (Edge edge : v.getEdges(Vertex.DIRECTION.OUT, EDGE_TYPE)) {
+                        Long neighborLabel = labels.get(edge.getInVertex().getIdentity());
+                        if (neighborLabel != null)
+                            labelCounts.merge(neighborLabel, 1, Integer::sum);
+                    }
+                    for (Edge edge : v.getEdges(Vertex.DIRECTION.IN, EDGE_TYPE)) {
+                        Long neighborLabel = labels.get(edge.getOutVertex().getIdentity());
+                        if (neighborLabel != null)
+                            labelCounts.merge(neighborLabel, 1, Integer::sum);
+                    }
+                }
+
+                if (labelCounts.isEmpty()) {
+                    newLabels.put(v.getIdentity(), labels.get(v.getIdentity()));
+                } else {
+                    // Pick most frequent label, break ties by choosing smallest label
+                    int maxCount = Collections.max(labelCounts.values());
+                    long bestLabel = Long.MAX_VALUE;
+                    for (Map.Entry<Long, Integer> entry : labelCounts.entrySet()) {
+                        if (entry.getValue() == maxCount && entry.getKey() < bestLabel) {
+                            bestLabel = entry.getKey();
+                        }
+                    }
+                    newLabels.put(v.getIdentity(), bestLabel);
+                }
+            }
+
+            labels = newLabels;
+        }
+
+        // Write results
         graphDatabase.begin();
-        ResultSet result = graphDatabase.command("cypher", query);
-        while (result.hasNext()) {
-            Result record = result.next();
-            long vid = record.getProperty("id");
-            long communityId = ((Number) record.getProperty("value")).longValue();
-
-            Vertex vertex = graphDatabase.lookupByKey(VERTEX_TYPE, ID_PROPERTY, vid).next().asVertex();
-            MutableVertex mv = vertex.modify();
-            mv.set(LABEL, communityId);
+        for (Vertex v : vertices) {
+            MutableVertex mv = v.modify();
+            mv.set(LABEL, labels.get(v.getIdentity()));
             mv.save();
         }
         graphDatabase.commit();

@@ -16,18 +16,20 @@
 package science.atlarge.graphalytics.arcadedb.metrics.pr;
 
 import com.arcadedb.database.Database;
+import com.arcadedb.database.RID;
+import com.arcadedb.graph.Edge;
 import com.arcadedb.graph.MutableVertex;
 import com.arcadedb.graph.Vertex;
-import com.arcadedb.query.sql.executor.Result;
-import com.arcadedb.query.sql.executor.ResultSet;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import java.util.*;
 
 import static science.atlarge.graphalytics.arcadedb.ArcadeDBConstants.*;
 
 /**
- * Implementation of the PageRank algorithm using ArcadeDB's native
- * algo.pagerank procedure. Stores scores as vertex properties.
+ * Implementation of the PageRank algorithm using iterative computation
+ * on the ArcadeDB Java graph API.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -50,23 +52,86 @@ public class PageRankComputation {
     public void run() {
         LOG.debug("- Starting PageRank algorithm (iterations={}, damping={})", maxIterations, dampingFactor);
 
-        String query = String.format(
-                "CALL algo.pagerank({dampingFactor: %f, maxIterations: %d}) " +
-                "YIELD node, score " +
-                "RETURN node.VID AS id, score AS value",
-                dampingFactor, maxIterations
-        );
+        // Collect all vertices and build adjacency
+        List<Vertex> vertices = new ArrayList<>();
+        Map<RID, Integer> ridToIndex = new HashMap<>();
+        Iterator<Vertex> it = graphDatabase.iterateType(VERTEX_TYPE, false);
+        while (it.hasNext()) {
+            Vertex v = it.next();
+            ridToIndex.put(v.getIdentity(), vertices.size());
+            vertices.add(v);
+        }
 
+        int n = vertices.size();
+        double[] ranks = new double[n];
+        double[] newRanks = new double[n];
+        int[] outDegree = new int[n];
+        List<List<Integer>> inNeighbors = new ArrayList<>();
+
+        for (int i = 0; i < n; i++) {
+            ranks[i] = 1.0 / n;
+            inNeighbors.add(new ArrayList<>());
+        }
+
+        // Build adjacency structure
+        for (int i = 0; i < n; i++) {
+            Vertex v = vertices.get(i);
+            int outCount = 0;
+            for (Edge edge : v.getEdges(Vertex.DIRECTION.OUT, EDGE_TYPE)) {
+                Integer targetIdx = ridToIndex.get(edge.getInVertex().getIdentity());
+                if (targetIdx != null) {
+                    inNeighbors.get(targetIdx).add(i);
+                    outCount++;
+                }
+            }
+            if (!directed) {
+                for (Edge edge : v.getEdges(Vertex.DIRECTION.IN, EDGE_TYPE)) {
+                    Integer targetIdx = ridToIndex.get(edge.getOutVertex().getIdentity());
+                    if (targetIdx != null) {
+                        inNeighbors.get(targetIdx).add(i);
+                        outCount++;
+                    }
+                }
+            }
+            outDegree[i] = outCount;
+        }
+
+        // If undirected, outDegree needs to count both directions
+        if (!directed) {
+            for (int i = 0; i < n; i++) {
+                outDegree[i] = 0;
+                Vertex v = vertices.get(i);
+                for (Edge ignored : v.getEdges(Vertex.DIRECTION.OUT, EDGE_TYPE))
+                    outDegree[i]++;
+                for (Edge ignored : v.getEdges(Vertex.DIRECTION.IN, EDGE_TYPE))
+                    outDegree[i]++;
+            }
+        }
+
+        // Iterate
+        for (int iter = 0; iter < maxIterations; iter++) {
+            double danglingSum = 0;
+            for (int i = 0; i < n; i++) {
+                if (outDegree[i] == 0)
+                    danglingSum += ranks[i];
+            }
+
+            for (int i = 0; i < n; i++) {
+                double sum = 0;
+                for (int j : inNeighbors.get(i)) {
+                    sum += ranks[j] / outDegree[j];
+                }
+                newRanks[i] = (1 - dampingFactor) / n + dampingFactor * (sum + danglingSum / n);
+            }
+
+            System.arraycopy(newRanks, 0, ranks, 0, n);
+        }
+
+        // Write results
         graphDatabase.begin();
-        ResultSet result = graphDatabase.command("cypher", query);
-        while (result.hasNext()) {
-            Result record = result.next();
-            long vid = record.getProperty("id");
-            double score = ((Number) record.getProperty("value")).doubleValue();
-
-            Vertex vertex = graphDatabase.lookupByKey(VERTEX_TYPE, ID_PROPERTY, vid).next().asVertex();
-            MutableVertex mv = vertex.modify();
-            mv.set(PAGERANK, score);
+        for (int i = 0; i < n; i++) {
+            MutableVertex mv = vertices.get(i).modify();
+            mv.set(PAGERANK, ranks[i]);
             mv.save();
         }
         graphDatabase.commit();

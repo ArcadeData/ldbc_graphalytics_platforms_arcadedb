@@ -16,20 +16,20 @@
 package science.atlarge.graphalytics.arcadedb.metrics.sssp;
 
 import com.arcadedb.database.Database;
+import com.arcadedb.database.RID;
+import com.arcadedb.graph.Edge;
 import com.arcadedb.graph.MutableVertex;
 import com.arcadedb.graph.Vertex;
-import com.arcadedb.query.sql.executor.Result;
-import com.arcadedb.query.sql.executor.ResultSet;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.Iterator;
+import java.util.*;
 
 import static science.atlarge.graphalytics.arcadedb.ArcadeDBConstants.*;
 
 /**
- * Implementation of the single source shortest paths algorithm using ArcadeDB's
- * native algo.dijkstra.singleSource procedure.
+ * Implementation of the single source shortest paths algorithm (Dijkstra)
+ * using the ArcadeDB Java graph API.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -60,26 +60,62 @@ public class SingleSourceShortestPathsComputation {
         }
         graphDatabase.commit();
 
-        // Run SSSP using ArcadeDB's native Dijkstra algorithm
-        String direction = directed ? "'OUTGOING'" : "'BOTH'";
-        String query = String.format(
-                "MATCH (start:Vertex {VID: %d}) " +
-                "CALL algo.dijkstra.singleSource(start, ['EDGE'], 'WEIGHT', %s) " +
-                "YIELD node, cost " +
-                "RETURN node.VID AS id, cost AS value",
-                startVertexId, direction
-        );
+        // Dijkstra
+        Vertex startVertex = graphDatabase.lookupByKey(VERTEX_TYPE, ID_PROPERTY, startVertexId).next().asVertex();
 
+        Map<RID, Double> distances = new HashMap<>();
+        PriorityQueue<double[]> pq = new PriorityQueue<>(Comparator.comparingDouble(a -> a[1]));
+        Map<RID, long[]> ridBucketKey = new HashMap<>();
+
+        distances.put(startVertex.getIdentity(), 0.0);
+        // Store [bucketId, position, distance] but we just need RID->distance
+        pq.add(new double[]{startVertex.getIdentity().getBucketId(), startVertex.getIdentity().getPosition(), 0.0});
+
+        while (!pq.isEmpty()) {
+            double[] entry = pq.poll();
+            RID currentRid = new RID(graphDatabase, (int) entry[0], (long) entry[1]);
+            double currentDist = entry[2];
+
+            if (currentDist > distances.getOrDefault(currentRid, Double.POSITIVE_INFINITY))
+                continue;
+
+            Vertex current = graphDatabase.lookupByRID(currentRid, true).asVertex();
+
+            // Outgoing edges
+            for (Edge edge : current.getEdges(Vertex.DIRECTION.OUT, EDGE_TYPE)) {
+                double weight = edge.has(WEIGHT_PROPERTY)
+                        ? ((Number) edge.get(WEIGHT_PROPERTY)).doubleValue()
+                        : 1.0;
+                Vertex neighbor = edge.getInVertex();
+                double newDist = currentDist + weight;
+                if (newDist < distances.getOrDefault(neighbor.getIdentity(), Double.POSITIVE_INFINITY)) {
+                    distances.put(neighbor.getIdentity(), newDist);
+                    pq.add(new double[]{neighbor.getIdentity().getBucketId(), neighbor.getIdentity().getPosition(), newDist});
+                }
+            }
+
+            // Incoming edges (for undirected)
+            if (!directed) {
+                for (Edge edge : current.getEdges(Vertex.DIRECTION.IN, EDGE_TYPE)) {
+                    double weight = edge.has(WEIGHT_PROPERTY)
+                            ? ((Number) edge.get(WEIGHT_PROPERTY)).doubleValue()
+                            : 1.0;
+                    Vertex neighbor = edge.getOutVertex();
+                    double newDist = currentDist + weight;
+                    if (newDist < distances.getOrDefault(neighbor.getIdentity(), Double.POSITIVE_INFINITY)) {
+                        distances.put(neighbor.getIdentity(), newDist);
+                        pq.add(new double[]{neighbor.getIdentity().getBucketId(), neighbor.getIdentity().getPosition(), newDist});
+                    }
+                }
+            }
+        }
+
+        // Write results
         graphDatabase.begin();
-        ResultSet result = graphDatabase.command("cypher", query);
-        while (result.hasNext()) {
-            Result record = result.next();
-            long vid = record.getProperty("id");
-            double cost = ((Number) record.getProperty("value")).doubleValue();
-
-            Vertex vertex = graphDatabase.lookupByKey(VERTEX_TYPE, ID_PROPERTY, vid).next().asVertex();
-            MutableVertex mv = vertex.modify();
-            mv.set(SSSP, cost);
+        for (Map.Entry<RID, Double> e : distances.entrySet()) {
+            Vertex v = graphDatabase.lookupByRID(e.getKey(), true).asVertex();
+            MutableVertex mv = v.modify();
+            mv.set(SSSP, e.getValue());
             mv.save();
         }
         graphDatabase.commit();

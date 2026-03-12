@@ -16,20 +16,20 @@
 package science.atlarge.graphalytics.arcadedb.metrics.bfs;
 
 import com.arcadedb.database.Database;
+import com.arcadedb.database.RID;
+import com.arcadedb.graph.Edge;
 import com.arcadedb.graph.MutableVertex;
 import com.arcadedb.graph.Vertex;
-import com.arcadedb.query.sql.executor.Result;
-import com.arcadedb.query.sql.executor.ResultSet;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.Iterator;
+import java.util.*;
 
 import static science.atlarge.graphalytics.arcadedb.ArcadeDBConstants.*;
 
 /**
- * Implementation of the breadth-first search algorithm using ArcadeDB's native
- * algo.bfs procedure. Stores distance results as vertex properties.
+ * Implementation of the breadth-first search algorithm using direct graph
+ * traversal on the ArcadeDB Java API.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -60,26 +60,46 @@ public class BreadthFirstSearchComputation {
         }
         graphDatabase.commit();
 
-        // Run BFS using ArcadeDB's native algorithm
-        String direction = directed ? "'OUTGOING'" : "'BOTH'";
-        String query = String.format(
-                "MATCH (start:Vertex {VID: %d}) " +
-                "CALL algo.bfs(start, ['EDGE'], %s) " +
-                "YIELD node, depth " +
-                "RETURN node.VID AS id, depth AS value",
-                startVertexId, direction
-        );
+        // Find start vertex
+        Vertex startVertex = graphDatabase.lookupByKey(VERTEX_TYPE, ID_PROPERTY, startVertexId).next().asVertex();
 
+        // BFS
+        Map<RID, Long> distances = new HashMap<>();
+        Queue<Vertex> queue = new LinkedList<>();
+        queue.add(startVertex);
+        distances.put(startVertex.getIdentity(), 0L);
+
+        while (!queue.isEmpty()) {
+            Vertex current = queue.poll();
+            long currentDist = distances.get(current.getIdentity());
+
+            // Outgoing edges
+            for (Edge edge : current.getEdges(Vertex.DIRECTION.OUT, EDGE_TYPE)) {
+                Vertex neighbor = edge.getInVertex();
+                if (!distances.containsKey(neighbor.getIdentity())) {
+                    distances.put(neighbor.getIdentity(), currentDist + 1);
+                    queue.add(neighbor);
+                }
+            }
+
+            // Incoming edges (for undirected)
+            if (!directed) {
+                for (Edge edge : current.getEdges(Vertex.DIRECTION.IN, EDGE_TYPE)) {
+                    Vertex neighbor = edge.getOutVertex();
+                    if (!distances.containsKey(neighbor.getIdentity())) {
+                        distances.put(neighbor.getIdentity(), currentDist + 1);
+                        queue.add(neighbor);
+                    }
+                }
+            }
+        }
+
+        // Write results
         graphDatabase.begin();
-        ResultSet result = graphDatabase.command("cypher", query);
-        while (result.hasNext()) {
-            Result record = result.next();
-            long vid = record.getProperty("id");
-            long depth = ((Number) record.getProperty("value")).longValue();
-
-            Vertex vertex = graphDatabase.lookupByKey(VERTEX_TYPE, ID_PROPERTY, vid).next().asVertex();
-            MutableVertex mv = vertex.modify();
-            mv.set(DISTANCE, depth);
+        for (Map.Entry<RID, Long> entry : distances.entrySet()) {
+            Vertex v = graphDatabase.lookupByRID(entry.getKey(), true).asVertex();
+            MutableVertex mv = v.modify();
+            mv.set(DISTANCE, entry.getValue());
             mv.save();
         }
         graphDatabase.commit();

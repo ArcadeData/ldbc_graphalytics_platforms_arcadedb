@@ -2,18 +2,18 @@
 
 Platform driver implementation for the [LDBC Graphalytics](https://graphalytics.org) benchmark using [ArcadeDB](https://arcadedb.com).
 
-Uses ArcadeDB in **embedded mode** with native graph algorithms invoked via Cypher.
+Uses ArcadeDB in **embedded mode** with native graph algorithms implemented directly on the ArcadeDB Java API.
 
 ## Supported Algorithms
 
-| Algorithm | ArcadeDB Procedure |
-|-----------|-------------------|
-| BFS (Breadth-First Search) | `algo.bfs` |
-| PR (PageRank) | `algo.pagerank` |
-| WCC (Weakly Connected Components) | `algo.wcc` |
-| CDLP (Community Detection Label Propagation) | `algo.labelpropagation` |
-| LCC (Local Clustering Coefficient) | `algo.localClusteringCoefficient` |
-| SSSP (Single Source Shortest Paths) | `algo.dijkstra.singleSource` |
+| Algorithm | Description |
+|-----------|-------------|
+| BFS (Breadth-First Search) | Queue-based BFS traversal |
+| PR (PageRank) | Iterative PageRank computation |
+| WCC (Weakly Connected Components) | BFS-based component detection |
+| CDLP (Community Detection Label Propagation) | Label propagation with majority voting |
+| LCC (Local Clustering Coefficient) | Triangle counting per vertex |
+| SSSP (Single Source Shortest Paths) | Dijkstra's algorithm |
 
 ## Prerequisites
 
@@ -36,10 +36,8 @@ bin/sh/run-benchmark.sh
 The driver uses an embedded architecture (no server needed):
 
 1. **Graph Loading**: `ArcadeDBLoader` creates an embedded database and imports vertices/edges directly using the ArcadeDB Java API with batched transactions
-2. **Algorithm Execution**: Opens the pre-loaded database in embedded mode, invokes `algo.*` Cypher procedures via `database.command("cypher", ...)`, stores results as vertex properties
+2. **Algorithm Execution**: Opens the pre-loaded database in embedded mode, runs graph algorithms using direct graph traversal via the ArcadeDB Java API
 3. **Result Serialization**: `OutputSerializer` reads result properties from vertices and writes them to the Graphalytics output format
-
-This mirrors the Neo4j driver's embedded approach for maximum performance.
 
 ## License
 

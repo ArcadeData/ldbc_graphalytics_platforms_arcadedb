@@ -16,18 +16,20 @@
 package science.atlarge.graphalytics.arcadedb.metrics.wcc;
 
 import com.arcadedb.database.Database;
+import com.arcadedb.database.RID;
+import com.arcadedb.graph.Edge;
 import com.arcadedb.graph.MutableVertex;
 import com.arcadedb.graph.Vertex;
-import com.arcadedb.query.sql.executor.Result;
-import com.arcadedb.query.sql.executor.ResultSet;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import java.util.*;
 
 import static science.atlarge.graphalytics.arcadedb.ArcadeDBConstants.*;
 
 /**
- * Implementation of the weakly connected components algorithm using ArcadeDB's
- * native algo.wcc procedure. Stores component IDs as vertex properties.
+ * Implementation of the weakly connected components algorithm using BFS-based
+ * component detection on the ArcadeDB graph API.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -44,25 +46,62 @@ public class WeaklyConnectedComponentsComputation {
     public void run() {
         LOG.debug("- Starting Weakly Connected Components algorithm");
 
-        String query =
-                "CALL algo.wcc() " +
-                "YIELD node, componentId " +
-                "RETURN node.VID AS id, componentId AS value";
+        Map<RID, Long> ridToVid = new HashMap<>();
+        Map<RID, Long> componentMap = new HashMap<>();
+        List<Vertex> allVertices = new ArrayList<>();
 
+        Iterator<Vertex> it = graphDatabase.iterateType(VERTEX_TYPE, false);
+        while (it.hasNext()) {
+            Vertex v = it.next();
+            allVertices.add(v);
+            long vid = v.getLong(ID_PROPERTY);
+            ridToVid.put(v.getIdentity(), vid);
+        }
+
+        Set<RID> visited = new HashSet<>();
+        long componentId = 0;
+
+        for (Vertex v : allVertices) {
+            if (visited.contains(v.getIdentity()))
+                continue;
+
+            // BFS to find all vertices in this component
+            Queue<Vertex> queue = new LinkedList<>();
+            queue.add(v);
+            visited.add(v.getIdentity());
+
+            while (!queue.isEmpty()) {
+                Vertex current = queue.poll();
+                componentMap.put(current.getIdentity(), ridToVid.get(v.getIdentity()));
+
+                // Traverse both directions for weakly connected
+                for (Edge edge : current.getEdges(Vertex.DIRECTION.OUT, EDGE_TYPE)) {
+                    Vertex neighbor = edge.getInVertex();
+                    if (!visited.contains(neighbor.getIdentity())) {
+                        visited.add(neighbor.getIdentity());
+                        queue.add(neighbor);
+                    }
+                }
+                for (Edge edge : current.getEdges(Vertex.DIRECTION.IN, EDGE_TYPE)) {
+                    Vertex neighbor = edge.getOutVertex();
+                    if (!visited.contains(neighbor.getIdentity())) {
+                        visited.add(neighbor.getIdentity());
+                        queue.add(neighbor);
+                    }
+                }
+            }
+            componentId++;
+        }
+
+        // Write results
         graphDatabase.begin();
-        ResultSet result = graphDatabase.command("cypher", query);
-        while (result.hasNext()) {
-            Result record = result.next();
-            long vid = record.getProperty("id");
-            long componentId = ((Number) record.getProperty("value")).longValue();
-
-            Vertex vertex = graphDatabase.lookupByKey(VERTEX_TYPE, ID_PROPERTY, vid).next().asVertex();
-            MutableVertex mv = vertex.modify();
-            mv.set(COMPONENT, componentId);
+        for (Vertex v : allVertices) {
+            MutableVertex mv = v.modify();
+            mv.set(COMPONENT, componentMap.get(v.getIdentity()));
             mv.save();
         }
         graphDatabase.commit();
 
-        LOG.debug("- Completed WCC algorithm");
+        LOG.debug("- Completed WCC algorithm ({} components)", componentId);
     }
 }

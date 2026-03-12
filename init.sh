@@ -11,5 +11,12 @@ mvn package -DskipTests
 tar xf $PROJECT-bin.tar.gz
 cd $PROJECT/
 cp -r config-template config
-sed -i "s|^graphs.root-directory =$|graphs.root-directory = $GRAPHS_DIR|g" config/benchmark.properties
-sed -i "s|^graphs.validation-directory =$|graphs.validation-directory = $GRAPHS_DIR|g" config/benchmark.properties
+
+# macOS and Linux compatible sed -i
+if [ "$(uname)" = "Darwin" ]; then
+  sed -i '' "s|^graphs.root-directory =$|graphs.root-directory = $GRAPHS_DIR|g" config/benchmark.properties
+  sed -i '' "s|^graphs.validation-directory =$|graphs.validation-directory = $GRAPHS_DIR|g" config/benchmark.properties
+else
+  sed -i "s|^graphs.root-directory =$|graphs.root-directory = $GRAPHS_DIR|g" config/benchmark.properties
+  sed -i "s|^graphs.validation-directory =$|graphs.validation-directory = $GRAPHS_DIR|g" config/benchmark.properties
+fi

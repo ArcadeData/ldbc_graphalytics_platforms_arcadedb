@@ -16,18 +16,20 @@
 package science.atlarge.graphalytics.arcadedb.metrics.lcc;
 
 import com.arcadedb.database.Database;
+import com.arcadedb.database.RID;
+import com.arcadedb.graph.Edge;
 import com.arcadedb.graph.MutableVertex;
 import com.arcadedb.graph.Vertex;
-import com.arcadedb.query.sql.executor.Result;
-import com.arcadedb.query.sql.executor.ResultSet;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import java.util.*;
 
 import static science.atlarge.graphalytics.arcadedb.ArcadeDBConstants.*;
 
 /**
- * Implementation of the local clustering coefficient algorithm using ArcadeDB's
- * native algo.localClusteringCoefficient procedure.
+ * Implementation of the local clustering coefficient algorithm using
+ * triangle counting on the ArcadeDB Java graph API.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -46,20 +48,49 @@ public class LocalClusteringCoefficientComputation {
     public void run() {
         LOG.debug("- Starting Local Clustering Coefficient algorithm");
 
-        String query =
-                "CALL algo.localClusteringCoefficient(['EDGE']) " +
-                "YIELD node, localClusteringCoefficient " +
-                "RETURN node.VID AS id, localClusteringCoefficient AS value";
+        List<Vertex> vertices = new ArrayList<>();
+        Iterator<Vertex> it = graphDatabase.iterateType(VERTEX_TYPE, false);
+        while (it.hasNext()) {
+            vertices.add(it.next());
+        }
 
+        // Build adjacency set for each vertex (undirected: both directions)
+        Map<RID, Set<RID>> neighbors = new HashMap<>();
+        for (Vertex v : vertices) {
+            Set<RID> neighborSet = new HashSet<>();
+            for (Edge edge : v.getEdges(Vertex.DIRECTION.OUT, EDGE_TYPE)) {
+                neighborSet.add(edge.getInVertex().getIdentity());
+            }
+            for (Edge edge : v.getEdges(Vertex.DIRECTION.IN, EDGE_TYPE)) {
+                neighborSet.add(edge.getOutVertex().getIdentity());
+            }
+            neighbors.put(v.getIdentity(), neighborSet);
+        }
+
+        // Compute LCC for each vertex
         graphDatabase.begin();
-        ResultSet result = graphDatabase.command("cypher", query);
-        while (result.hasNext()) {
-            Result record = result.next();
-            long vid = record.getProperty("id");
-            double lcc = ((Number) record.getProperty("value")).doubleValue();
+        for (Vertex v : vertices) {
+            Set<RID> neighborSet = neighbors.get(v.getIdentity());
+            int degree = neighborSet.size();
 
-            Vertex vertex = graphDatabase.lookupByKey(VERTEX_TYPE, ID_PROPERTY, vid).next().asVertex();
-            MutableVertex mv = vertex.modify();
+            double lcc = 0.0;
+            if (degree >= 2) {
+                int triangles = 0;
+                RID[] neighborArray = neighborSet.toArray(new RID[0]);
+                for (int i = 0; i < neighborArray.length; i++) {
+                    Set<RID> ni = neighbors.get(neighborArray[i]);
+                    if (ni == null)
+                        continue;
+                    for (int j = i + 1; j < neighborArray.length; j++) {
+                        if (ni.contains(neighborArray[j])) {
+                            triangles++;
+                        }
+                    }
+                }
+                lcc = (2.0 * triangles) / (degree * (degree - 1));
+            }
+
+            MutableVertex mv = v.modify();
             mv.set(LCC, lcc);
             mv.save();
         }
