@@ -54,17 +54,25 @@ public class LocalClusteringCoefficientComputation {
             vertices.add(it.next());
         }
 
-        // Build adjacency set for each vertex (undirected: both directions)
+        // Build undirected neighborhood for each vertex (both directions)
         Map<RID, Set<RID>> neighbors = new HashMap<>();
+        // Build directed out-neighbors for directed triangle counting
+        Map<RID, Set<RID>> outNeighbors = new HashMap<>();
+
         for (Vertex v : vertices) {
             Set<RID> neighborSet = new HashSet<>();
+            Set<RID> outSet = new HashSet<>();
+
             for (Edge edge : v.getEdges(Vertex.DIRECTION.OUT, EDGE_TYPE)) {
-                neighborSet.add(edge.getInVertex().getIdentity());
+                RID target = edge.getInVertex().getIdentity();
+                neighborSet.add(target);
+                outSet.add(target);
             }
             for (Edge edge : v.getEdges(Vertex.DIRECTION.IN, EDGE_TYPE)) {
                 neighborSet.add(edge.getOutVertex().getIdentity());
             }
             neighbors.put(v.getIdentity(), neighborSet);
+            outNeighbors.put(v.getIdentity(), outSet);
         }
 
         // Compute LCC for each vertex
@@ -75,19 +83,37 @@ public class LocalClusteringCoefficientComputation {
 
             double lcc = 0.0;
             if (degree >= 2) {
-                int triangles = 0;
-                RID[] neighborArray = neighborSet.toArray(new RID[0]);
-                for (int i = 0; i < neighborArray.length; i++) {
-                    Set<RID> ni = neighbors.get(neighborArray[i]);
-                    if (ni == null)
-                        continue;
-                    for (int j = i + 1; j < neighborArray.length; j++) {
-                        if (ni.contains(neighborArray[j])) {
-                            triangles++;
+                if (directed) {
+                    // For directed: count directed edges between neighbors
+                    // For each ordered pair (u, w) in N(v), check if u->w exists
+                    int directedEdges = 0;
+                    for (RID u : neighborSet) {
+                        Set<RID> uOut = outNeighbors.get(u);
+                        if (uOut == null)
+                            continue;
+                        for (RID w : neighborSet) {
+                            if (!u.equals(w) && uOut.contains(w)) {
+                                directedEdges++;
+                            }
                         }
                     }
+                    lcc = (double) directedEdges / (degree * (degree - 1));
+                } else {
+                    // For undirected: count edges between unordered pairs
+                    int triangles = 0;
+                    RID[] neighborArray = neighborSet.toArray(new RID[0]);
+                    for (int i = 0; i < neighborArray.length; i++) {
+                        Set<RID> ni = neighbors.get(neighborArray[i]);
+                        if (ni == null)
+                            continue;
+                        for (int j = i + 1; j < neighborArray.length; j++) {
+                            if (ni.contains(neighborArray[j])) {
+                                triangles++;
+                            }
+                        }
+                    }
+                    lcc = (2.0 * triangles) / (degree * (degree - 1));
                 }
-                lcc = (2.0 * triangles) / (degree * (degree - 1));
             }
 
             MutableVertex mv = v.modify();
