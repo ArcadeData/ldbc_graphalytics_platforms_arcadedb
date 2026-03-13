@@ -22,7 +22,7 @@ if [ ! -f "$config/platform.properties" ]; then
 fi
 
 # Set JVM memory options
-export java_opts="-Xms16g -Xmx16g"
+export java_opts="-Xms16g -Xmx16g --add-modules jdk.incubator.vector"
 
 # Set library jar
 export LIBRARY_JAR=`ls lib/graphalytics-*default*.jar`
