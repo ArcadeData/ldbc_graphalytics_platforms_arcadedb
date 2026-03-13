@@ -16,20 +16,22 @@
 package science.atlarge.graphalytics.arcadedb.metrics.pr;
 
 import com.arcadedb.database.Database;
-import com.arcadedb.database.RID;
-import com.arcadedb.graph.Edge;
 import com.arcadedb.graph.MutableVertex;
 import com.arcadedb.graph.Vertex;
+import com.arcadedb.query.opencypher.procedures.algo.AlgoPageRank;
+import com.arcadedb.query.sql.executor.BasicCommandContext;
+import com.arcadedb.query.sql.executor.Result;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.stream.Stream;
 
 import static science.atlarge.graphalytics.arcadedb.ArcadeDBConstants.*;
 
 /**
- * Implementation of the PageRank algorithm using iterative computation
- * on the ArcadeDB Java graph API.
+ * PageRank computation using ArcadeDB's built-in algo.pagerank procedure.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -50,107 +52,44 @@ public class PageRankComputation {
     }
 
     public void run() {
-        LOG.info("- Starting PageRank algorithm (iterations={}, damping={})", maxIterations, dampingFactor);
+        LOG.info("- Starting PageRank algorithm (iterations={}, damping={}) using built-in algo.pagerank",
+                maxIterations, dampingFactor);
 
-        // Collect all vertices and build adjacency
-        LOG.info("  [Step 1/3] Collecting vertices...");
-        List<Vertex> vertices = new ArrayList<>();
-        Map<RID, Integer> ridToIndex = new HashMap<>();
-        Iterator<Vertex> it = graphDatabase.iterateType(VERTEX_TYPE, false);
-        while (it.hasNext()) {
-            Vertex v = it.next();
-            ridToIndex.put(v.getIdentity(), vertices.size());
-            vertices.add(v);
-        }
+        // Configure the algorithm
+        Map<String, Object> config = new HashMap<>();
+        config.put("dampingFactor", (double) dampingFactor);
+        config.put("maxIterations", maxIterations);
+        config.put("tolerance", 0.0); // Run exact number of iterations (no early convergence)
 
-        int n = vertices.size();
-        LOG.info("  [Step 1/3] Collected {} vertices. Building adjacency...", String.format("%,d", n));
-        double[] ranks = new double[n];
-        double[] newRanks = new double[n];
-        int[] outDegree = new int[n];
-        List<List<Integer>> inNeighbors = new ArrayList<>();
+        // Execute built-in algorithm
+        BasicCommandContext context = new BasicCommandContext();
+        context.setDatabase(graphDatabase);
 
-        for (int i = 0; i < n; i++) {
-            ranks[i] = 1.0 / n;
-            inNeighbors.add(new ArrayList<>());
-        }
+        AlgoPageRank algo = new AlgoPageRank();
+        LOG.info("  [Step 1/2] Computing PageRank...");
+        Stream<Result> results = algo.execute(new Object[]{ config }, null, context);
 
-        // Build adjacency structure
-        for (int i = 0; i < n; i++) {
-            Vertex v = vertices.get(i);
-            int outCount = 0;
-            for (Edge edge : v.getEdges(Vertex.DIRECTION.OUT, EDGE_TYPE)) {
-                Integer targetIdx = ridToIndex.get(edge.getInVertex().getIdentity());
-                if (targetIdx != null) {
-                    inNeighbors.get(targetIdx).add(i);
-                    outCount++;
-                }
-            }
-            if (!directed) {
-                for (Edge edge : v.getEdges(Vertex.DIRECTION.IN, EDGE_TYPE)) {
-                    Integer targetIdx = ridToIndex.get(edge.getOutVertex().getIdentity());
-                    if (targetIdx != null) {
-                        inNeighbors.get(targetIdx).add(i);
-                        outCount++;
-                    }
-                }
-            }
-            outDegree[i] = outCount;
-            if ((i + 1) % 100000 == 0) {
-                LOG.info("  [Step 1/3] Building adjacency: {}% ({}/{})",
-                        String.format("%.1f", 100.0 * (i + 1) / n),
-                        String.format("%,d", i + 1), String.format("%,d", n));
-            }
-        }
-
-        // If undirected, outDegree needs to count both directions
-        if (!directed) {
-            for (int i = 0; i < n; i++) {
-                outDegree[i] = 0;
-                Vertex v = vertices.get(i);
-                for (Edge ignored : v.getEdges(Vertex.DIRECTION.OUT, EDGE_TYPE))
-                    outDegree[i]++;
-                for (Edge ignored : v.getEdges(Vertex.DIRECTION.IN, EDGE_TYPE))
-                    outDegree[i]++;
-            }
-        }
-        LOG.info("  [Step 1/3] Adjacency structure built.");
-
-        // Iterate
-        for (int iter = 0; iter < maxIterations; iter++) {
-            LOG.info("  [Step 2/3] PageRank iteration {}/{}", iter + 1, maxIterations);
-            double danglingSum = 0;
-            for (int i = 0; i < n; i++) {
-                if (outDegree[i] == 0)
-                    danglingSum += ranks[i];
-            }
-
-            for (int i = 0; i < n; i++) {
-                double sum = 0;
-                for (int j : inNeighbors.get(i)) {
-                    sum += ranks[j] / outDegree[j];
-                }
-                newRanks[i] = (1 - dampingFactor) / n + dampingFactor * (sum + danglingSum / n);
-            }
-
-            System.arraycopy(newRanks, 0, ranks, 0, n);
-        }
-
-        // Write results
-        LOG.info("  [Step 3/3] Writing results...");
+        // Write results to vertex properties
+        LOG.info("  [Step 2/2] Writing results...");
         graphDatabase.begin();
-        for (int i = 0; i < n; i++) {
-            MutableVertex mv = vertices.get(i).modify();
-            mv.set(PAGERANK, ranks[i]);
+        int count = 0;
+        int total = 0;
+        java.util.Iterator<Result> it = results.iterator();
+        while (it.hasNext()) {
+            Result row = it.next();
+            Vertex v = ((Vertex) row.getProperty("node"));
+            double score = ((Number) row.getProperty("score")).doubleValue();
+            MutableVertex mv = v.modify();
+            mv.set(PAGERANK, score);
             mv.save();
-            if ((i + 1) % 100000 == 0) {
-                LOG.info("  [Step 3/3] Writing results: {}% ({}/{})",
-                        String.format("%.1f", 100.0 * (i + 1) / n),
-                        String.format("%,d", i + 1), String.format("%,d", n));
+            count++;
+            total++;
+            if (count % 100000 == 0) {
+                LOG.info("  [Step 2/2] Writing results: {} vertices written", String.format("%,d", total));
             }
         }
         graphDatabase.commit();
 
-        LOG.info("- Completed PageRank algorithm ({} iterations on {} vertices)", maxIterations, String.format("%,d", n));
+        LOG.info("- Completed PageRank algorithm ({} iterations on {} vertices)", maxIterations, String.format("%,d", total));
     }
 }

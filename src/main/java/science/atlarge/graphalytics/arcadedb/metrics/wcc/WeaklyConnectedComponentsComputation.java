@@ -16,20 +16,24 @@
 package science.atlarge.graphalytics.arcadedb.metrics.wcc;
 
 import com.arcadedb.database.Database;
-import com.arcadedb.database.RID;
-import com.arcadedb.graph.Edge;
 import com.arcadedb.graph.MutableVertex;
 import com.arcadedb.graph.Vertex;
+import com.arcadedb.query.opencypher.procedures.algo.AlgoWCC;
+import com.arcadedb.query.sql.executor.BasicCommandContext;
+import com.arcadedb.query.sql.executor.Result;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.stream.Stream;
 
 import static science.atlarge.graphalytics.arcadedb.ArcadeDBConstants.*;
 
 /**
- * Implementation of the weakly connected components algorithm using BFS-based
- * component detection on the ArcadeDB graph API.
+ * WCC computation using ArcadeDB's built-in algo.wcc procedure.
+ * Maps sequential component IDs to VIDs for LDBC compatibility.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -44,82 +48,42 @@ public class WeaklyConnectedComponentsComputation {
     }
 
     public void run() {
-        LOG.info("- Starting Weakly Connected Components algorithm");
+        LOG.info("- Starting WCC algorithm using built-in algo.wcc");
 
-        LOG.info("  [Step 1/3] Collecting vertices...");
-        Map<RID, Long> ridToVid = new HashMap<>();
-        Map<RID, Long> componentMap = new HashMap<>();
-        List<Vertex> allVertices = new ArrayList<>();
+        BasicCommandContext context = new BasicCommandContext();
+        context.setDatabase(graphDatabase);
 
-        Iterator<Vertex> it = graphDatabase.iterateType(VERTEX_TYPE, false);
-        while (it.hasNext()) {
-            Vertex v = it.next();
-            allVertices.add(v);
-            long vid = v.getLong(ID_PROPERTY);
-            ridToVid.put(v.getIdentity(), vid);
-        }
-        int totalVertices = allVertices.size();
-        LOG.info("  [Step 1/3] Collected {} vertices.", String.format("%,d", totalVertices));
+        AlgoWCC algo = new AlgoWCC();
+        LOG.info("  [Step 1/2] Computing connected components...");
+        Stream<Result> results = algo.execute(new Object[]{}, null, context);
 
-        LOG.info("  [Step 2/3] Discovering components...");
-        Set<RID> visited = new HashSet<>();
-        long componentId = 0;
+        // Map sequential componentIds to VIDs (first vertex encountered per component)
+        Map<Integer, Long> componentIdToVid = new HashMap<>();
+        LOG.info("  [Step 2/2] Writing results...");
 
-        for (Vertex v : allVertices) {
-            if (visited.contains(v.getIdentity()))
-                continue;
-
-            // BFS to find all vertices in this component
-            Queue<Vertex> queue = new LinkedList<>();
-            queue.add(v);
-            visited.add(v.getIdentity());
-
-            while (!queue.isEmpty()) {
-                Vertex current = queue.poll();
-                componentMap.put(current.getIdentity(), ridToVid.get(v.getIdentity()));
-
-                // Traverse both directions for weakly connected
-                for (Edge edge : current.getEdges(Vertex.DIRECTION.OUT, EDGE_TYPE)) {
-                    Vertex neighbor = edge.getInVertex();
-                    if (!visited.contains(neighbor.getIdentity())) {
-                        visited.add(neighbor.getIdentity());
-                        queue.add(neighbor);
-                    }
-                }
-                for (Edge edge : current.getEdges(Vertex.DIRECTION.IN, EDGE_TYPE)) {
-                    Vertex neighbor = edge.getOutVertex();
-                    if (!visited.contains(neighbor.getIdentity())) {
-                        visited.add(neighbor.getIdentity());
-                        queue.add(neighbor);
-                    }
-                }
-            }
-            componentId++;
-            if (visited.size() % 100000 < 1000) {
-                LOG.info("  [Step 2/3] Discovering components: {}% ({}/{} vertices assigned, {} components found)",
-                        String.format("%.1f", 100.0 * visited.size() / totalVertices),
-                        String.format("%,d", visited.size()), String.format("%,d", totalVertices), componentId);
-            }
-        }
-        LOG.info("  [Step 2/3] Component discovery complete: {} components found.", componentId);
-
-        // Write results
-        LOG.info("  [Step 3/3] Writing results...");
         graphDatabase.begin();
-        int written = 0;
-        for (Vertex v : allVertices) {
+        int count = 0;
+        Iterator<Result> it = results.iterator();
+        while (it.hasNext()) {
+            Result row = it.next();
+            Vertex v = ((Vertex) row.getProperty("node"));
+            int componentId = ((Number) row.getProperty("componentId")).intValue();
+
+            long vid = v.getLong(ID_PROPERTY);
+            long mappedComponentId = componentIdToVid.computeIfAbsent(componentId, k -> vid);
+
             MutableVertex mv = v.modify();
-            mv.set(COMPONENT, componentMap.get(v.getIdentity()));
+            mv.set(COMPONENT, mappedComponentId);
             mv.save();
-            written++;
-            if (written % 100000 == 0) {
-                LOG.info("  [Step 3/3] Writing results: {}% ({}/{})",
-                        String.format("%.1f", 100.0 * written / totalVertices),
-                        String.format("%,d", written), String.format("%,d", totalVertices));
+            count++;
+            if (count % 100000 == 0) {
+                LOG.info("  [Step 2/2] Writing results: {} vertices, {} components",
+                        String.format("%,d", count), String.format("%,d", componentIdToVid.size()));
             }
         }
         graphDatabase.commit();
 
-        LOG.info("- Completed WCC algorithm ({} components)", componentId);
+        LOG.info("- Completed WCC: {} vertices, {} components",
+                String.format("%,d", count), String.format("%,d", componentIdToVid.size()));
     }
 }

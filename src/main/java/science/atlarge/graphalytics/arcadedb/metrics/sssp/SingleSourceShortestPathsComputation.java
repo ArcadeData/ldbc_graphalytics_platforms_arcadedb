@@ -16,20 +16,21 @@
 package science.atlarge.graphalytics.arcadedb.metrics.sssp;
 
 import com.arcadedb.database.Database;
-import com.arcadedb.database.RID;
-import com.arcadedb.graph.Edge;
 import com.arcadedb.graph.MutableVertex;
 import com.arcadedb.graph.Vertex;
+import com.arcadedb.query.opencypher.procedures.algo.AlgoDijkstraSingleSource;
+import com.arcadedb.query.sql.executor.BasicCommandContext;
+import com.arcadedb.query.sql.executor.Result;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.*;
+import java.util.Iterator;
+import java.util.stream.Stream;
 
 import static science.atlarge.graphalytics.arcadedb.ArcadeDBConstants.*;
 
 /**
- * Implementation of the single source shortest paths algorithm (Dijkstra)
- * using the ArcadeDB Java graph API.
+ * SSSP computation using ArcadeDB's built-in algo.dijkstra.singleSource procedure.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -48,99 +49,66 @@ public class SingleSourceShortestPathsComputation {
     }
 
     public void run() {
-        LOG.info("- Starting Single Source Shortest Paths algorithm from vertex {}", startVertexId);
+        LOG.info("- Starting SSSP algorithm (source={}) using built-in algo.dijkstra.singleSource", startVertexId);
 
-        // Initialize all vertices with infinity
-        LOG.info("  [Step 1/3] Initializing vertices...");
+        // Find start vertex and initialize all with infinity
+        Vertex startVertex = null;
+        LOG.info("  [Step 1/3] Initializing vertices with default distance...");
         int totalVertices = 0;
+
         graphDatabase.begin();
-        Iterator<Vertex> allVertices = graphDatabase.iterateType(VERTEX_TYPE, false);
-        while (allVertices.hasNext()) {
-            MutableVertex v = allVertices.next().modify();
-            v.set(SSSP, Double.POSITIVE_INFINITY);
-            v.save();
+        Iterator<Vertex> allIt = graphDatabase.iterateType(VERTEX_TYPE, false);
+        while (allIt.hasNext()) {
+            Vertex v = allIt.next();
+            long vid = v.getLong(ID_PROPERTY);
+            if (vid == startVertexId)
+                startVertex = v;
+            MutableVertex mv = v.modify();
+            mv.set(SSSP, Double.POSITIVE_INFINITY);
+            mv.save();
             totalVertices++;
+        }
+        if (startVertex != null) {
+            MutableVertex mv = startVertex.modify();
+            mv.set(SSSP, 0.0);
+            mv.save();
         }
         graphDatabase.commit();
         LOG.info("  [Step 1/3] Initialized {} vertices.", String.format("%,d", totalVertices));
 
-        // Dijkstra
-        LOG.info("  [Step 2/3] Running Dijkstra...");
-        Vertex startVertex = graphDatabase.lookupByKey(VERTEX_TYPE, ID_PROPERTY, startVertexId).next().asVertex();
-
-        Map<RID, Double> distances = new HashMap<>();
-        PriorityQueue<double[]> pq = new PriorityQueue<>(Comparator.comparingDouble(a -> a[1]));
-        Map<RID, long[]> ridBucketKey = new HashMap<>();
-
-        distances.put(startVertex.getIdentity(), 0.0);
-        // Store [bucketId, position, distance] but we just need RID->distance
-        pq.add(new double[]{startVertex.getIdentity().getBucketId(), startVertex.getIdentity().getPosition(), 0.0});
-        int processed = 0;
-
-        while (!pq.isEmpty()) {
-            double[] entry = pq.poll();
-            RID currentRid = new RID(graphDatabase, (int) entry[0], (long) entry[1]);
-            double currentDist = entry[2];
-
-            if (currentDist > distances.getOrDefault(currentRid, Double.POSITIVE_INFINITY))
-                continue;
-
-            processed++;
-            if (processed % 100000 == 0) {
-                LOG.info("  [Step 2/3] Dijkstra: {} vertices settled ({} in queue)",
-                        String.format("%,d", processed), String.format("%,d", pq.size()));
-            }
-
-            Vertex current = graphDatabase.lookupByRID(currentRid, true).asVertex();
-
-            // Outgoing edges
-            for (Edge edge : current.getEdges(Vertex.DIRECTION.OUT, EDGE_TYPE)) {
-                double weight = edge.has(WEIGHT_PROPERTY)
-                        ? ((Number) edge.get(WEIGHT_PROPERTY)).doubleValue()
-                        : 1.0;
-                Vertex neighbor = edge.getInVertex();
-                double newDist = currentDist + weight;
-                if (newDist < distances.getOrDefault(neighbor.getIdentity(), Double.POSITIVE_INFINITY)) {
-                    distances.put(neighbor.getIdentity(), newDist);
-                    pq.add(new double[]{neighbor.getIdentity().getBucketId(), neighbor.getIdentity().getPosition(), newDist});
-                }
-            }
-
-            // Incoming edges (for undirected)
-            if (!directed) {
-                for (Edge edge : current.getEdges(Vertex.DIRECTION.IN, EDGE_TYPE)) {
-                    double weight = edge.has(WEIGHT_PROPERTY)
-                            ? ((Number) edge.get(WEIGHT_PROPERTY)).doubleValue()
-                            : 1.0;
-                    Vertex neighbor = edge.getOutVertex();
-                    double newDist = currentDist + weight;
-                    if (newDist < distances.getOrDefault(neighbor.getIdentity(), Double.POSITIVE_INFINITY)) {
-                        distances.put(neighbor.getIdentity(), newDist);
-                        pq.add(new double[]{neighbor.getIdentity().getBucketId(), neighbor.getIdentity().getPosition(), newDist});
-                    }
-                }
-            }
+        if (startVertex == null) {
+            LOG.warn("  Start vertex with VID={} not found!", startVertexId);
+            return;
         }
-        LOG.info("  [Step 2/3] Dijkstra complete: {} vertices reached.", String.format("%,d", distances.size()));
+
+        // Execute built-in Dijkstra
+        BasicCommandContext context = new BasicCommandContext();
+        context.setDatabase(graphDatabase);
+
+        String direction = directed ? "OUT" : "BOTH";
+        AlgoDijkstraSingleSource algo = new AlgoDijkstraSingleSource();
+        LOG.info("  [Step 2/3] Running Dijkstra (direction={})...", direction);
+        Stream<Result> results = algo.execute(
+                new Object[]{ startVertex, EDGE_TYPE, WEIGHT_PROPERTY, direction }, null, context);
 
         // Write results
-        LOG.info("  [Step 3/3] Writing results...");
         graphDatabase.begin();
-        int written = 0;
-        for (Map.Entry<RID, Double> e : distances.entrySet()) {
-            Vertex v = graphDatabase.lookupByRID(e.getKey(), true).asVertex();
+        int reachable = 0;
+        Iterator<Result> it = results.iterator();
+        while (it.hasNext()) {
+            Result row = it.next();
+            Vertex v = ((Vertex) row.getProperty("node"));
+            double cost = ((Number) row.getProperty("cost")).doubleValue();
             MutableVertex mv = v.modify();
-            mv.set(SSSP, e.getValue());
+            mv.set(SSSP, cost);
             mv.save();
-            written++;
-            if (written % 100000 == 0) {
-                LOG.info("  [Step 3/3] Writing results: {}% ({}/{})",
-                        String.format("%.1f", 100.0 * written / distances.size()),
-                        String.format("%,d", written), String.format("%,d", distances.size()));
-            }
+            reachable++;
         }
         graphDatabase.commit();
 
-        LOG.info("- Completed SSSP algorithm ({} vertices reached)", String.format("%,d", distances.size()));
+        LOG.info("  [Step 3/3] SSSP complete: {} reachable, {} unreachable out of {} total.",
+                String.format("%,d", reachable),
+                String.format("%,d", totalVertices - reachable - 1),
+                String.format("%,d", totalVertices));
     }
 }

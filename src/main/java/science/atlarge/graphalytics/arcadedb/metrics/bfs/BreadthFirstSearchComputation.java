@@ -16,20 +16,21 @@
 package science.atlarge.graphalytics.arcadedb.metrics.bfs;
 
 import com.arcadedb.database.Database;
-import com.arcadedb.database.RID;
-import com.arcadedb.graph.Edge;
 import com.arcadedb.graph.MutableVertex;
 import com.arcadedb.graph.Vertex;
+import com.arcadedb.query.opencypher.procedures.algo.AlgoBFS;
+import com.arcadedb.query.sql.executor.BasicCommandContext;
+import com.arcadedb.query.sql.executor.Result;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.*;
+import java.util.Iterator;
+import java.util.stream.Stream;
 
 import static science.atlarge.graphalytics.arcadedb.ArcadeDBConstants.*;
 
 /**
- * Implementation of the breadth-first search algorithm using direct graph
- * traversal on the ArcadeDB Java API.
+ * BFS computation using ArcadeDB's built-in algo.bfs procedure.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -48,83 +49,65 @@ public class BreadthFirstSearchComputation {
     }
 
     public void run() {
-        LOG.info("- Starting BFS algorithm from vertex {}", startVertexId);
+        LOG.info("- Starting BFS algorithm (source={}) using built-in algo.bfs", startVertexId);
 
-        // Initialize all vertices with max distance
-        LOG.info("  [Step 1/3] Initializing vertices...");
-        graphDatabase.begin();
+        // Find start vertex and initialize all vertices with default distance
+        Vertex startVertex = null;
+        LOG.info("  [Step 1/3] Initializing vertices with default distance...");
         int totalVertices = 0;
-        Iterator<Vertex> allVertices = graphDatabase.iterateType(VERTEX_TYPE, false);
-        while (allVertices.hasNext()) {
-            MutableVertex v = allVertices.next().modify();
-            v.set(DISTANCE, Long.MAX_VALUE);
-            v.save();
+
+        graphDatabase.begin();
+        Iterator<Vertex> allIt = graphDatabase.iterateType(VERTEX_TYPE, false);
+        while (allIt.hasNext()) {
+            Vertex v = allIt.next();
+            long vid = v.getLong(ID_PROPERTY);
+            if (vid == startVertexId)
+                startVertex = v;
+            MutableVertex mv = v.modify();
+            mv.set(DISTANCE, Long.MAX_VALUE);
+            mv.save();
             totalVertices++;
+        }
+        if (startVertex != null) {
+            MutableVertex mv = startVertex.modify();
+            mv.set(DISTANCE, 0L);
+            mv.save();
         }
         graphDatabase.commit();
         LOG.info("  [Step 1/3] Initialized {} vertices.", String.format("%,d", totalVertices));
 
-        // Find start vertex
-        Vertex startVertex = graphDatabase.lookupByKey(VERTEX_TYPE, ID_PROPERTY, startVertexId).next().asVertex();
-
-        // BFS
-        LOG.info("  [Step 2/3] Running BFS traversal...");
-        Map<RID, Long> distances = new HashMap<>();
-        Queue<Vertex> queue = new LinkedList<>();
-        queue.add(startVertex);
-        distances.put(startVertex.getIdentity(), 0L);
-        int processed = 0;
-
-        while (!queue.isEmpty()) {
-            Vertex current = queue.poll();
-            long currentDist = distances.get(current.getIdentity());
-            processed++;
-
-            if (processed % 100000 == 0) {
-                LOG.info("  [Step 2/3] BFS traversal: {} vertices visited ({} in queue)",
-                        String.format("%,d", processed), String.format("%,d", queue.size()));
-            }
-
-            // Outgoing edges
-            for (Edge edge : current.getEdges(Vertex.DIRECTION.OUT, EDGE_TYPE)) {
-                Vertex neighbor = edge.getInVertex();
-                if (!distances.containsKey(neighbor.getIdentity())) {
-                    distances.put(neighbor.getIdentity(), currentDist + 1);
-                    queue.add(neighbor);
-                }
-            }
-
-            // Incoming edges (for undirected)
-            if (!directed) {
-                for (Edge edge : current.getEdges(Vertex.DIRECTION.IN, EDGE_TYPE)) {
-                    Vertex neighbor = edge.getOutVertex();
-                    if (!distances.containsKey(neighbor.getIdentity())) {
-                        distances.put(neighbor.getIdentity(), currentDist + 1);
-                        queue.add(neighbor);
-                    }
-                }
-            }
+        if (startVertex == null) {
+            LOG.warn("  Start vertex with VID={} not found!", startVertexId);
+            return;
         }
-        LOG.info("  [Step 2/3] BFS traversal complete: {} vertices reached.", String.format("%,d", distances.size()));
+
+        // Execute built-in BFS
+        BasicCommandContext context = new BasicCommandContext();
+        context.setDatabase(graphDatabase);
+
+        String direction = directed ? "OUT" : "BOTH";
+        AlgoBFS algo = new AlgoBFS();
+        LOG.info("  [Step 2/3] Running BFS traversal (direction={})...", direction);
+        Stream<Result> results = algo.execute(new Object[]{ startVertex, EDGE_TYPE, direction }, null, context);
 
         // Write results
-        LOG.info("  [Step 3/3] Writing results...");
         graphDatabase.begin();
-        int written = 0;
-        for (Map.Entry<RID, Long> entry : distances.entrySet()) {
-            Vertex v = graphDatabase.lookupByRID(entry.getKey(), true).asVertex();
+        int reachable = 0;
+        Iterator<Result> it = results.iterator();
+        while (it.hasNext()) {
+            Result row = it.next();
+            Vertex v = ((Vertex) row.getProperty("node"));
+            int depth = ((Number) row.getProperty("depth")).intValue();
             MutableVertex mv = v.modify();
-            mv.set(DISTANCE, entry.getValue());
+            mv.set(DISTANCE, (long) depth);
             mv.save();
-            written++;
-            if (written % 100000 == 0) {
-                LOG.info("  [Step 3/3] Writing results: {}% ({}/{})",
-                        String.format("%.1f", 100.0 * written / distances.size()),
-                        String.format("%,d", written), String.format("%,d", distances.size()));
-            }
+            reachable++;
         }
         graphDatabase.commit();
 
-        LOG.info("- Completed BFS algorithm ({} vertices reached)", String.format("%,d", distances.size()));
+        LOG.info("  [Step 3/3] BFS complete: {} reachable, {} unreachable out of {} total.",
+                String.format("%,d", reachable),
+                String.format("%,d", totalVertices - reachable - 1),
+                String.format("%,d", totalVertices));
     }
 }
