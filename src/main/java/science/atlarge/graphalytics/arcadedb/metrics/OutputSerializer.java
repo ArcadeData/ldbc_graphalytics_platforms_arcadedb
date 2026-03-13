@@ -21,6 +21,7 @@ import com.arcadedb.graph.Vertex;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.Iterator;
@@ -61,8 +62,13 @@ public class OutputSerializer<N extends Number> {
      */
     public void serialize(Database graphDatabase, String outputPath) throws IOException {
         LOG.info("  Serializing results to: {}", outputPath);
+        File outputFile = new File(outputPath);
+        File parentDir = outputFile.getParentFile();
+        if (parentDir != null && !parentDir.exists()) {
+            parentDir.mkdirs();
+        }
         int count = 0;
-        try (FileWriter writer = new FileWriter(outputPath)) {
+        try (FileWriter writer = new FileWriter(outputFile)) {
             Iterator<Vertex> vertices = graphDatabase.iterateType("Vertex", false);
             while (vertices.hasNext()) {
                 Vertex vertex = vertices.next();
