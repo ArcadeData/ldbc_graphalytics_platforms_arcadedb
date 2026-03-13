@@ -8,3 +8,4 @@ graphalytics-*/
 intermediate/
 output/
 config/
+.DS_Store

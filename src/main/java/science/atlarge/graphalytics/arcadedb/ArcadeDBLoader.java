@@ -18,8 +18,8 @@ package science.atlarge.graphalytics.arcadedb;
 import com.arcadedb.database.Database;
 import com.arcadedb.database.DatabaseFactory;
 import com.arcadedb.database.RID;
+import com.arcadedb.graph.GraphBatchImporter;
 import com.arcadedb.graph.MutableVertex;
-import com.arcadedb.graph.Vertex;
 import com.arcadedb.schema.Schema;
 import com.arcadedb.schema.Type;
 import org.apache.logging.log4j.LogManager;
@@ -35,7 +35,7 @@ import java.util.Map;
 
 /**
  * Graph loader for ArcadeDB. Creates an embedded database and imports vertex/edge
- * data from EVLP-formatted files directly using the ArcadeDB Java API.
+ * data from EVLP-formatted files using the high-performance GraphBatchImporter.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -43,7 +43,7 @@ public class ArcadeDBLoader {
 
     private static final Logger LOG = LogManager.getLogger();
     private static final int VERTEX_BATCH_SIZE = 10000;
-    private static final int EDGE_BATCH_SIZE = 20000;
+    private static final int EDGE_BATCH_SIZE = 100_000;
     private static final int BUCKETS = 8;
 
     protected FormattedGraph formattedGraph;
@@ -72,8 +72,16 @@ public class ArcadeDBLoader {
             LOG.info("Creating embedded ArcadeDB database at: " + loadedInputPath);
             try (Database database = factory.create()) {
                 createSchema(database);
-                Map<Long, RID> vidToRid = loadVertices(database, totalVertices);
-                loadEdges(database, totalEdges, vidToRid);
+
+                try (GraphBatchImporter importer = GraphBatchImporter.builder(database)
+                        .withBatchSize(EDGE_BATCH_SIZE)
+                        .withLightEdges(false)
+                        .withWAL(false)
+                        .build()) {
+
+                    Map<Long, RID> vidToRid = loadVertices(database, importer, totalVertices);
+                    loadEdges(importer, totalEdges, vidToRid);
+                }
             }
         }
 
@@ -99,15 +107,16 @@ public class ArcadeDBLoader {
                 ArcadeDBConstants.VERTEX_TYPE, BUCKETS, ArcadeDBConstants.EDGE_TYPE, BUCKETS);
     }
 
-    private Map<Long, RID> loadVertices(Database database, long totalVertices) throws IOException {
+    private Map<Long, RID> loadVertices(Database database, GraphBatchImporter importer, long totalVertices) throws IOException {
         LOG.info("[Step 1/2] Loading vertices from: {}", formattedGraph.getVertexFilePath());
 
         Map<Long, RID> vidToRid = new HashMap<>();
         int count = 0;
-        database.begin();
 
         try (BufferedReader reader = new BufferedReader(new FileReader(formattedGraph.getVertexFilePath()))) {
             String line;
+            database.begin();
+
             while ((line = reader.readLine()) != null) {
                 line = line.trim();
                 if (line.isEmpty())
@@ -131,20 +140,20 @@ public class ArcadeDBLoader {
                     }
                 }
             }
+
+            database.commit();
         }
 
-        database.commit();
         LOG.info("[Step 1/2] Loading vertices: 100% - {} vertices loaded.", String.format("%,d", count));
         return vidToRid;
     }
 
-    private void loadEdges(Database database, long totalEdges, Map<Long, RID> vidToRid) throws IOException {
+    private void loadEdges(GraphBatchImporter importer, long totalEdges, Map<Long, RID> vidToRid) throws IOException {
         LOG.info("[Step 2/2] Loading edges from: {} (VID->RID cache: {} entries)",
                 formattedGraph.getEdgeFilePath(), String.format("%,d", vidToRid.size()));
         boolean weighted = formattedGraph.hasEdgeProperties();
 
         int count = 0;
-        database.begin();
 
         try (BufferedReader reader = new BufferedReader(new FileReader(formattedGraph.getEdgeFilePath()))) {
             String line;
@@ -164,21 +173,16 @@ public class ArcadeDBLoader {
                 if (dstRid == null)
                     throw new RuntimeException("Vertex not found with VID=" + dstId);
 
-                Vertex src = srcRid.asVertex();
-                Vertex dst = dstRid.asVertex();
-
                 if (weighted && parts.length > 2) {
                     double weight = Double.parseDouble(parts[2]);
-                    src.newEdge(ArcadeDBConstants.EDGE_TYPE, dst,
+                    importer.newEdge(srcRid, ArcadeDBConstants.EDGE_TYPE, dstRid,
                             ArcadeDBConstants.WEIGHT_PROPERTY, weight);
                 } else {
-                    src.newEdge(ArcadeDBConstants.EDGE_TYPE, dst);
+                    importer.newEdge(srcRid, ArcadeDBConstants.EDGE_TYPE, dstRid);
                 }
 
                 count++;
                 if (count % EDGE_BATCH_SIZE == 0) {
-                    database.commit();
-                    database.begin();
                     if (totalEdges > 0) {
                         LOG.info("[Step 2/2] Loading edges: {}% ({}/{})",
                                 String.format("%.1f", 100.0 * count / totalEdges),
@@ -188,7 +192,6 @@ public class ArcadeDBLoader {
             }
         }
 
-        database.commit();
         LOG.info("[Step 2/2] Loading edges: 100% - {} edges loaded.", String.format("%,d", count));
     }
 
