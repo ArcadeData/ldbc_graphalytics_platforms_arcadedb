@@ -20,11 +20,12 @@ import com.arcadedb.graph.MutableVertex;
 import com.arcadedb.graph.Vertex;
 import com.arcadedb.query.opencypher.procedures.algo.AlgoPageRank;
 import com.arcadedb.query.sql.executor.BasicCommandContext;
+import com.arcadedb.query.sql.executor.CommandContext;
 import com.arcadedb.query.sql.executor.Result;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -32,6 +33,7 @@ import static science.atlarge.graphalytics.arcadedb.ArcadeDBConstants.*;
 
 /**
  * PageRank computation using ArcadeDB's built-in algo.pagerank procedure.
+ * This automatically benefits from CSR acceleration when a GraphAnalyticalView is available.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -52,29 +54,32 @@ public class PageRankComputation {
     }
 
     public void run() {
-        LOG.info("- Starting PageRank algorithm (iterations={}, damping={}) using built-in algo.pagerank",
-                maxIterations, dampingFactor);
+        LOG.info("- Starting PageRank algorithm (iterations={}, damping={}, directed={}) using built-in algo.pagerank",
+                maxIterations, dampingFactor, directed);
 
-        // Configure the algorithm
-        Map<String, Object> config = new HashMap<>();
-        config.put("dampingFactor", (double) dampingFactor);
-        config.put("maxIterations", maxIterations);
-        config.put("tolerance", 0.0); // Run exact number of iterations (no early convergence)
-
-        // Execute built-in algorithm
         BasicCommandContext context = new BasicCommandContext();
         context.setDatabase(graphDatabase);
 
+        String direction = directed ? "OUT" : "BOTH";
         AlgoPageRank algo = new AlgoPageRank();
-        LOG.info("  [Step 1/2] Computing PageRank...");
-        Stream<Result> results = algo.execute(new Object[]{ config }, null, context);
+        LOG.info("  [Step 1/2] Running PageRank (direction={})...", direction);
+        Stream<Result> results = algo.execute(new Object[]{
+                Map.of(
+                        "dampingFactor", (double) dampingFactor,
+                        "maxIterations", maxIterations,
+                        "tolerance", 0.0, // disable early stop to match LDBC exactly
+                        "direction", direction
+                )
+        }, null, context);
+
+        boolean csrAccelerated = Boolean.TRUE.equals(context.getVariable(CommandContext.CSR_ACCELERATED_VAR));
+        LOG.info("  [Step 1/2] PageRank complete (CSR accelerated: {})", csrAccelerated);
 
         // Write results to vertex properties
         LOG.info("  [Step 2/2] Writing results...");
         graphDatabase.begin();
         int count = 0;
-        int total = 0;
-        java.util.Iterator<Result> it = results.iterator();
+        Iterator<Result> it = results.iterator();
         while (it.hasNext()) {
             Result row = it.next();
             Vertex v = ((Vertex) row.getProperty("node"));
@@ -83,13 +88,11 @@ public class PageRankComputation {
             mv.set(PAGERANK, score);
             mv.save();
             count++;
-            total++;
-            if (count % 100000 == 0) {
-                LOG.info("  [Step 2/2] Writing results: {} vertices written", String.format("%,d", total));
-            }
+            if (count % 100000 == 0)
+                LOG.info("  [Step 2/2] Writing results: {} vertices", String.format("%,d", count));
         }
         graphDatabase.commit();
 
-        LOG.info("- Completed PageRank algorithm ({} iterations on {} vertices)", maxIterations, String.format("%,d", total));
+        LOG.info("- Completed PageRank algorithm ({} iterations on {} vertices)", maxIterations, String.format("%,d", count));
     }
 }

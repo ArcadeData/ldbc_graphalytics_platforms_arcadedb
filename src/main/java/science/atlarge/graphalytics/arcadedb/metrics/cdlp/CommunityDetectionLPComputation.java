@@ -16,24 +16,26 @@
 package science.atlarge.graphalytics.arcadedb.metrics.cdlp;
 
 import com.arcadedb.database.Database;
+import com.arcadedb.database.RID;
+import com.arcadedb.graph.Edge;
+import com.arcadedb.graph.GraphTraversalProvider;
+import com.arcadedb.graph.GraphTraversalProviderRegistry;
 import com.arcadedb.graph.MutableVertex;
+import com.arcadedb.graph.NeighborView;
 import com.arcadedb.graph.Vertex;
-import com.arcadedb.query.opencypher.procedures.algo.AlgoLabelPropagation;
-import com.arcadedb.query.sql.executor.BasicCommandContext;
-import com.arcadedb.query.sql.executor.Result;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.stream.Stream;
+import java.util.*;
 
 import static science.atlarge.graphalytics.arcadedb.ArcadeDBConstants.*;
 
 /**
- * CDLP computation using ArcadeDB's built-in algo.labelpropagation procedure.
- * Maps sequential community IDs to VIDs for LDBC compatibility.
+ * CDLP computation using VID-based labels as required by the LDBC Graphalytics spec.
+ * Cannot use the built-in algo.labelpropagation because LDBC requires labels to be
+ * vertex IDs (not sequential indices), and tie-breaking must be on smallest VID.
+ * <p>
+ * Uses CSR acceleration via GraphTraversalProvider when a GraphAnalyticalView is available.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -52,46 +54,189 @@ public class CommunityDetectionLPComputation {
     }
 
     public void run() {
-        LOG.info("- Starting CDLP algorithm (iterations={}) using built-in algo.labelpropagation", maxIterations);
+        LOG.info("- Starting CDLP algorithm (maxIterations={})", maxIterations);
 
-        Map<String, Object> config = new HashMap<>();
-        config.put("maxIterations", maxIterations);
-        config.put("direction", directed ? "OUT" : "BOTH");
+        // Try CSR-accelerated path
+        final GraphTraversalProvider provider = GraphTraversalProviderRegistry.findProvider(graphDatabase, EDGE_TYPE);
+        if (provider != null)
+            runWithCSR(provider);
+        else
+            runWithOLTP();
+    }
 
-        BasicCommandContext context = new BasicCommandContext();
-        context.setDatabase(graphDatabase);
+    private void runWithCSR(GraphTraversalProvider provider) {
+        LOG.info("  [Step 1/3] Building adjacency from CSR (accelerated)...");
+        final int n = provider.getNodeCount();
 
-        AlgoLabelPropagation algo = new AlgoLabelPropagation();
-        LOG.info("  [Step 1/2] Computing label propagation...");
-        Stream<Result> results = algo.execute(new Object[]{ config }, null, context);
+        // Initialize labels with VIDs (LDBC requirement)
+        final long[] label = new long[n];
+        for (int i = 0; i < n; i++) {
+            Vertex v = provider.getRID(i).asVertex();
+            label[i] = v.getLong(ID_PROPERTY);
+        }
 
-        // Map sequential communityIds to VIDs (first vertex encountered per community)
-        Map<Integer, Long> communityIdToVid = new HashMap<>();
-        LOG.info("  [Step 2/2] Writing results...");
+        // Get CSR-backed neighbor view — BOTH direction for undirected treatment
+        final Vertex.DIRECTION direction = directed ? Vertex.DIRECTION.OUT : Vertex.DIRECTION.BOTH;
+        final NeighborView view = provider.getNeighborView(direction, EDGE_TYPE);
+        LOG.info("  [Step 1/3] CSR adjacency ready for {} vertices (NeighborView: {}).",
+                String.format("%,d", n), view != null ? "zero-copy" : "per-node");
 
-        graphDatabase.begin();
-        int count = 0;
-        Iterator<Result> it = results.iterator();
-        while (it.hasNext()) {
-            Result row = it.next();
-            Vertex v = ((Vertex) row.getProperty("node"));
-            int communityId = ((Number) row.getProperty("communityId")).intValue();
+        // Synchronous label propagation with VID-based labels
+        long[] currentLabel = label;
+        for (int iter = 0; iter < maxIterations; iter++) {
+            LOG.info("  [Step 2/3] CDLP iteration {}/{} ...", iter + 1, maxIterations);
+            long[] newLabel = new long[n];
+            boolean changed = false;
 
-            long vid = v.getLong(ID_PROPERTY);
-            long mappedLabel = communityIdToVid.computeIfAbsent(communityId, k -> vid);
+            for (int i = 0; i < n; i++) {
+                final int degree;
+                if (view != null) {
+                    degree = view.degree(i);
+                } else {
+                    degree = provider.getNeighborIds(i, direction, EDGE_TYPE).length;
+                }
 
-            MutableVertex mv = v.modify();
-            mv.set(LABEL, mappedLabel);
-            mv.save();
-            count++;
-            if (count % 100000 == 0) {
-                LOG.info("  [Step 2/2] Writing results: {} vertices, {} communities",
-                        String.format("%,d", count), String.format("%,d", communityIdToVid.size()));
+                if (degree == 0) {
+                    newLabel[i] = currentLabel[i];
+                    continue;
+                }
+
+                // Count neighbor labels
+                Map<Long, Integer> labelCounts = new HashMap<>();
+                if (view != null) {
+                    final int[] nbrs = view.neighbors();
+                    for (int j = view.offset(i), end = view.offsetEnd(i); j < end; j++)
+                        labelCounts.merge(currentLabel[nbrs[j]], 1, Integer::sum);
+                } else {
+                    for (int neighborIdx : provider.getNeighborIds(i, direction, EDGE_TYPE))
+                        labelCounts.merge(currentLabel[neighborIdx], 1, Integer::sum);
+                }
+
+                // Pick most frequent label, break ties by smallest label (VID)
+                int maxCount = 0;
+                long bestLabel = currentLabel[i];
+                for (Map.Entry<Long, Integer> entry : labelCounts.entrySet()) {
+                    if (entry.getValue() > maxCount || (entry.getValue() == maxCount && entry.getKey() < bestLabel)) {
+                        maxCount = entry.getValue();
+                        bestLabel = entry.getKey();
+                    }
+                }
+
+                newLabel[i] = bestLabel;
+                if (bestLabel != currentLabel[i])
+                    changed = true;
             }
+
+            currentLabel = newLabel;
+            if (!changed)
+                break;
+        }
+
+        // Write results
+        LOG.info("  [Step 3/3] Writing results...");
+        graphDatabase.begin();
+        for (int i = 0; i < n; i++) {
+            MutableVertex mv = provider.getRID(i).asVertex().modify();
+            mv.set(LABEL, currentLabel[i]);
+            mv.save();
+            if ((i + 1) % 100000 == 0)
+                LOG.info("  [Step 3/3] Writing results: {}% ({}/{})",
+                        String.format("%.1f", 100.0 * (i + 1) / n),
+                        String.format("%,d", i + 1), String.format("%,d", n));
         }
         graphDatabase.commit();
 
-        LOG.info("- Completed CDLP: {} vertices, {} communities",
-                String.format("%,d", count), String.format("%,d", communityIdToVid.size()));
+        LOG.info("- Completed CDLP algorithm ({} iterations on {} vertices, CSR accelerated)", maxIterations, String.format("%,d", n));
+    }
+
+    private void runWithOLTP() {
+        LOG.info("  [Step 1/3] Collecting vertices and initializing labels (OLTP)...");
+        List<Vertex> vertices = new ArrayList<>();
+        Map<RID, Integer> ridToIdx = new HashMap<>();
+
+        Iterator<Vertex> it = graphDatabase.iterateType(VERTEX_TYPE, false);
+        while (it.hasNext()) {
+            Vertex v = it.next();
+            ridToIdx.put(v.getIdentity(), vertices.size());
+            vertices.add(v);
+        }
+        int n = vertices.size();
+
+        // Initialize labels with VIDs (LDBC requirement)
+        long[] label = new long[n];
+        for (int i = 0; i < n; i++)
+            label[i] = vertices.get(i).getLong(ID_PROPERTY);
+
+        // Build adjacency once for performance
+        int[][] adj = new int[n][];
+        for (int i = 0; i < n; i++) {
+            Vertex v = vertices.get(i);
+            List<Integer> neighbors = new ArrayList<>();
+            for (Edge edge : v.getEdges(Vertex.DIRECTION.OUT, EDGE_TYPE)) {
+                Integer idx = ridToIdx.get(edge.getInVertex().getIdentity());
+                if (idx != null)
+                    neighbors.add(idx);
+            }
+            for (Edge edge : v.getEdges(Vertex.DIRECTION.IN, EDGE_TYPE)) {
+                Integer idx = ridToIdx.get(edge.getOutVertex().getIdentity());
+                if (idx != null)
+                    neighbors.add(idx);
+            }
+            adj[i] = neighbors.stream().mapToInt(Integer::intValue).toArray();
+        }
+        LOG.info("  [Step 1/3] Initialized {} vertices.", String.format("%,d", n));
+
+        // Synchronous label propagation with VID-based labels
+        for (int iter = 0; iter < maxIterations; iter++) {
+            LOG.info("  [Step 2/3] CDLP iteration {}/{} ...", iter + 1, maxIterations);
+            long[] newLabel = new long[n];
+            boolean changed = false;
+
+            for (int i = 0; i < n; i++) {
+                if (adj[i].length == 0) {
+                    newLabel[i] = label[i];
+                    continue;
+                }
+
+                // Count neighbor labels
+                Map<Long, Integer> labelCounts = new HashMap<>();
+                for (int neighborIdx : adj[i])
+                    labelCounts.merge(label[neighborIdx], 1, Integer::sum);
+
+                // Pick most frequent label, break ties by smallest label (VID)
+                int maxCount = 0;
+                long bestLabel = label[i];
+                for (Map.Entry<Long, Integer> entry : labelCounts.entrySet()) {
+                    if (entry.getValue() > maxCount || (entry.getValue() == maxCount && entry.getKey() < bestLabel)) {
+                        maxCount = entry.getValue();
+                        bestLabel = entry.getKey();
+                    }
+                }
+
+                newLabel[i] = bestLabel;
+                if (bestLabel != label[i])
+                    changed = true;
+            }
+
+            label = newLabel;
+            if (!changed)
+                break;
+        }
+
+        // Write results
+        LOG.info("  [Step 3/3] Writing results...");
+        graphDatabase.begin();
+        for (int i = 0; i < n; i++) {
+            MutableVertex mv = vertices.get(i).modify();
+            mv.set(LABEL, label[i]);
+            mv.save();
+            if ((i + 1) % 100000 == 0)
+                LOG.info("  [Step 3/3] Writing results: {}% ({}/{})",
+                        String.format("%.1f", 100.0 * (i + 1) / n),
+                        String.format("%,d", i + 1), String.format("%,d", n));
+        }
+        graphDatabase.commit();
+
+        LOG.info("- Completed CDLP algorithm ({} iterations on {} vertices)", maxIterations, String.format("%,d", n));
     }
 }

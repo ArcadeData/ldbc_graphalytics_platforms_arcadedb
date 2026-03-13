@@ -16,6 +16,7 @@
 package science.atlarge.graphalytics.arcadedb;
 
 import com.arcadedb.database.Database;
+import com.arcadedb.graph.olap.GraphAnalyticalView;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import science.atlarge.graphalytics.domain.benchmark.BenchmarkRun;
@@ -24,6 +25,7 @@ import science.atlarge.graphalytics.execution.BenchmarkRunSetup;
 import science.atlarge.graphalytics.execution.RunSpecification;
 
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Base class for all jobs in the ArcadeDB platform driver. Configures and executes
@@ -43,6 +45,7 @@ public abstract class ArcadeDBJob {
 
     private final Graph graph;
     private final ArcadeDBDatabase database;
+    private final boolean olap;
 
     /**
      * Initializes the platform job with its parameters.
@@ -67,6 +70,7 @@ public abstract class ArcadeDBJob {
         this.outputPath = outputPath;
 
         this.graph = benchmarkRun.getGraph();
+        this.olap = platformConfig.isOlap();
 
         LOG.info("Opening embedded database from path: " + inputPath);
         this.database = new ArcadeDBDatabase(inputPath);
@@ -79,6 +83,9 @@ public abstract class ArcadeDBJob {
      */
     public int execute() throws IOException {
         try {
+            if (olap) {
+                buildGraphOLAP(database.get());
+            }
             compute(
                     database.get(),
                     graph
@@ -91,6 +98,35 @@ public abstract class ArcadeDBJob {
             database.close();
         }
         return 0;
+    }
+
+    private void buildGraphOLAP(Database db) {
+        LOG.info("Building Graph Analytical View (OLAP mode enabled)...");
+        long start = System.currentTimeMillis();
+        try {
+            db.begin();
+            GraphAnalyticalView gav = GraphAnalyticalView.builder(db)
+                    .withName("benchmark")
+                    .withVertexTypes(ArcadeDBConstants.VERTEX_TYPE)
+                    .withEdgeTypes(ArcadeDBConstants.EDGE_TYPE)
+                    .build();
+            boolean ready = gav.awaitReady(600, TimeUnit.SECONDS);
+            long elapsed = System.currentTimeMillis() - start;
+            if (ready) {
+                LOG.info("Graph Analytical View built in {}.{}s - status: {}",
+                        elapsed / 1000, String.format("%03d", elapsed % 1000), gav.getStatus());
+            } else {
+                LOG.warn("Graph Analytical View build timed out after {}s - falling back to OLTP",
+                        elapsed / 1000);
+            }
+        } catch (Exception e) {
+            long elapsed = System.currentTimeMillis() - start;
+            LOG.warn("Async build of GraphAnalyticalView 'benchmark' failed after {}s - falling back to OLTP: {}",
+                    elapsed / 1000, e.getMessage());
+        } finally {
+            if (db.isTransactionActive())
+                db.rollback();
+        }
     }
 
     protected abstract void compute(

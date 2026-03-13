@@ -34,10 +34,12 @@ public final class ArcadeDBConfiguration {
 
     private static final String BENCHMARK_PROPERTIES_FILE = "benchmark.properties";
     private static final String HOME_PATH_KEY = "platform.arcadedb.home";
+    private static final String OLAP_KEY = "platform.olap";
 
     private String loaderPath;
     private String unloaderPath;
     private String homePath;
+    private boolean olap;
 
     public ArcadeDBConfiguration() {
     }
@@ -66,6 +68,14 @@ public final class ArcadeDBConfiguration {
         this.homePath = homePath;
     }
 
+    public boolean isOlap() {
+        return olap;
+    }
+
+    public void setOlap(boolean olap) {
+        this.olap = olap;
+    }
+
     public static ArcadeDBConfiguration parsePropertiesFile() {
 
         ArcadeDBConfiguration platformConfig = new ArcadeDBConfiguration();
@@ -88,6 +98,8 @@ public final class ArcadeDBConfiguration {
         if (homePath != null) {
             platformConfig.setHomePath(homePath);
         }
+
+        platformConfig.setOlap(configuration.getBoolean(OLAP_KEY, false));
 
         return platformConfig;
     }

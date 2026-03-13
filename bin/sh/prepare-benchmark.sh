@@ -24,5 +24,8 @@ fi
 # Set JVM memory options
 export java_opts="-Xms16g -Xmx16g --add-modules jdk.incubator.vector"
 
+# Ensure runner subprocesses also get the incubator module
+export JDK_JAVA_OPTIONS="--add-modules jdk.incubator.vector"
+
 # Set library jar
 export LIBRARY_JAR=`ls lib/graphalytics-*default*.jar`
