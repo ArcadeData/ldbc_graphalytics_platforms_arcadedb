@@ -81,46 +81,62 @@ public class CommunityDetectionLPComputation {
         LOG.info("  [Step 1/3] CSR adjacency ready for {} vertices (NeighborView: {}).",
                 String.format("%,d", n), view != null ? "zero-copy" : "per-node");
 
+        // Pre-compute max degree for reusable buffer
+        int maxDegree = 0;
+        if (view != null) {
+            for (int i = 0; i < n; i++) {
+                final int deg = view.degree(i);
+                if (deg > maxDegree)
+                    maxDegree = deg;
+            }
+        }
+        // Reusable buffer for collecting neighbor labels — zero GC pressure
+        final long[] neighborLabels = new long[maxDegree > 0 ? maxDegree : 16];
+
         // Synchronous label propagation with VID-based labels
         long[] currentLabel = label;
         for (int iter = 0; iter < maxIterations; iter++) {
             LOG.info("  [Step 2/3] CDLP iteration {}/{} ...", iter + 1, maxIterations);
-            long[] newLabel = new long[n];
+            final long[] newLabel = new long[n];
             boolean changed = false;
 
             for (int i = 0; i < n; i++) {
-                final int degree;
+                // Collect neighbor labels into reusable buffer
+                int pos = 0;
                 if (view != null) {
-                    degree = view.degree(i);
+                    final int[] nbrs = view.neighbors();
+                    for (int j = view.offset(i), end = view.offsetEnd(i); j < end; j++)
+                        neighborLabels[pos++] = currentLabel[nbrs[j]];
                 } else {
-                    degree = provider.getNeighborIds(i, direction, EDGE_TYPE).length;
+                    for (final int neighborIdx : provider.getNeighborIds(i, direction, EDGE_TYPE))
+                        neighborLabels[pos++] = currentLabel[neighborIdx];
                 }
 
-                if (degree == 0) {
+                if (pos == 0) {
                     newLabel[i] = currentLabel[i];
                     continue;
                 }
 
-                // Count neighbor labels
-                Map<Long, Integer> labelCounts = new HashMap<>();
-                if (view != null) {
-                    final int[] nbrs = view.neighbors();
-                    for (int j = view.offset(i), end = view.offsetEnd(i); j < end; j++)
-                        labelCounts.merge(currentLabel[nbrs[j]], 1, Integer::sum);
-                } else {
-                    for (int neighborIdx : provider.getNeighborIds(i, direction, EDGE_TYPE))
-                        labelCounts.merge(currentLabel[neighborIdx], 1, Integer::sum);
-                }
-
-                // Pick most frequent label, break ties by smallest label (VID)
-                int maxCount = 0;
-                long bestLabel = currentLabel[i];
-                for (Map.Entry<Long, Integer> entry : labelCounts.entrySet()) {
-                    if (entry.getValue() > maxCount || (entry.getValue() == maxCount && entry.getKey() < bestLabel)) {
-                        maxCount = entry.getValue();
-                        bestLabel = entry.getKey();
+                // Sort and count runs to find mode — O(d log d) but zero allocation
+                Arrays.sort(neighborLabels, 0, pos);
+                long bestLabel = neighborLabels[0];
+                int bestCount = 1;
+                long currentLbl = neighborLabels[0];
+                int currentCount = 1;
+                for (int k = 1; k < pos; k++) {
+                    if (neighborLabels[k] == currentLbl) {
+                        currentCount++;
+                    } else {
+                        if (currentCount > bestCount || (currentCount == bestCount && currentLbl < bestLabel)) {
+                            bestCount = currentCount;
+                            bestLabel = currentLbl;
+                        }
+                        currentLbl = neighborLabels[k];
+                        currentCount = 1;
                     }
                 }
+                if (currentCount > bestCount || (currentCount == bestCount && currentLbl < bestLabel))
+                    bestLabel = currentLbl;
 
                 newLabel[i] = bestLabel;
                 if (bestLabel != currentLabel[i])
@@ -186,6 +202,13 @@ public class CommunityDetectionLPComputation {
         }
         LOG.info("  [Step 1/3] Initialized {} vertices.", String.format("%,d", n));
 
+        // Pre-compute max degree for reusable buffer
+        int maxDegree = 0;
+        for (int i = 0; i < n; i++)
+            if (adj[i].length > maxDegree)
+                maxDegree = adj[i].length;
+        final long[] neighborLabels = new long[maxDegree > 0 ? maxDegree : 1];
+
         // Synchronous label propagation with VID-based labels
         for (int iter = 0; iter < maxIterations; iter++) {
             LOG.info("  [Step 2/3] CDLP iteration {}/{} ...", iter + 1, maxIterations);
@@ -198,20 +221,31 @@ public class CommunityDetectionLPComputation {
                     continue;
                 }
 
-                // Count neighbor labels
-                Map<Long, Integer> labelCounts = new HashMap<>();
+                // Collect neighbor labels into reusable buffer — zero allocation
+                int pos = 0;
                 for (int neighborIdx : adj[i])
-                    labelCounts.merge(label[neighborIdx], 1, Integer::sum);
+                    neighborLabels[pos++] = label[neighborIdx];
 
-                // Pick most frequent label, break ties by smallest label (VID)
-                int maxCount = 0;
-                long bestLabel = label[i];
-                for (Map.Entry<Long, Integer> entry : labelCounts.entrySet()) {
-                    if (entry.getValue() > maxCount || (entry.getValue() == maxCount && entry.getKey() < bestLabel)) {
-                        maxCount = entry.getValue();
-                        bestLabel = entry.getKey();
+                // Sort and count runs to find mode
+                Arrays.sort(neighborLabels, 0, pos);
+                long bestLabel = neighborLabels[0];
+                int bestCount = 1;
+                long currentLbl = neighborLabels[0];
+                int currentCount = 1;
+                for (int k = 1; k < pos; k++) {
+                    if (neighborLabels[k] == currentLbl) {
+                        currentCount++;
+                    } else {
+                        if (currentCount > bestCount || (currentCount == bestCount && currentLbl < bestLabel)) {
+                            bestCount = currentCount;
+                            bestLabel = currentLbl;
+                        }
+                        currentLbl = neighborLabels[k];
+                        currentCount = 1;
                     }
                 }
+                if (currentCount > bestCount || (currentCount == bestCount && currentLbl < bestLabel))
+                    bestLabel = currentLbl;
 
                 newLabel[i] = bestLabel;
                 if (bestLabel != label[i])

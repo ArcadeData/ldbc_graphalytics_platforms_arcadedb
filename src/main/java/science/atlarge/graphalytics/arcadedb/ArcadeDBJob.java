@@ -17,6 +17,7 @@ package science.atlarge.graphalytics.arcadedb;
 
 import com.arcadedb.database.Database;
 import com.arcadedb.graph.olap.GraphAnalyticalView;
+import com.arcadedb.graph.olap.GraphAnalyticalViewRegistry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import science.atlarge.graphalytics.domain.benchmark.BenchmarkRun;
@@ -101,31 +102,41 @@ public abstract class ArcadeDBJob {
     }
 
     private void buildGraphOLAP(Database db) {
-        LOG.info("Building Graph Analytical View (OLAP mode enabled)...");
         long start = System.currentTimeMillis();
         try {
-            db.begin();
-            GraphAnalyticalView gav = GraphAnalyticalView.builder(db)
+            // Check if GAV was already restored from persistence on database open
+            GraphAnalyticalView gav = GraphAnalyticalViewRegistry.get(db, "benchmark");
+            if (gav != null) {
+                LOG.info("Graph Analytical View 'benchmark' already registered (restored from persistence), waiting for it to be ready...");
+                boolean ready = gav.awaitReady(600, TimeUnit.SECONDS);
+                long elapsed = System.currentTimeMillis() - start;
+                if (ready) {
+                    LOG.info("Graph Analytical View ready in {}.{}s - status: {}",
+                            elapsed / 1000, String.format("%03d", elapsed % 1000), gav.getStatus());
+                    LOG.info(gav.getStats());
+                } else {
+                    LOG.warn("Graph Analytical View not ready after {}s - status: {}, falling back to OLTP",
+                            elapsed / 1000, gav.getStatus());
+                }
+                return;
+            }
+
+            // Build a new GAV (skip persistence since this is a benchmark-only view)
+            LOG.info("Building Graph Analytical View (OLAP mode enabled)...");
+            gav = GraphAnalyticalView.builder(db)
                     .withName("benchmark")
                     .withVertexTypes(ArcadeDBConstants.VERTEX_TYPE)
                     .withEdgeTypes(ArcadeDBConstants.EDGE_TYPE)
+                    .withEdgeProperties(ArcadeDBConstants.WEIGHT_PROPERTY)
                     .build();
-            boolean ready = gav.awaitReady(600, TimeUnit.SECONDS);
             long elapsed = System.currentTimeMillis() - start;
-            if (ready) {
-                LOG.info("Graph Analytical View built in {}.{}s - status: {}",
-                        elapsed / 1000, String.format("%03d", elapsed % 1000), gav.getStatus());
-            } else {
-                LOG.warn("Graph Analytical View build timed out after {}s - falling back to OLTP",
-                        elapsed / 1000);
-            }
+            LOG.info("Graph Analytical View built in {}.{}s - status: {}",
+                    elapsed / 1000, String.format("%03d", elapsed % 1000), gav.getStatus());
+            LOG.info(gav.getStats());
         } catch (Exception e) {
             long elapsed = System.currentTimeMillis() - start;
-            LOG.warn("Async build of GraphAnalyticalView 'benchmark' failed after {}s - falling back to OLTP: {}",
+            LOG.warn("GraphAnalyticalView build failed after {}s - falling back to OLTP: {}",
                     elapsed / 1000, e.getMessage());
-        } finally {
-            if (db.isTransactionActive())
-                db.rollback();
         }
     }
 
