@@ -19,7 +19,6 @@ import com.arcadedb.database.Database;
 import com.arcadedb.database.DatabaseFactory;
 import com.arcadedb.graph.olap.GraphAnalyticalView;
 import com.arcadedb.graph.olap.GraphAnalyticalViewBuilder;
-import com.arcadedb.graph.olap.GraphAnalyticalViewRegistry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import science.atlarge.graphalytics.domain.algorithms.Algorithm;
@@ -32,7 +31,6 @@ import science.atlarge.graphalytics.report.result.BenchmarkMetrics;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.concurrent.TimeUnit;
 
 /**
  * ArcadeDB platform driver for the LDBC Graphalytics benchmark.
@@ -95,14 +93,6 @@ public class ArcadedbPlatform implements Platform {
 
 		// Close the shared database
 		if (database != null) {
-			// Drop GAV if present
-			try {
-				GraphAnalyticalView gav = GraphAnalyticalViewRegistry.get(database, "benchmark");
-				if (gav != null)
-					gav.drop();
-			} catch (Exception e) {
-				LOG.warn("Failed to drop GAV: {}", e.getMessage());
-			}
 			database.close();
 			database = null;
 		}
@@ -210,44 +200,17 @@ public class ArcadedbPlatform implements Platform {
 	private void buildGraphOLAP(Database db, boolean hasEdgeProperties) {
 		long start = System.currentTimeMillis();
 		try {
-			// Check if GAV was already restored from persistence on database open
-			GraphAnalyticalView gav = GraphAnalyticalViewRegistry.get(db, "benchmark");
-			if (gav != null) {
-				LOG.info("Graph Analytical View 'benchmark' already registered (restored from persistence), waiting for it to be ready...");
-				boolean ready = gav.awaitReady(600, TimeUnit.SECONDS);
-				long elapsed = System.currentTimeMillis() - start;
-				if (ready) {
-					LOG.info("Graph Analytical View ready in {}.{}s - status: {}",
-							elapsed / 1000, String.format("%03d", elapsed % 1000), gav.getStatus());
-					LOG.info(gav.getStats());
-					return;
-				}
-
-				// Restored GAV failed — drop it and build fresh
-				LOG.warn("Restored Graph Analytical View failed (status: {}), dropping and rebuilding...",
-						gav.getStatus());
-				try {
-					gav.drop();
-				} catch (Exception dropEx) {
-					LOG.warn("Failed to drop failed GAV, forcing unregister: {}", dropEx.getMessage());
-					GraphAnalyticalViewRegistry.unregister(db, "benchmark");
-				}
-			}
-
-			// Build a new GAV
 			LOG.info("Building Graph Analytical View (OLAP mode enabled)...");
 			GraphAnalyticalViewBuilder builder = GraphAnalyticalView.builder(db)
-					.withName("benchmark")
 					.withVertexTypes(ArcadeDBConstants.VERTEX_TYPE)
 					.withEdgeTypes(ArcadeDBConstants.EDGE_TYPE);
 			if (hasEdgeProperties)
 				builder.withEdgeProperties(ArcadeDBConstants.WEIGHT_PROPERTY);
-			gav = builder.build();
+			builder.build();
 
 			long elapsed = System.currentTimeMillis() - start;
-			LOG.info("Graph Analytical View built in {}.{}s - status: {}",
-					elapsed / 1000, String.format("%03d", elapsed % 1000), gav.getStatus());
-			LOG.info(gav.getStats());
+			LOG.info("Graph Analytical View built in {}.{}s",
+					elapsed / 1000, String.format("%03d", elapsed % 1000));
 		} catch (Exception e) {
 			long elapsed = System.currentTimeMillis() - start;
 			LOG.warn("GraphAnalyticalView build failed after {}s - falling back to OLTP: {}",
