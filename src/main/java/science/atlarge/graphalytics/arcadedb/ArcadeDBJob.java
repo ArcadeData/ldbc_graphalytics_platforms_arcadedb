@@ -114,14 +114,21 @@ public abstract class ArcadeDBJob {
                     LOG.info("Graph Analytical View ready in {}.{}s - status: {}",
                             elapsed / 1000, String.format("%03d", elapsed % 1000), gav.getStatus());
                     LOG.info(gav.getStats());
-                } else {
-                    LOG.warn("Graph Analytical View not ready after {}s - status: {}, falling back to OLTP",
-                            elapsed / 1000, gav.getStatus());
+                    return;
                 }
-                return;
+
+                // Restored GAV failed — drop it and build fresh
+                LOG.warn("Restored Graph Analytical View failed (status: {}), dropping and rebuilding...",
+                        gav.getStatus());
+                try {
+                    gav.drop();
+                } catch (Exception dropEx) {
+                    LOG.warn("Failed to drop failed GAV, forcing unregister: {}", dropEx.getMessage());
+                    GraphAnalyticalViewRegistry.unregister(db, "benchmark");
+                }
             }
 
-            // Build a new GAV (skip persistence since this is a benchmark-only view)
+            // Build a new GAV
             LOG.info("Building Graph Analytical View (OLAP mode enabled)...");
             gav = GraphAnalyticalView.builder(db)
                     .withName("benchmark")
