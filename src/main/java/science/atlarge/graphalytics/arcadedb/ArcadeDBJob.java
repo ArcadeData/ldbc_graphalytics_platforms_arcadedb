@@ -16,8 +16,6 @@
 package science.atlarge.graphalytics.arcadedb;
 
 import com.arcadedb.database.Database;
-import com.arcadedb.graph.olap.GraphAnalyticalView;
-import com.arcadedb.graph.olap.GraphAnalyticalViewRegistry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import science.atlarge.graphalytics.domain.benchmark.BenchmarkRun;
@@ -26,12 +24,11 @@ import science.atlarge.graphalytics.execution.BenchmarkRunSetup;
 import science.atlarge.graphalytics.execution.RunSpecification;
 
 import java.io.IOException;
-import java.util.concurrent.TimeUnit;
 
 /**
- * Base class for all jobs in the ArcadeDB platform driver. Configures and executes
- * a platform job using the parameters and executable specified by the subclass
- * for a specific algorithm.
+ * Base class for all jobs in the ArcadeDB platform driver. The database is
+ * shared across all algorithm runs (managed by ArcadedbPlatform) and the GAV
+ * is built once during graph loading.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -41,24 +38,22 @@ public abstract class ArcadeDBJob {
 
     private final String jobId;
     private final String logPath;
-    private final String inputPath;
     private final String outputPath;
 
     private final Graph graph;
-    private final ArcadeDBDatabase database;
-    private final boolean olap;
+    private final Database database;
 
     /**
-     * Initializes the platform job with its parameters.
+     * Initializes the platform job with a shared database instance.
      *
      * @param runSpecification the benchmark run specification
      * @param platformConfig   the platform configuration
-     * @param inputPath        the file path of the input graph dataset
+     * @param database         the shared database instance (managed by ArcadedbPlatform)
      * @param outputPath       the file path of the output graph dataset
      */
     public ArcadeDBJob(RunSpecification runSpecification,
                        ArcadeDBConfiguration platformConfig,
-                       String inputPath,
+                       Database database,
                        String outputPath) {
 
         BenchmarkRun benchmarkRun = runSpecification.getBenchmarkRun();
@@ -67,84 +62,22 @@ public abstract class ArcadeDBJob {
         this.jobId = benchmarkRun.getId();
         this.logPath = benchmarkRunSetup.getLogDir().resolve("platform").toString();
 
-        this.inputPath = inputPath;
         this.outputPath = outputPath;
 
         this.graph = benchmarkRun.getGraph();
-        this.olap = platformConfig.isOlap();
-
-        LOG.info("Opening embedded database from path: " + inputPath);
-        this.database = new ArcadeDBDatabase(inputPath);
+        this.database = database;
     }
 
     /**
-     * Executes the platform job with the pre-defined parameters.
+     * Executes the platform job. The database is NOT closed here — it is
+     * managed by ArcadedbPlatform and reused across all algorithm runs.
      *
      * @return the exit code
      */
     public int execute() throws IOException {
-        try {
-            if (olap) {
-                buildGraphOLAP(database.get());
-            }
-            compute(
-                    database.get(),
-                    graph
-            );
-            serialize(
-                    database.get(),
-                    outputPath
-            );
-        } finally {
-            database.close();
-        }
+        compute(database, graph);
+        serialize(database, outputPath);
         return 0;
-    }
-
-    private void buildGraphOLAP(Database db) {
-        long start = System.currentTimeMillis();
-        try {
-            // Check if GAV was already restored from persistence on database open
-            GraphAnalyticalView gav = GraphAnalyticalViewRegistry.get(db, "benchmark");
-            if (gav != null) {
-                LOG.info("Graph Analytical View 'benchmark' already registered (restored from persistence), waiting for it to be ready...");
-                boolean ready = gav.awaitReady(600, TimeUnit.SECONDS);
-                long elapsed = System.currentTimeMillis() - start;
-                if (ready) {
-                    LOG.info("Graph Analytical View ready in {}.{}s - status: {}",
-                            elapsed / 1000, String.format("%03d", elapsed % 1000), gav.getStatus());
-                    LOG.info(gav.getStats());
-                    return;
-                }
-
-                // Restored GAV failed — drop it and build fresh
-                LOG.warn("Restored Graph Analytical View failed (status: {}), dropping and rebuilding...",
-                        gav.getStatus());
-                try {
-                    gav.drop();
-                } catch (Exception dropEx) {
-                    LOG.warn("Failed to drop failed GAV, forcing unregister: {}", dropEx.getMessage());
-                    GraphAnalyticalViewRegistry.unregister(db, "benchmark");
-                }
-            }
-
-            // Build a new GAV
-            LOG.info("Building Graph Analytical View (OLAP mode enabled)...");
-            gav = GraphAnalyticalView.builder(db)
-                    .withName("benchmark")
-                    .withVertexTypes(ArcadeDBConstants.VERTEX_TYPE)
-                    .withEdgeTypes(ArcadeDBConstants.EDGE_TYPE)
-                    .withEdgeProperties(ArcadeDBConstants.WEIGHT_PROPERTY)
-                    .build();
-            long elapsed = System.currentTimeMillis() - start;
-            LOG.info("Graph Analytical View built in {}.{}s - status: {}",
-                    elapsed / 1000, String.format("%03d", elapsed % 1000), gav.getStatus());
-            LOG.info(gav.getStats());
-        } catch (Exception e) {
-            long elapsed = System.currentTimeMillis() - start;
-            LOG.warn("GraphAnalyticalView build failed after {}s - falling back to OLTP: {}",
-                    elapsed / 1000, e.getMessage());
-        }
     }
 
     protected abstract void compute(

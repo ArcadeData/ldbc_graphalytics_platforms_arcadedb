@@ -25,6 +25,8 @@ import science.atlarge.graphalytics.arcadedb.ArcadeDBJob;
 import science.atlarge.graphalytics.arcadedb.ProcTimeLog;
 import science.atlarge.graphalytics.arcadedb.metrics.OutputSerializer;
 
+import com.arcadedb.database.Database;
+
 import java.io.IOException;
 
 /**
@@ -37,8 +39,8 @@ public class SingleSourceShortestPathsJob extends ArcadeDBJob {
     private final SingleSourceShortestPathsParameters parameters;
 
     public SingleSourceShortestPathsJob(RunSpecification runSpecification, ArcadeDBConfiguration platformConfig,
-                                        String inputPath, String outputPath) {
-        super(runSpecification, platformConfig, inputPath, outputPath);
+                                        Database database, String outputPath) {
+        super(runSpecification, platformConfig, database, outputPath);
         this.parameters = (SingleSourceShortestPathsParameters) runSpecification
                 .getBenchmarkRun()
                 .getAlgorithmParameters();

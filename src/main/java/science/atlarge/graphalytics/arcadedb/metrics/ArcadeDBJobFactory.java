@@ -15,6 +15,7 @@
  */
 package science.atlarge.graphalytics.arcadedb.metrics;
 
+import com.arcadedb.database.Database;
 import science.atlarge.graphalytics.execution.RunSpecification;
 import science.atlarge.graphalytics.arcadedb.ArcadeDBConfiguration;
 import science.atlarge.graphalytics.arcadedb.ArcadeDBJob;
@@ -26,8 +27,7 @@ import science.atlarge.graphalytics.arcadedb.metrics.sssp.SingleSourceShortestPa
 import science.atlarge.graphalytics.arcadedb.metrics.wcc.WeaklyConnectedComponentsJob;
 
 /**
- * Factory for creating ArcadeDB benchmark jobs. Uses ArcadeDB's native graph
- * algorithms invoked via Cypher procedures over the Bolt protocol.
+ * Factory for creating ArcadeDB benchmark jobs with a shared database instance.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -35,38 +35,38 @@ public class ArcadeDBJobFactory {
 
     protected RunSpecification runSpecification;
     protected ArcadeDBConfiguration platformConfig;
-    protected String inputPath;
+    protected Database database;
     protected String outputPath;
 
     public ArcadeDBJobFactory(RunSpecification runSpecification, ArcadeDBConfiguration platformConfig,
-                              String inputPath, String outputPath) {
+                              Database database, String outputPath) {
         this.runSpecification = runSpecification;
         this.platformConfig = platformConfig;
-        this.inputPath = inputPath;
+        this.database = database;
         this.outputPath = outputPath;
     }
 
     public ArcadeDBJob createBfsJob() {
-        return new BreadthFirstSearchJob(runSpecification, platformConfig, inputPath, outputPath);
+        return new BreadthFirstSearchJob(runSpecification, platformConfig, database, outputPath);
     }
 
     public ArcadeDBJob createCdlpJob() {
-        return new CommunityDetectionLPJob(runSpecification, platformConfig, inputPath, outputPath);
+        return new CommunityDetectionLPJob(runSpecification, platformConfig, database, outputPath);
     }
 
     public ArcadeDBJob createLccJob() {
-        return new LocalClusteringCoefficientJob(runSpecification, platformConfig, inputPath, outputPath);
+        return new LocalClusteringCoefficientJob(runSpecification, platformConfig, database, outputPath);
     }
 
     public ArcadeDBJob createPrJob() {
-        return new PageRankJob(runSpecification, platformConfig, inputPath, outputPath);
+        return new PageRankJob(runSpecification, platformConfig, database, outputPath);
     }
 
     public ArcadeDBJob createWccJob() {
-        return new WeaklyConnectedComponentsJob(runSpecification, platformConfig, inputPath, outputPath);
+        return new WeaklyConnectedComponentsJob(runSpecification, platformConfig, database, outputPath);
     }
 
     public ArcadeDBJob createSsspJob() {
-        return new SingleSourceShortestPathsJob(runSpecification, platformConfig, inputPath, outputPath);
+        return new SingleSourceShortestPathsJob(runSpecification, platformConfig, database, outputPath);
     }
 }
