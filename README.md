@@ -15,6 +15,31 @@ Uses ArcadeDB in **embedded mode** with the Graph Analytical View (GAV) engine, 
 | **LCC** (Local Clustering Coefficient) | Parallel sorted-merge triangle counting | O(E * sqrt(E)) |
 | **SSSP** (Single Source Shortest Paths) | Dijkstra with binary min-heap on CSR + columnar weights | O((V + E) * log(V)) |
 
+
+## LDBC Graphalytics — Official Framework Results (on battery)
+
+This benchmark run on a MacBook Intel, 2019, 32GB of RAM.
+
+```
+  ┌───────────┬──────────┬─────────┬────────────────────────┐
+  │ Algorithm │ ArcadeDB │  Neo4j  │         Status         │
+  ├───────────┼──────────┼─────────┼────────────────────────┤
+  │ PR        │ 16.12s   │ FAIL    │ Neo4j crashed          │
+  ├───────────┼──────────┼─────────┼────────────────────────┤
+  │ WCC       │ 8.36s    │ 49.22s  │ ArcadeDB 5.9x faster   │
+  ├───────────┼──────────┼─────────┼────────────────────────┤
+  │ BFS       │ 22.81s   │ FAIL    │ Neo4j crashed          │
+  ├───────────┼──────────┼─────────┼────────────────────────┤
+  │ CDLP      │ 30.38s   │ 336.42s │ ArcadeDB 11x faster    │
+  ├───────────┼──────────┼─────────┼────────────────────────┤
+  │ LCC       │ 43.75s   │ FAIL    │ Neo4j crashed          │
+  ├───────────┼──────────┼─────────┼────────────────────────┤
+  │ SSSP      │ 28.72s   │ FAIL    │ Neo4j crashed          │
+  ├───────────┼──────────┼─────────┼────────────────────────┤
+  │ Load      │ 95.04s   │ 28.87s  │ Neo4j 3.3x faster load │
+  └───────────┴──────────┴─────────┴────────────────────────┘
+```
+
 ## Prerequisites
 
 - Java 21 or later (required for `jdk.incubator.vector` SIMD support)
