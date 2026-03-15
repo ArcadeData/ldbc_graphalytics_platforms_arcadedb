@@ -15,10 +15,6 @@
  */
 package science.atlarge.graphalytics.arcadedb;
 
-import com.arcadedb.database.Database;
-import com.arcadedb.database.DatabaseFactory;
-import com.arcadedb.graph.olap.GraphAnalyticalView;
-import com.arcadedb.graph.olap.GraphAnalyticalViewBuilder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import science.atlarge.graphalytics.domain.algorithms.Algorithm;
@@ -35,10 +31,6 @@ import java.nio.file.Paths;
 /**
  * ArcadeDB platform driver for the LDBC Graphalytics benchmark.
  * Uses ArcadeDB in embedded mode with native graph algorithms.
- * <p>
- * When OLAP mode is enabled, the Graph Analytical View (GAV) is built during
- * the loadGraph phase (counted as load_time) and reused across all algorithm runs,
- * eliminating the overhead of rebuilding the CSR for each algorithm.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -48,9 +40,6 @@ public class ArcadedbPlatform implements Platform {
 	private static final String PLATFORM_NAME = "arcadedb";
 
 	public ArcadeDBLoader loader;
-	private ArcadeDBConfiguration platformConfig;
-	private Database database;
-	private String databasePath;
 	private int jobCounter = 0;
 	private int totalJobs = 0;
 
@@ -59,48 +48,34 @@ public class ArcadedbPlatform implements Platform {
 
 	@Override
 	public LoadedGraph loadGraph(FormattedGraph formattedGraph) throws Exception {
-		platformConfig = ArcadeDBConfiguration.parsePropertiesFile();
+		ArcadeDBConfiguration platformConfig = ArcadeDBConfiguration.parsePropertiesFile();
 		loader = new ArcadeDBLoader(formattedGraph, platformConfig);
 
 		LOG.info("Loading graph " + formattedGraph.getName());
 		Path loadedPath = Paths.get("./intermediate").resolve(formattedGraph.getName());
-		databasePath = loadedPath.resolve("database").toString();
+		String databasePath = loadedPath.resolve("database").toString();
 
 		try {
 			int exitCode = loader.load(databasePath);
-			if (exitCode != 0)
+			if (exitCode != 0) {
 				throw new PlatformExecutionException("ArcadeDB exited with an error code: " + exitCode);
+			}
 		} catch (Exception e) {
 			throw new PlatformExecutionException("Failed to load an ArcadeDB dataset.", e);
 		}
-
-		// Open database and keep it open for all algorithm runs
-		LOG.info("Opening database for benchmark runs: " + databasePath);
-		database = new DatabaseFactory(databasePath).open();
-
-		// Build GAV during load phase (counted as load_time, not processing_time)
-		if (platformConfig.isOlap()) {
-			buildGraphOLAP(database, formattedGraph.hasEdgeProperties());
-		}
-
 		LOG.info("Loaded graph " + formattedGraph.getName());
+
 		return new LoadedGraph(formattedGraph, databasePath);
 	}
 
 	@Override
 	public void deleteGraph(LoadedGraph loadedGraph) throws Exception {
 		LOG.info("Unloading graph " + loadedGraph.getFormattedGraph().getName());
-
-		// Close the shared database
-		if (database != null) {
-			database.close();
-			database = null;
-		}
-
 		try {
 			int exitCode = loader.unload(loadedGraph.getLoadedPath());
-			if (exitCode != 0)
+			if (exitCode != 0) {
 				throw new PlatformExecutionException("ArcadeDB exited with an error code: " + exitCode);
+			}
 		} catch (Exception e) {
 			throw new PlatformExecutionException("Failed to unload an ArcadeDB dataset.", e);
 		}
@@ -121,12 +96,15 @@ public class ArcadedbPlatform implements Platform {
 	public void run(RunSpecification runSpecification) throws PlatformExecutionException {
 		BenchmarkRun benchmarkRun = runSpecification.getBenchmarkRun();
 		BenchmarkRunSetup benchmarkRunSetup = runSpecification.getBenchmarkRunSetup();
+		RuntimeSetup runtimeSetup = runSpecification.getRuntimeSetup();
 
 		Algorithm algorithm = benchmarkRun.getAlgorithm();
+		ArcadeDBConfiguration platformConfig = ArcadeDBConfiguration.parsePropertiesFile();
+		String inputPath = runtimeSetup.getLoadedGraph().getLoadedPath();
 		String outputPath = benchmarkRunSetup.getOutputDir().resolve(benchmarkRun.getName()).toAbsolutePath().toString();
 
 		ArcadeDBJobFactory jobFactory = new ArcadeDBJobFactory(
-				runSpecification, platformConfig, database, outputPath
+				runSpecification, platformConfig, inputPath, outputPath
 		);
 
 		ArcadeDBJob job;
@@ -165,8 +143,9 @@ public class ArcadedbPlatform implements Platform {
 			long startTime = System.currentTimeMillis();
 			int exitCode = job.execute();
 			long elapsed = System.currentTimeMillis() - startTime;
-			if (exitCode != 0)
+			if (exitCode != 0) {
 				throw new PlatformExecutionException("ArcadeDB exited with an error code: " + exitCode);
+			}
 			LOG.info("=== [Job {}/{}] Completed {} in {}.{}s ===",
 					jobCounter, totalJobs,
 					benchmarkRun.getAlgorithm().getName(),
@@ -195,26 +174,5 @@ public class ArcadedbPlatform implements Platform {
 	@Override
 	public String getPlatformName() {
 		return PLATFORM_NAME;
-	}
-
-	private void buildGraphOLAP(Database db, boolean hasEdgeProperties) {
-		long start = System.currentTimeMillis();
-		try {
-			LOG.info("Building Graph Analytical View (OLAP mode enabled)...");
-			GraphAnalyticalViewBuilder builder = GraphAnalyticalView.builder(db)
-					.withVertexTypes(ArcadeDBConstants.VERTEX_TYPE)
-					.withEdgeTypes(ArcadeDBConstants.EDGE_TYPE);
-			if (hasEdgeProperties)
-				builder.withEdgeProperties(ArcadeDBConstants.WEIGHT_PROPERTY);
-			builder.build();
-
-			long elapsed = System.currentTimeMillis() - start;
-			LOG.info("Graph Analytical View built in {}.{}s",
-					elapsed / 1000, String.format("%03d", elapsed % 1000));
-		} catch (Exception e) {
-			long elapsed = System.currentTimeMillis() - start;
-			LOG.warn("GraphAnalyticalView build failed after {}s - falling back to OLTP: {}",
-					elapsed / 1000, e.getMessage());
-		}
 	}
 }
