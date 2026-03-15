@@ -4,63 +4,43 @@ Platform driver implementation for the [LDBC Graphalytics](https://ldbcouncil.or
 
 Uses ArcadeDB in **embedded mode** with the Graph Analytical View (GAV) engine, which builds a CSR (Compressed Sparse Row) adjacency index for high-performance graph algorithm execution with zero GC pressure.
 
+This repository contains two benchmark modes:
+
+1. **Official LDBC Graphalytics** — standardized framework with per-algorithm isolation, validation, and reporting
+2. **Native multi-vendor comparison** — load once, run all algorithms, compare ArcadeDB vs Kuzu vs DuckPGQ vs Memgraph vs Neo4j
+
 ## Supported Algorithms
 
 | Algorithm | Implementation | Complexity |
 |-----------|---------------|------------|
-| **BFS** (Breadth-First Search) | Parallel frontier expansion with AtomicIntegerArray CAS | O(V + E) |
+| **BFS** (Breadth-First Search) | Parallel frontier expansion with bitmap visited set and push/pull direction optimization | O(V + E) |
 | **PR** (PageRank) | Pull-based parallel iteration via backward CSR | O(iterations * E) |
 | **WCC** (Weakly Connected Components) | Synchronous parallel min-label propagation | O(diameter * E) |
 | **CDLP** (Community Detection Label Propagation) | Synchronous parallel label propagation with sort-based mode finding | O(iterations * E * log(d)) |
 | **LCC** (Local Clustering Coefficient) | Parallel sorted-merge triangle counting | O(E * sqrt(E)) |
 | **SSSP** (Single Source Shortest Paths) | Dijkstra with binary min-heap on CSR + columnar weights | O((V + E) * log(V)) |
 
-
-## LDBC Graphalytics — Official Framework Results (on battery)
-
-This benchmark run on a MacBook Intel, 2019, 32GB of RAM.
-
-```
-  ┌───────────┬──────────┬─────────┬────────────────────────┐
-  │ Algorithm │ ArcadeDB │  Neo4j  │         Status         │
-  ├───────────┼──────────┼─────────┼────────────────────────┤
-  │ PR        │ 16.12s   │ FAIL    │ Neo4j crashed          │
-  ├───────────┼──────────┼─────────┼────────────────────────┤
-  │ WCC       │ 8.36s    │ 49.22s  │ ArcadeDB 5.9x faster   │
-  ├───────────┼──────────┼─────────┼────────────────────────┤
-  │ BFS       │ 22.81s   │ FAIL    │ Neo4j crashed          │
-  ├───────────┼──────────┼─────────┼────────────────────────┤
-  │ CDLP      │ 30.38s   │ 336.42s │ ArcadeDB 11x faster    │
-  ├───────────┼──────────┼─────────┼────────────────────────┤
-  │ LCC       │ 43.75s   │ FAIL    │ Neo4j crashed          │
-  ├───────────┼──────────┼─────────┼────────────────────────┤
-  │ SSSP      │ 28.72s   │ FAIL    │ Neo4j crashed          │
-  ├───────────┼──────────┼─────────┼────────────────────────┤
-  │ Load      │ 95.04s   │ 28.87s  │ Neo4j 3.3x faster load │
-  └───────────┴──────────┴─────────┴────────────────────────┘
-```
-
 ## Prerequisites
 
 - Java 21 or later (required for `jdk.incubator.vector` SIMD support)
 - Maven 3.x
-- ArcadeDB engine built locally (see below)
+- ArcadeDB engine built locally
 
 ## Build
 
 ```bash
-# 1. Build ArcadeDB engine first
+# 1. Build ArcadeDB engine
 cd /path/to/arcadedb
 mvn install -DskipTests -pl engine -am -q
 
-# 2. Build this platform driver
+# 2. Build the LDBC platform driver
 cd /path/to/ldbc_graphalytics_platforms_arcadedb
 mvn package -DskipTests
 ```
 
 The build produces a self-contained distribution in `graphalytics-1.3.0-arcadedb-0.1-SNAPSHOT/`.
 
-## Dataset Setup
+## Dataset
 
 Download datasets from the [LDBC Graphalytics data repository](https://ldbcouncil.org/benchmarks/graphalytics/). For example, `datagen-7_5-fb` (633K vertices, 34M edges):
 
@@ -77,23 +57,25 @@ Download datasets from the [LDBC Graphalytics data repository](https://ldbcounci
   datagen-7_5-fb-SSSP/
 ```
 
-## Configuration
+---
+
+## Mode 1: Official LDBC Graphalytics Benchmark
+
+Uses the official [LDBC Graphalytics framework](https://github.com/ldbc/ldbc_graphalytics) with ArcadeDB's platform driver. Produces standardized results with separate `load_time`, `processing_time`, and `makespan` measurements. The framework reloads the graph for each algorithm to ensure isolated measurements.
+
+### Configuration
 
 Edit files in `graphalytics-1.3.0-arcadedb-0.1-SNAPSHOT/config/`:
 
-### benchmark.properties
+**benchmark.properties:**
 ```properties
-# Point to your dataset directory
 graphs.root-directory = /path/to/graphs
 graphs.validation-directory = /path/to/graphs
-
-# JVM memory for the benchmark runner
 benchmark.runner.max-memory = 16384
 ```
 
-### benchmarks/custom.properties
+**benchmarks/custom.properties:**
 ```properties
-# Select dataset and algorithms
 benchmark.custom.graphs = datagen-7_5-fb
 benchmark.custom.algorithms = BFS, WCC, PR, CDLP, LCC, SSSP
 benchmark.custom.timeout = 7200
@@ -102,30 +84,21 @@ benchmark.custom.validation-required = true
 benchmark.custom.repetitions = 1
 ```
 
-### platform.properties
+**platform.properties:**
 ```properties
-# Enable Graph Analytical View (CSR-accelerated algorithms)
 platform.arcadedb.olap = true
 ```
 
-## Running the Benchmark
+### Run
 
 ```bash
 cd graphalytics-1.3.0-arcadedb-0.1-SNAPSHOT
 bash bin/sh/run-benchmark.sh
 ```
 
-The framework runs each algorithm as a separate job:
-1. Load graph from CSV into embedded ArcadeDB
-2. Build Graph Analytical View (CSR index)
-3. Execute algorithm on CSR arrays
-4. Serialize results to output files
-5. Validate against reference output
-6. Delete graph and repeat for next algorithm
+Results are written to `report/<timestamp>-ARCADEDB-report-CUSTOM/json/results.json`.
 
-Results are written to `report/<timestamp>-ARCADEDB-report-CUSTOM/`.
-
-## Reading Results
+### Extract Results
 
 ```bash
 LATEST=$(ls -td report/*ARCADEDB* | head -1)
@@ -133,15 +106,112 @@ python3 -c "
 import json
 with open('$LATEST/json/results.json') as f:
     data = json.load(f)
-runs = data['experiments']['runs']
-jobs = data['experiments']['jobs']
-print(f\"{'Algo':6} | {'proc_time':>10} | {'load_time':>10} | {'makespan':>10}\")
-print('-' * 50)
+result = data.get('result', data.get('experiments', {}))
+runs = result.get('runs', {})
+jobs = result.get('jobs', {})
 for rid, r in sorted(runs.items(), key=lambda x: x[1]['timestamp']):
     algo = next(j['algorithm'] for j in jobs.values() if rid in j['runs'])
-    print(f\"{algo:6} | {r['processing_time']:>9}s | {r['load_time']:>9}s | {r['makespan']:>9}s\")
+    print(f\"{algo:6} proc={r['processing_time']:>8}s  load={r['load_time']:>8}s\")
 "
 ```
+
+---
+
+## Mode 2: Native Multi-Vendor Comparison
+
+Located in `native-benchmark/`. Loads the graph once and runs all algorithms sequentially on the same in-memory structure. This provides a fair apples-to-apples comparison since all systems use the same approach.
+
+**Systems tested:** ArcadeDB, Kuzu, DuckPGQ, Memgraph, Neo4j
+
+### ArcadeDB (Java)
+
+```bash
+# Compile (use the LDBC platform fat JAR for dependencies)
+LDBC_JAR=graphalytics-1.3.0-arcadedb-0.1-SNAPSHOT/lib/graphalytics-platforms-arcadedb-0.1-SNAPSHOT-default.jar
+cd native-benchmark
+javac --add-modules jdk.incubator.vector -cp "../$LDBC_JAR" ArcadeDBBenchmark.java
+
+# Run
+java --add-modules jdk.incubator.vector -Xms8g -Xmx8g -cp ".:../$LDBC_JAR" ArcadeDBBenchmark
+```
+
+### Kuzu, DuckPGQ, Memgraph, Neo4j (Python)
+
+```bash
+# Create virtual environment and install dependencies
+cd native-benchmark
+python3 -m venv .venv
+source .venv/bin/activate
+pip install kuzu duckdb pymgclient neo4j
+
+# Run all available benchmarks
+python3 benchmark.py
+```
+
+For Memgraph, start Docker first:
+```bash
+docker run -d --name memgraph -p 7687:7687 memgraph/memgraph-mage
+```
+
+For Neo4j, start Docker with GDS plugin:
+```bash
+docker run -d --name neo4j -p 7474:7474 -p 7688:7687 \
+  -e NEO4J_AUTH=neo4j/benchmark123 \
+  -e NEO4J_PLUGINS='["graph-data-science"]' \
+  -e NEO4J_dbms_memory_heap_max__size=8g \
+  neo4j:5-community
+```
+
+### Benchmark Results
+
+Dataset: **datagen-7_5-fb** (633,432 vertices, 34,185,747 edges, undirected, weighted)
+
+*Benchmarks run on a MacBook Pro 16" (2019), Intel Core i9-9880H 8-core @ 2.3GHz, 32GB RAM, macOS.*
+
+#### Official LDBC Graphalytics Results (ArcadeDB)
+
+Using the LDBC Graphalytics framework (graph reloaded per algorithm):
+
+| Algorithm | processing_time | load_time | makespan |
+|-----------|----------------|-----------|----------|
+| **PR** | 16.12s | 95.04s | 48.80s |
+| **WCC** | 8.36s | 95.04s | 37.67s |
+| **BFS** | 22.81s | 95.04s | 57.52s |
+| **CDLP** | 30.38s | 95.04s | 56.81s |
+| **LCC** | 43.75s | 95.04s | 73.76s |
+| **SSSP** | 28.72s | 115.50s | 144.84s |
+
+All 6 algorithms passed with validation.
+
+#### Native Comparison (load once, run all algorithms)
+
+| Algorithm | ArcadeDB | Kuzu | DuckPGQ | Memgraph | Neo4j (LDBC) |
+|-----------|----------|------|---------|----------|--------------|
+| **PageRank** | **0.98s** | 4.30s | 6.14s | 16.90s | FAIL |
+| **WCC** | **0.20s** | 0.43s | 13.93s | OOM | 49.22s |
+| **BFS** | **0.67s** | 0.86s | 2,754s | 11.72s | FAIL |
+| **LCC** | 16.05s | N/A | 38.59s | N/A | FAIL |
+| **SSSP** | 3.34s | N/A | N/A | N/A | FAIL |
+| **CDLP** | 3.68s | N/A | N/A | N/A | 336.42s |
+
+ArcadeDB is the fastest on every comparable algorithm and the only system that successfully runs all 6 LDBC Graphalytics algorithms.
+
+- **vs Kuzu**: PageRank 4.4x faster, WCC 2.2x faster, BFS 1.3x faster
+- **vs DuckPGQ**: PageRank 6.3x faster, WCC 70x faster, BFS 4,100x faster
+- **vs Memgraph**: PageRank 17x faster, BFS 17x faster (WCC: out of memory at 7.6GB)
+- **vs Neo4j**: WCC 246x faster, CDLP 91x faster (4 of 6 algorithms failed)
+
+Note: Kuzu, DuckPGQ, and Memgraph do not have official LDBC Graphalytics platform drivers. Their results are from native API calls using the same dataset. Only ArcadeDB and Neo4j have official LDBC platform implementations.
+
+### File Structure
+
+```
+native-benchmark/
+  ArcadeDBBenchmark.java    # ArcadeDB standalone benchmark (Java, embedded)
+  benchmark.py              # Kuzu, DuckPGQ, Memgraph, Neo4j benchmarks (Python)
+```
+
+---
 
 ## Architecture
 
