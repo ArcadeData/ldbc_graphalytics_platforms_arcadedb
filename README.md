@@ -121,7 +121,7 @@ for rid, r in sorted(runs.items(), key=lambda x: x[1]['timestamp']):
 
 Located in `native-benchmark/`. Loads the graph once and runs all algorithms sequentially on the same in-memory structure. This provides a fair apples-to-apples comparison since all systems use the same approach.
 
-**Systems tested:** ArcadeDB, Kuzu, DuckPGQ, Memgraph, Neo4j
+**Systems tested:** ArcadeDB, Kuzu, DuckPGQ, Memgraph, Neo4j, ArangoDB
 
 ### ArcadeDB (Java)
 
@@ -135,14 +135,14 @@ javac --add-modules jdk.incubator.vector -cp "../$LDBC_JAR" ArcadeDBBenchmark.ja
 java --add-modules jdk.incubator.vector -Xms8g -Xmx8g -cp ".:../$LDBC_JAR" ArcadeDBBenchmark
 ```
 
-### Kuzu, DuckPGQ, Memgraph, Neo4j (Python)
+### Kuzu, DuckPGQ, Memgraph, Neo4j, ArangoDB (Python)
 
 ```bash
 # Create virtual environment and install dependencies
 cd native-benchmark
 python3 -m venv .venv
 source .venv/bin/activate
-pip install kuzu duckdb pymgclient neo4j
+pip install kuzu duckdb pymgclient neo4j python-arango
 
 # Run all available benchmarks
 python3 benchmark.py
@@ -158,8 +158,12 @@ For Neo4j, start Docker with GDS plugin:
 docker run -d --name neo4j -p 7474:7474 -p 7688:7687 \
   -e NEO4J_AUTH=neo4j/benchmark123 \
   -e NEO4J_PLUGINS='["graph-data-science"]' \
-  -e NEO4J_dbms_memory_heap_max__size=8g \
-  neo4j:5-community
+  neo4j:2026-community
+```
+
+For ArangoDB, start Docker (use 3.11 — Pregel was removed in 3.12):
+```bash
+docker run -d --name arangodb -p 8529:8529 -e ARANGO_ROOT_PASSWORD=benchmark arangodb:3.11
 ```
 
 ### Benchmark Results
@@ -187,39 +191,43 @@ All 6 algorithms passed with validation.
 
 | System | Version | Edition | License | Mode | Overhead |
 |--------|---------|---------|---------|------|----------|
+| System | Version | Edition | License | Mode | Overhead |
+|--------|---------|---------|---------|------|----------|
 | **ArcadeDB** | 26.4.1 | Open Source | Apache 2.0 | Embedded (in-process, Java 21) | None |
 | **Kuzu** | 0.11.3 | Open Source | MIT | Embedded (in-process, C++ via Python) | None |
 | **DuckPGQ** | DuckDB 1.5.0 | Open Source | MIT | Embedded (in-process, C++ via Python) | None |
 | **Memgraph** | 3.8.1 | Community | BSL 1.1 | Server (Docker, Bolt protocol) | Network + Docker |
-| **Neo4j** | 5 | Community | GPL 3.0 | Server (Docker, Bolt protocol) | Network + Docker |
-| **ArangoDB** | 3.12.8 | Community | Apache 2.0 | Server (Docker, HTTP API) | Network + Docker |
+| **Neo4j** | 2026 | Community | GPL 3.0 | Server (Docker, Bolt protocol) | Network + Docker |
+| **ArangoDB** | 3.11.14 | Community | Apache 2.0 | Server (Docker, HTTP API) | Network + Docker |
 
-ArcadeDB, Kuzu, and DuckPGQ all run embedded (in-process, no network overhead). Memgraph and Neo4j run as Docker containers accessed via the Bolt protocol, which adds network serialization overhead. This disadvantages Memgraph and Neo4j on data loading, but has minimal impact on algorithm execution since the computation happens server-side.
+ArcadeDB, Kuzu, and DuckPGQ all run embedded (in-process, no network overhead). Memgraph, Neo4j, and ArangoDB run as Docker containers, which adds network serialization overhead. This mainly affects data loading times, not algorithm execution (computation happens server-side).
 
-| Algorithm | ArcadeDB | Kuzu | DuckPGQ | Memgraph | Neo4j (LDBC) |
-|-----------|----------|------|---------|----------|--------------|
-| **PageRank** | **0.98s** | 4.30s | 6.14s | 16.90s | FAIL |
-| **WCC** | **0.20s** | 0.43s | 13.93s | OOM | 49.22s |
-| **BFS** | **0.67s** | 0.86s | 2,754s | 11.72s | FAIL |
-| **LCC** | 16.05s | N/A | 38.59s | N/A | FAIL |
-| **SSSP** | 3.34s | N/A | N/A | N/A | FAIL |
-| **CDLP** | 3.68s | N/A | N/A | N/A | 336.42s |
+| Algorithm | ArcadeDB | Kuzu | DuckPGQ | Memgraph | Neo4j | ArangoDB |
+|-----------|----------|------|---------|----------|-------|----------|
+| **PageRank** | **0.98s** | 4.30s | 6.14s | 16.90s | — | 130.16s |
+| **WCC** | **0.20s** | 0.43s | 13.93s | OOM | — | 77.92s |
+| **BFS** | **0.67s** | 0.86s | 2,754s | 11.72s | — | timeout |
+| **LCC** | 16.05s | N/A | 38.59s | N/A | — | N/A |
+| **SSSP** | 3.34s | N/A | N/A | N/A | — | N/A |
+| **CDLP** | 3.68s | N/A | N/A | N/A | — | N/A |
+
+*Neo4j results pending — Neo4j 2026 Community Edition with GDS plugin not yet benchmarked on this dataset.*
 
 ArcadeDB is the fastest on every comparable algorithm and the only system that successfully runs all 6 LDBC Graphalytics algorithms.
 
 - **vs Kuzu**: PageRank 4.4x faster, WCC 2.2x faster, BFS 1.3x faster
 - **vs DuckPGQ**: PageRank 6.3x faster, WCC 70x faster, BFS 4,100x faster
 - **vs Memgraph**: PageRank 17x faster, BFS 17x faster (WCC: out of memory at 7.6GB)
-- **vs Neo4j**: WCC 246x faster, CDLP 91x faster (4 of 6 algorithms failed)
+- **vs ArangoDB**: PageRank 133x faster, WCC 390x faster (BFS: timeout via AQL traversal)
 
-Note: Kuzu, DuckPGQ, and Memgraph do not have official LDBC Graphalytics platform drivers. Their results are from native API calls using the same dataset. Only ArcadeDB and Neo4j have official LDBC platform implementations.
+Note: None of the competing systems have official LDBC Graphalytics platform drivers. Their results are from native API calls using the same dataset. Only ArcadeDB has an official LDBC Graphalytics platform implementation.
 
 ### File Structure
 
 ```
 native-benchmark/
   ArcadeDBBenchmark.java    # ArcadeDB standalone benchmark (Java, embedded)
-  benchmark.py              # Kuzu, DuckPGQ, Memgraph, Neo4j benchmarks (Python)
+  benchmark.py              # Kuzu, DuckPGQ, Memgraph, Neo4j, ArangoDB benchmarks (Python)
 ```
 
 ---
