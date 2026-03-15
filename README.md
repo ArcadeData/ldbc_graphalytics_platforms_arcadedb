@@ -185,6 +185,16 @@ All 6 algorithms passed with validation.
 
 #### Native Comparison (load once, run all algorithms)
 
+| System | Mode | Language | Runtime | Overhead |
+|--------|------|----------|---------|----------|
+| **ArcadeDB** | Embedded (in-process) | Java 21 | JVM | None |
+| **Kuzu** | Embedded (in-process) | C++ via Python bindings | Native | None |
+| **DuckPGQ** | Embedded (in-process) | C++ via Python bindings | Native | None |
+| **Memgraph** | Server (Docker) | C++ | Native | Docker + Bolt protocol |
+| **Neo4j** | Server (Docker) | Java | JVM | Docker + Bolt protocol |
+
+ArcadeDB, Kuzu, and DuckPGQ all run embedded (in-process, no network overhead). Memgraph and Neo4j run as Docker containers accessed via the Bolt protocol, which adds network serialization overhead. This disadvantages Memgraph and Neo4j on data loading, but has minimal impact on algorithm execution since the computation happens server-side.
+
 | Algorithm | ArcadeDB | Kuzu | DuckPGQ | Memgraph | Neo4j (LDBC) |
 |-----------|----------|------|---------|----------|--------------|
 | **PageRank** | **0.98s** | 4.30s | 6.14s | 16.90s | FAIL |
