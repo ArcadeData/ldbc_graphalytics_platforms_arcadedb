@@ -125,6 +125,7 @@ public abstract class ArcadeDBJob {
             LOG.info("Building Graph Analytical View (OLAP mode enabled)...");
             gav = GraphAnalyticalView.builder(db)
                     .withName("benchmark")
+                    .skipPersistence()
                     .withVertexTypes(ArcadeDBConstants.VERTEX_TYPE)
                     .withEdgeTypes(ArcadeDBConstants.EDGE_TYPE)
                     .withEdgeProperties(ArcadeDBConstants.WEIGHT_PROPERTY)
