@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
 """
-LDBC Graphalytics Benchmark: Kuzu vs DuckPGQ vs Memgraph
+LDBC Graphalytics Benchmark: Kuzu vs DuckPGQ vs Memgraph vs Neo4j vs ArangoDB
 Dataset: datagen-7_5-fb (633K vertices, 34M edges, undirected, weighted)
-Algorithms: BFS, PageRank, WCC, LCC, SSSP
+Algorithms: PageRank, WCC, BFS, LCC, SSSP, CDLP
+
+Usage:
+  python3 benchmark.py                     # Run all, skip loading if data exists
+  python3 benchmark.py --reset             # Delete all data and reload from scratch
+  python3 benchmark.py kuzu duckpgq        # Run only specific systems
+  python3 benchmark.py --reset memgraph    # Reset and run only Memgraph
 """
 
 import time
 import os
 import sys
 import shutil
+import argparse
 
 GRAPHS_DIR = "/Users/luca/graphs"
 VERTEX_FILE = os.path.join(GRAPHS_DIR, "datagen-7_5-fb.v")
@@ -16,6 +23,11 @@ EDGE_FILE = os.path.join(GRAPHS_DIR, "datagen-7_5-fb.e")
 SOURCE_VERTEX = 6
 PR_DAMPING = 0.85
 PR_ITERATIONS = 10
+EXPECTED_VERTICES = 633432
+EXPECTED_EDGES = 34185747
+
+# Global flag set by --reset
+RESET = False
 
 
 def fmt(val):
@@ -34,34 +46,52 @@ def run_kuzu_benchmark():
     print("=" * 70)
 
     db_path = "/tmp/kuzu_benchmark"
-    if os.path.isdir(db_path):
-        shutil.rmtree(db_path)
-    elif os.path.exists(db_path):
-        os.remove(db_path)
-
     results = {}
 
-    # --- LOAD DATA ---
-    print("\n[Kuzu] Loading data...")
-    start = time.perf_counter()
-    db = kuzu.Database(db_path)
-    conn = kuzu.Connection(db)
+    if RESET:
+        if os.path.isdir(db_path):
+            shutil.rmtree(db_path)
+        elif os.path.exists(db_path):
+            os.remove(db_path)
 
-    conn.execute("CREATE NODE TABLE Node(id INT64, PRIMARY KEY(id))")
-    conn.execute("CREATE REL TABLE Edge(FROM Node TO Node, weight DOUBLE)")
+    # Check if data already loaded
+    needs_load = True
+    if os.path.exists(db_path) and not RESET:
+        try:
+            db = kuzu.Database(db_path)
+            conn = kuzu.Connection(db)
+            r = conn.execute("MATCH ()-[e:Edge]->() RETURN count(e) AS cnt")
+            if r.has_next() and r.get_next()[0] > 0:
+                needs_load = False
+                print("\n[Kuzu] Data already loaded, skipping import")
+        except Exception:
+            needs_load = True
 
-    # Kuzu needs .csv extension
-    v_csv = "/tmp/ldbc_vertices.csv"
-    e_csv = "/tmp/ldbc_edges.csv"
-    shutil.copy(VERTEX_FILE, v_csv)
-    shutil.copy(EDGE_FILE, e_csv)
+    if needs_load:
+        if os.path.isdir(db_path):
+            shutil.rmtree(db_path)
+        elif os.path.exists(db_path):
+            os.remove(db_path)
 
-    conn.execute(f"COPY Node FROM '{v_csv}' (HEADER=false)")
-    conn.execute(f"COPY Edge FROM '{e_csv}' (HEADER=false, DELIM=' ')")
+        print("\n[Kuzu] Loading data...")
+        start = time.perf_counter()
+        db = kuzu.Database(db_path)
+        conn = kuzu.Connection(db)
 
-    load_time = time.perf_counter() - start
-    results["load"] = load_time
-    print(f"  Load time: {load_time:.2f}s")
+        conn.execute("CREATE NODE TABLE Node(id INT64, PRIMARY KEY(id))")
+        conn.execute("CREATE REL TABLE Edge(FROM Node TO Node, weight DOUBLE)")
+
+        v_csv = "/tmp/ldbc_vertices.csv"
+        e_csv = "/tmp/ldbc_edges.csv"
+        shutil.copy(VERTEX_FILE, v_csv)
+        shutil.copy(EDGE_FILE, e_csv)
+
+        conn.execute(f"COPY Node FROM '{v_csv}' (HEADER=false)")
+        conn.execute(f"COPY Edge FROM '{e_csv}' (HEADER=false, DELIM=' ')")
+
+        load_time = time.perf_counter() - start
+        results["load"] = load_time
+        print(f"  Load time: {load_time:.2f}s")
 
     # Verify
     r = conn.execute("MATCH (n:Node) RETURN count(n) AS cnt")
@@ -333,74 +363,87 @@ def run_memgraph_benchmark():
 
     cursor = conn.cursor()
 
-    # --- LOAD DATA ---
-    print("\n[Memgraph] Loading data...")
-    start = time.perf_counter()
+    # Check if data already loaded
+    needs_load = True
+    if not RESET:
+        try:
+            cursor.execute("MATCH ()-[e]->() RETURN count(e) AS c")
+            edge_count = cursor.fetchone()[0]
+            if edge_count > 0:
+                needs_load = False
+                print(f"\n[Memgraph] Data already loaded ({edge_count} edges), skipping import")
+        except Exception:
+            pass
 
-    conn.autocommit = True
-    cursor.execute("MATCH (n) DETACH DELETE n")
-    try:
-        cursor.execute("DROP INDEX ON :Node(id)")
-    except Exception:
-        pass
-    conn.autocommit = False
+    if needs_load:
+        # --- LOAD DATA ---
+        print("\n[Memgraph] Loading data...")
+        start = time.perf_counter()
 
-    # Load vertices in batches
-    print("  Loading vertices...")
-    batch_size = 50000
-    with open(VERTEX_FILE) as f:
-        batch = []
-        for line in f:
-            vid = int(line.strip())
-            batch.append(vid)
-            if len(batch) >= batch_size:
-                cursor.execute(
-                    "UNWIND $ids AS id CREATE (:Node {id: id})",
-                    {"ids": batch}
-                )
+        conn.autocommit = True
+        cursor.execute("MATCH (n) DETACH DELETE n")
+        try:
+            cursor.execute("DROP INDEX ON :Node(id)")
+        except Exception:
+            pass
+        conn.autocommit = False
+
+        # Load vertices in batches
+        print("  Loading vertices...")
+        batch_size = 50000
+        with open(VERTEX_FILE) as f:
+            batch = []
+            for line in f:
+                vid = int(line.strip())
+                batch.append(vid)
+                if len(batch) >= batch_size:
+                    cursor.execute(
+                        "UNWIND $ids AS id CREATE (:Node {id: id})",
+                        {"ids": batch}
+                    )
+                    conn.commit()
+                    batch = []
+            if batch:
+                cursor.execute("UNWIND $ids AS id CREATE (:Node {id: id})", {"ids": batch})
                 conn.commit()
-                batch = []
-        if batch:
-            cursor.execute("UNWIND $ids AS id CREATE (:Node {id: id})", {"ids": batch})
-            conn.commit()
 
-    conn.commit()
-    conn.autocommit = True
-    cursor.execute("CREATE INDEX ON :Node(id)")
-    conn.autocommit = False
+        conn.commit()
+        conn.autocommit = True
+        cursor.execute("CREATE INDEX ON :Node(id)")
+        conn.autocommit = False
 
-    # Load edges in batches
-    print("  Loading edges...")
-    with open(EDGE_FILE) as f:
-        batch = []
-        for line in f:
-            parts = line.strip().split()
-            batch.append({"src": int(parts[0]), "dst": int(parts[1]),
-                          "weight": float(parts[2])})
-            if len(batch) >= batch_size:
+        # Load edges in batches
+        print("  Loading edges...")
+        with open(EDGE_FILE) as f:
+            batch = []
+            for line in f:
+                parts = line.strip().split()
+                batch.append({"src": int(parts[0]), "dst": int(parts[1]),
+                              "weight": float(parts[2])})
+                if len(batch) >= batch_size:
+                    cursor.execute("""
+                        UNWIND $edges AS e
+                        MATCH (a:Node {id: e.src}), (b:Node {id: e.dst})
+                        CREATE (a)-[:EDGE {weight: e.weight}]->(b)
+                    """, {"edges": batch})
+                    conn.commit()
+                    batch = []
+            if batch:
                 cursor.execute("""
                     UNWIND $edges AS e
                     MATCH (a:Node {id: e.src}), (b:Node {id: e.dst})
                     CREATE (a)-[:EDGE {weight: e.weight}]->(b)
                 """, {"edges": batch})
                 conn.commit()
-                batch = []
-        if batch:
-            cursor.execute("""
-                UNWIND $edges AS e
-                MATCH (a:Node {id: e.src}), (b:Node {id: e.dst})
-                CREATE (a)-[:EDGE {weight: e.weight}]->(b)
-            """, {"edges": batch})
-            conn.commit()
 
-    load_time = time.perf_counter() - start
-    results["load"] = load_time
-    print(f"  Load time: {load_time:.2f}s")
+        load_time = time.perf_counter() - start
+        results["load"] = load_time
+        print(f"  Load time: {load_time:.2f}s")
 
-    cursor.execute("MATCH (n) RETURN count(n)")
-    print(f"  Vertices: {cursor.fetchone()[0]}")
-    cursor.execute("MATCH ()-[e]->() RETURN count(e)")
-    print(f"  Edges: {cursor.fetchone()[0]}")
+        cursor.execute("MATCH (n) RETURN count(n)")
+        print(f"  Vertices: {cursor.fetchone()[0]}")
+        cursor.execute("MATCH ()-[e]->() RETURN count(e)")
+        print(f"  Edges: {cursor.fetchone()[0]}")
 
     # --- BFS ---
     print("\n[Memgraph] Running BFS from vertex 6...")
@@ -537,63 +580,75 @@ def run_neo4j_benchmark():
         print("  Start with: docker run -d --name neo4j -p 7474:7474 -p 7688:7687 -e NEO4J_AUTH=neo4j/benchmark123 -e NEO4J_PLUGINS='[\"graph-data-science\"]' neo4j:2026-community")
         return {"error": str(e)}
 
-    # --- LOAD DATA ---
-    print("\n[Neo4j] Loading data...")
-    start = time.perf_counter()
+    # Check if data already loaded
+    needs_load = True
+    if not RESET:
+        try:
+            with driver.session() as session:
+                r = session.run("MATCH ()-[e]->() RETURN count(e) AS c").single()
+                if r and r["c"] > 0:
+                    needs_load = False
+                    print(f"\n[Neo4j] Data already loaded ({r['c']} edges), skipping import")
+        except Exception:
+            pass
 
-    with driver.session() as session:
-        session.run("MATCH (n) DETACH DELETE n")
-        session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (n:Node) REQUIRE n.id IS UNIQUE")
+    if needs_load:
+        print("\n[Neo4j] Loading data...")
+        start = time.perf_counter()
 
-    # Load vertices
-    print("  Loading vertices...")
-    batch_size = 50000
-    with open(VERTEX_FILE) as f:
-        batch = []
-        for line in f:
-            vid = int(line.strip())
-            batch.append({"id": vid})
-            if len(batch) >= batch_size:
+        with driver.session() as session:
+            session.run("MATCH (n) DETACH DELETE n")
+            session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (n:Node) REQUIRE n.id IS UNIQUE")
+
+        # Load vertices
+        print("  Loading vertices...")
+        batch_size = 50000
+        with open(VERTEX_FILE) as f:
+            batch = []
+            for line in f:
+                vid = int(line.strip())
+                batch.append({"id": vid})
+                if len(batch) >= batch_size:
+                    with driver.session() as session:
+                        session.run("UNWIND $nodes AS n CREATE (:Node {id: n.id})", nodes=batch)
+                    batch = []
+            if batch:
                 with driver.session() as session:
                     session.run("UNWIND $nodes AS n CREATE (:Node {id: n.id})", nodes=batch)
-                batch = []
-        if batch:
-            with driver.session() as session:
-                session.run("UNWIND $nodes AS n CREATE (:Node {id: n.id})", nodes=batch)
 
-    # Load edges
-    print("  Loading edges...")
-    with open(EDGE_FILE) as f:
-        batch = []
-        for line in f:
-            parts = line.strip().split()
-            batch.append({"src": int(parts[0]), "dst": int(parts[1]),
-                          "weight": float(parts[2])})
-            if len(batch) >= batch_size:
+        # Load edges
+        print("  Loading edges...")
+        with open(EDGE_FILE) as f:
+            batch = []
+            for line in f:
+                parts = line.strip().split()
+                batch.append({"src": int(parts[0]), "dst": int(parts[1]),
+                              "weight": float(parts[2])})
+                if len(batch) >= batch_size:
+                    with driver.session() as session:
+                        session.run("""
+                            UNWIND $edges AS e
+                            MATCH (a:Node {id: e.src}), (b:Node {id: e.dst})
+                            CREATE (a)-[:EDGE {weight: e.weight}]->(b)
+                        """, edges=batch)
+                    batch = []
+            if batch:
                 with driver.session() as session:
                     session.run("""
                         UNWIND $edges AS e
                         MATCH (a:Node {id: e.src}), (b:Node {id: e.dst})
                         CREATE (a)-[:EDGE {weight: e.weight}]->(b)
                     """, edges=batch)
-                batch = []
-        if batch:
-            with driver.session() as session:
-                session.run("""
-                    UNWIND $edges AS e
-                    MATCH (a:Node {id: e.src}), (b:Node {id: e.dst})
-                    CREATE (a)-[:EDGE {weight: e.weight}]->(b)
-                """, edges=batch)
 
-    load_time = time.perf_counter() - start
-    results["load"] = load_time
-    print(f"  Load time: {load_time:.2f}s")
+        load_time = time.perf_counter() - start
+        results["load"] = load_time
+        print(f"  Load time: {load_time:.2f}s")
 
-    with driver.session() as session:
-        r = session.run("MATCH (n) RETURN count(n) AS c").single()
-        print(f"  Vertices: {r['c']}")
-        r = session.run("MATCH ()-[e]->() RETURN count(e) AS c").single()
-        print(f"  Edges: {r['c']}")
+        with driver.session() as session:
+            r = session.run("MATCH (n) RETURN count(n) AS c").single()
+            print(f"  Vertices: {r['c']}")
+            r = session.run("MATCH ()-[e]->() RETURN count(e) AS c").single()
+            print(f"  Edges: {r['c']}")
 
     # Create GDS graph projection
     print("\n[Neo4j] Creating GDS graph projection...")
@@ -722,64 +777,82 @@ def run_arangodb_benchmark():
         print("  Start with: docker run -d --name arangodb -p 8529:8529 -e ARANGO_ROOT_PASSWORD=benchmark arangodb:latest")
         return {"error": str(e)}
 
-    # --- LOAD DATA ---
-    print("\n[ArangoDB] Loading data...")
-    start = time.perf_counter()
+    # Check if data already loaded
+    needs_load = True
+    if not RESET:
+        try:
+            if db.has_collection('edges') and db.collection('edges').count() > 0:
+                needs_load = False
+                print(f"\n[ArangoDB] Data already loaded ({db.collection('edges').count()} edges), skipping import")
+        except Exception:
+            pass
 
-    # Create graph collections
-    if db.has_collection('nodes'):
-        db.delete_collection('nodes')
-    if db.has_collection('edges'):
-        db.delete_collection('edges')
-    if db.has_graph('bench'):
-        db.delete_graph('bench')
+    if needs_load:
+        print("\n[ArangoDB] Loading data...")
+        start = time.perf_counter()
 
-    nodes_col = db.create_collection('nodes')
-    edges_col = db.create_collection('edges', edge=True)
+        # Create graph collections
+        if db.has_collection('nodes'):
+            db.delete_collection('nodes')
+        if db.has_collection('edges'):
+            db.delete_collection('edges')
+        if db.has_graph('bench'):
+            db.delete_graph('bench')
 
-    # Load vertices in batches
-    print("  Loading vertices...")
-    batch_size = 50000
-    with open(VERTEX_FILE) as f:
-        batch = []
-        for line in f:
-            vid = int(line.strip())
-            batch.append({"_key": str(vid), "vid": vid})
-            if len(batch) >= batch_size:
+        nodes_col = db.create_collection('nodes')
+        edges_col = db.create_collection('edges', edge=True)
+
+        # Load vertices in batches
+        print("  Loading vertices...")
+        batch_size = 50000
+        with open(VERTEX_FILE) as f:
+            batch = []
+            for line in f:
+                vid = int(line.strip())
+                batch.append({"_key": str(vid), "vid": vid})
+                if len(batch) >= batch_size:
+                    nodes_col.import_bulk(batch, on_duplicate='replace')
+                    batch = []
+            if batch:
                 nodes_col.import_bulk(batch, on_duplicate='replace')
-                batch = []
-        if batch:
-            nodes_col.import_bulk(batch, on_duplicate='replace')
 
-    # Load edges in batches
-    print("  Loading edges...")
-    with open(EDGE_FILE) as f:
-        batch = []
-        for line in f:
-            parts = line.strip().split()
-            batch.append({
-                "_from": f"nodes/{parts[0]}",
-                "_to": f"nodes/{parts[1]}",
-                "weight": float(parts[2])
-            })
-            if len(batch) >= batch_size:
+        # Load edges in batches
+        print("  Loading edges...")
+        with open(EDGE_FILE) as f:
+            batch = []
+            for line in f:
+                parts = line.strip().split()
+                batch.append({
+                    "_from": f"nodes/{parts[0]}",
+                    "_to": f"nodes/{parts[1]}",
+                    "weight": float(parts[2])
+                })
+                if len(batch) >= batch_size:
+                    edges_col.import_bulk(batch, on_duplicate='replace')
+                    batch = []
+            if batch:
                 edges_col.import_bulk(batch, on_duplicate='replace')
-                batch = []
-        if batch:
-            edges_col.import_bulk(batch, on_duplicate='replace')
 
-    # Create named graph for Pregel
-    db.create_graph('bench', edge_definitions=[{
-        'edge_collection': 'edges',
-        'from_vertex_collections': ['nodes'],
-        'to_vertex_collections': ['nodes']
-    }])
+        # Create named graph for Pregel
+        db.create_graph('bench', edge_definitions=[{
+            'edge_collection': 'edges',
+            'from_vertex_collections': ['nodes'],
+            'to_vertex_collections': ['nodes']
+        }])
 
-    load_time = time.perf_counter() - start
-    results["load"] = load_time
-    print(f"  Load time: {load_time:.2f}s")
-    print(f"  Vertices: {nodes_col.count()}")
-    print(f"  Edges: {edges_col.count()}")
+        load_time = time.perf_counter() - start
+        results["load"] = load_time
+        print(f"  Load time: {load_time:.2f}s")
+        print(f"  Vertices: {nodes_col.count()}")
+        print(f"  Edges: {edges_col.count()}")
+
+    # Ensure graph exists for algorithms
+    if not db.has_graph('bench'):
+        db.create_graph('bench', edge_definitions=[{
+            'edge_collection': 'edges',
+            'from_vertex_collections': ['nodes'],
+            'to_vertex_collections': ['nodes']
+        }])
 
     # Helper to run Pregel and wait for completion
     def run_pregel(algo, max_gss=None, algo_params=None):
@@ -966,30 +1039,40 @@ def print_summary(all_results):
 # =============================================================================
 # MAIN
 # =============================================================================
+AVAILABLE_SYSTEMS = {
+    "kuzu": ("Kuzu", run_kuzu_benchmark),
+    "duckpgq": ("DuckPGQ", run_duckpgq_benchmark),
+    "memgraph": ("Memgraph", run_memgraph_benchmark),
+    "neo4j": ("Neo4j", run_neo4j_benchmark),
+    "arangodb": ("ArangoDB", run_arangodb_benchmark),
+}
+
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="LDBC Graphalytics multi-vendor benchmark")
+    parser.add_argument("--reset", action="store_true",
+                        help="Delete all data and reload from scratch")
+    parser.add_argument("systems", nargs="*",
+                        help=f"Systems to benchmark (default: all). Choices: {', '.join(AVAILABLE_SYSTEMS.keys())}")
+    args = parser.parse_args()
+
+    RESET = args.reset
+
+    systems_to_run = args.systems if args.systems else list(AVAILABLE_SYSTEMS.keys())
+
     all_results = {}
-
-    # Run Kuzu
-    try:
-        all_results["Kuzu"] = run_kuzu_benchmark()
-    except Exception as e:
-        print(f"\nKuzu benchmark failed: {e}")
-        import traceback; traceback.print_exc()
-
-    # Run DuckPGQ
-    try:
-        all_results["DuckPGQ"] = run_duckpgq_benchmark()
-    except Exception as e:
-        print(f"\nDuckPGQ benchmark failed: {e}")
-        import traceback; traceback.print_exc()
-
-    # Run Memgraph (if Docker is running)
-    try:
-        r = run_memgraph_benchmark()
-        if "error" not in r:
-            all_results["Memgraph"] = r
-    except Exception as e:
-        print(f"\nMemgraph skipped (Docker not running): {e}")
+    for key in systems_to_run:
+        key = key.lower()
+        if key not in AVAILABLE_SYSTEMS:
+            print(f"Unknown system: {key}. Available: {', '.join(AVAILABLE_SYSTEMS.keys())}")
+            continue
+        name, func = AVAILABLE_SYSTEMS[key]
+        try:
+            r = func()
+            if isinstance(r, dict) and "error" not in r:
+                all_results[name] = r
+        except Exception as e:
+            print(f"\n{name} failed: {e}")
+            import traceback; traceback.print_exc()
 
     if all_results:
         print_summary(all_results)

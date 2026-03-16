@@ -200,25 +200,30 @@ All 6 algorithms passed with validation.
 
 ArcadeDB, Kuzu, and DuckPGQ all run embedded (in-process, no network overhead). Memgraph, Neo4j, and ArangoDB run as Docker containers, which adds network serialization overhead. This mainly affects data loading times, not algorithm execution (computation happens server-side).
 
-| Algorithm | ArcadeDB | Kuzu | DuckPGQ | Memgraph | Neo4j | ArangoDB |
-|-----------|----------|------|---------|----------|-------|----------|
-| **PageRank** | **0.98s** | 4.30s | 6.14s | 16.90s | — | 130.16s |
-| **WCC** | **0.20s** | 0.43s | 13.93s | OOM | — | 77.92s |
-| **BFS** | **0.67s** | 0.86s | 2,754s | 11.72s | — | timeout |
-| **LCC** | 16.05s | N/A | 38.59s | N/A | — | N/A |
-| **SSSP** | 3.34s | N/A | N/A | N/A | — | N/A |
-| **CDLP** | 3.68s | N/A | N/A | N/A | — | N/A |
+| Algorithm | ArcadeDB | Kuzu | Neo4j 2026 | DuckPGQ | Memgraph | ArangoDB |
+|-----------|----------|------|------------|---------|----------|----------|
+| **PageRank** | **0.48s** | 4.30s | 11.15s | 6.14s | 16.90s | 157.01s |
+| **WCC** | **0.30s** | 0.43s | 0.75s | 13.93s | crash | 78.03s |
+| **BFS** | **0.13s** | 0.86s | 1.91s | 2,754s | 11.72s | 511.55s |
+| **LCC** | **27.41s** | N/A | 45.78s | 38.59s | N/A | N/A |
+| **SSSP** | **3.53s** | N/A | N/A | N/A | N/A | 301.93s |
+| **CDLP** | **3.67s** | N/A | 6.43s | N/A | N/A | 407.41s |
 
-*Neo4j results pending — Neo4j 2026 Community Edition with GDS plugin not yet benchmarked on this dataset.*
+*Memgraph crashes with segfault (exit 139) during edge loading at ~18-20M of 34M edges.*
 
 ArcadeDB is the fastest on every comparable algorithm and the only system that successfully runs all 6 LDBC Graphalytics algorithms.
 
-- **vs Kuzu**: PageRank 4.4x faster, WCC 2.2x faster, BFS 1.3x faster
-- **vs DuckPGQ**: PageRank 6.3x faster, WCC 70x faster, BFS 4,100x faster
-- **vs Memgraph**: PageRank 17x faster, BFS 17x faster (WCC: out of memory at 7.6GB)
-- **vs ArangoDB**: PageRank 133x faster, WCC 390x faster (BFS: timeout via AQL traversal)
+- **vs Kuzu**: PageRank 9x faster, WCC 1.4x faster, BFS 6.6x faster
+- **vs Neo4j 2026 GDS**: PageRank 23x faster, WCC 2.5x faster, BFS 15x faster, LCC 1.7x faster, CDLP 1.8x faster
+- **vs DuckPGQ**: PageRank 13x faster, WCC 46x faster, BFS 21,185x faster, LCC 1.4x faster
+- **vs Memgraph**: PageRank 35x faster, BFS 90x faster (WCC/LCC/SSSP/CDLP: crash or unavailable)
+- **vs ArangoDB**: PageRank 327x faster, WCC 260x faster, BFS 3,935x faster, SSSP 86x faster, CDLP 111x faster
 
-Note: None of the competing systems have official LDBC Graphalytics platform drivers. Their results are from native API calls using the same dataset. Only ArcadeDB has an official LDBC Graphalytics platform implementation.
+Notes:
+- Memgraph 3.8.1 crashes with segfault (exit 139) during edge loading at ~18-20M edges. WCC previously failed with OOM at 7.6GB.
+- ArangoDB 3.11 uses Pregel for PageRank/WCC/SSSP/CDLP and AQL traversal for BFS. Pregel was removed in ArangoDB 3.12.
+- Kuzu and DuckPGQ lack native implementations for most algorithms beyond PageRank, WCC, and BFS.
+- None of the competing systems have official LDBC Graphalytics platform drivers. Only ArcadeDB has an official LDBC Graphalytics platform implementation.
 
 ### File Structure
 
