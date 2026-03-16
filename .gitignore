@@ -9,3 +9,4 @@ intermediate/
 output/
 config/
 .DS_Store
+/native-benchmark/log

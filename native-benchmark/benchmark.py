@@ -463,9 +463,9 @@ def run_memgraph_benchmark():
     start = time.perf_counter()
     try:
         cursor.execute("""
-            CALL local_clustering_coefficient.get()
-            YIELD node, local_clustering_coefficient AS coeff
-            RETURN node.id AS id, coeff
+            CALL nxalg.clustering()
+            YIELD node, clustering
+            RETURN node.id AS id, clustering AS coeff
             ORDER BY coeff DESC LIMIT 10
         """)
         rows = cursor.fetchall()
@@ -494,6 +494,26 @@ def run_memgraph_benchmark():
         print(f"  SSSP failed: {e}")
         results["sssp"] = "N/A"
 
+    # --- CDLP ---
+    print("\n[Memgraph] Running CDLP...")
+    start = time.perf_counter()
+    try:
+        cursor.execute("""
+            CALL community_detection.get()
+            YIELD node, community_id
+            RETURN community_id, count(*) AS size
+            ORDER BY size DESC LIMIT 10
+        """)
+        rows = cursor.fetchall()
+        for row in rows[:3]:
+            print(f"    Community: id={row[0]}, size={row[1]}")
+        elapsed = time.perf_counter() - start
+        results["cdlp"] = elapsed
+        print(f"  CDLP time: {elapsed:.2f}s")
+    except Exception as e:
+        print(f"  CDLP failed: {e}")
+        results["cdlp"] = "N/A"
+
     conn.close()
     return results
 
@@ -514,7 +534,7 @@ def run_neo4j_benchmark():
         driver.verify_connectivity()
     except Exception as e:
         print(f"  Cannot connect to Neo4j: {e}")
-        print("  Start with: docker run -d --name neo4j -p 7474:7474 -p 7688:7687 -e NEO4J_AUTH=neo4j/benchmark123 -e NEO4J_PLUGINS='[\"graph-data-science\"]' neo4j:5-community")
+        print("  Start with: docker run -d --name neo4j -p 7474:7474 -p 7688:7687 -e NEO4J_AUTH=neo4j/benchmark123 -e NEO4J_PLUGINS='[\"graph-data-science\"]' neo4j:2026-community")
         return {"error": str(e)}
 
     # --- LOAD DATA ---
@@ -683,6 +703,241 @@ def run_neo4j_benchmark():
 
 
 # =============================================================================
+# ARANGODB BENCHMARK (requires Docker)
+# =============================================================================
+def run_arangodb_benchmark():
+    from arango import ArangoClient
+    print("\n" + "=" * 70)
+    print("ARANGODB BENCHMARK")
+    print("=" * 70)
+
+    results = {}
+
+    try:
+        client = ArangoClient(hosts='http://localhost:8529')
+        db = client.db('_system', username='root', password='benchmark')
+        db.version()
+    except Exception as e:
+        print(f"  Cannot connect to ArangoDB: {e}")
+        print("  Start with: docker run -d --name arangodb -p 8529:8529 -e ARANGO_ROOT_PASSWORD=benchmark arangodb:latest")
+        return {"error": str(e)}
+
+    # --- LOAD DATA ---
+    print("\n[ArangoDB] Loading data...")
+    start = time.perf_counter()
+
+    # Create graph collections
+    if db.has_collection('nodes'):
+        db.delete_collection('nodes')
+    if db.has_collection('edges'):
+        db.delete_collection('edges')
+    if db.has_graph('bench'):
+        db.delete_graph('bench')
+
+    nodes_col = db.create_collection('nodes')
+    edges_col = db.create_collection('edges', edge=True)
+
+    # Load vertices in batches
+    print("  Loading vertices...")
+    batch_size = 50000
+    with open(VERTEX_FILE) as f:
+        batch = []
+        for line in f:
+            vid = int(line.strip())
+            batch.append({"_key": str(vid), "vid": vid})
+            if len(batch) >= batch_size:
+                nodes_col.import_bulk(batch, on_duplicate='replace')
+                batch = []
+        if batch:
+            nodes_col.import_bulk(batch, on_duplicate='replace')
+
+    # Load edges in batches
+    print("  Loading edges...")
+    with open(EDGE_FILE) as f:
+        batch = []
+        for line in f:
+            parts = line.strip().split()
+            batch.append({
+                "_from": f"nodes/{parts[0]}",
+                "_to": f"nodes/{parts[1]}",
+                "weight": float(parts[2])
+            })
+            if len(batch) >= batch_size:
+                edges_col.import_bulk(batch, on_duplicate='replace')
+                batch = []
+        if batch:
+            edges_col.import_bulk(batch, on_duplicate='replace')
+
+    # Create named graph for Pregel
+    db.create_graph('bench', edge_definitions=[{
+        'edge_collection': 'edges',
+        'from_vertex_collections': ['nodes'],
+        'to_vertex_collections': ['nodes']
+    }])
+
+    load_time = time.perf_counter() - start
+    results["load"] = load_time
+    print(f"  Load time: {load_time:.2f}s")
+    print(f"  Vertices: {nodes_col.count()}")
+    print(f"  Edges: {edges_col.count()}")
+
+    # Helper to run Pregel and wait for completion
+    def run_pregel(algo, max_gss=None, algo_params=None):
+        kwargs = {}
+        if max_gss is not None:
+            kwargs['max_gss'] = max_gss
+        if algo_params is not None:
+            kwargs['algorithm_params'] = algo_params
+        job_id = db.pregel.create_job(
+            graph='bench',
+            algorithm=algo,
+            store=False,
+            **kwargs
+        )
+        import time as t
+        while True:
+            job = db.pregel.job(job_id)
+            if job['state'] in ('done', 'canceled', 'fatal error'):
+                return job
+            t.sleep(0.5)
+
+    # --- PageRank ---
+    print("\n[ArangoDB] Running PageRank...")
+    start = time.perf_counter()
+    try:
+        job = run_pregel('pagerank', max_gss=10, algo_params={'threshold': 0.0})
+        elapsed = time.perf_counter() - start
+        if job['state'] == 'done':
+            results["pagerank"] = elapsed
+            print(f"  PageRank time: {elapsed:.2f}s")
+        else:
+            print(f"  PageRank failed: {job['state']}")
+            results["pagerank"] = "N/A"
+    except Exception as e:
+        print(f"  PageRank failed: {e}")
+        results["pagerank"] = "N/A"
+
+    # --- WCC ---
+    print("\n[ArangoDB] Running WCC...")
+    start = time.perf_counter()
+    try:
+        job = run_pregel('connectedcomponents')
+        elapsed = time.perf_counter() - start
+        if job['state'] == 'done':
+            results["wcc"] = elapsed
+            print(f"  WCC time: {elapsed:.2f}s")
+        else:
+            print(f"  WCC failed: {job['state']}")
+            results["wcc"] = "N/A"
+    except Exception as e:
+        print(f"  WCC failed: {e}")
+        results["wcc"] = "N/A"
+
+    # --- LCC (via AQL triangle counting) ---
+    print("\n[ArangoDB] Running LCC...")
+    start = time.perf_counter()
+    try:
+        client_lcc = ArangoClient(hosts='http://localhost:8529', request_timeout=3600)
+        db_lcc = client_lcc.db('_system', username='root', password='benchmark')
+        cursor = db_lcc.aql.execute("""
+            FOR v IN nodes
+                LET neighbors = (
+                    FOR n IN 1..1 ANY v edges
+                        OPTIONS {uniqueVertices: 'global'}
+                        RETURN n._id
+                )
+                LET deg = LENGTH(neighbors)
+                FILTER deg >= 2
+                LET triangles = (
+                    FOR i IN 0..deg-2
+                        FOR j IN i+1..deg-1
+                            LET a = neighbors[i]
+                            LET b = neighbors[j]
+                            FILTER LENGTH(
+                                FOR e IN edges
+                                    FILTER (e._from == a AND e._to == b) OR (e._from == b AND e._to == a)
+                                    LIMIT 1
+                                    RETURN 1
+                            ) > 0
+                            RETURN 1
+                )
+                LET tri = LENGTH(triangles)
+                LET lcc = tri > 0 ? (2.0 * tri) / (deg * (deg - 1)) : 0
+                SORT lcc DESC
+                LIMIT 10
+                RETURN {id: v.vid, lcc: lcc}
+        """, ttl=3600, max_runtime=3600)
+        rows = list(cursor)
+        for row in rows[:3]:
+            print(f"    Top LCC: node={row['id']}, coeff={row['lcc']:.6f}")
+        elapsed = time.perf_counter() - start
+        results["lcc"] = elapsed
+        print(f"  LCC time: {elapsed:.2f}s")
+    except Exception as e:
+        print(f"  LCC failed: {e}")
+        results["lcc"] = "N/A"
+
+    # --- SSSP (Pregel) ---
+    print("\n[ArangoDB] Running SSSP from vertex 6...")
+    start = time.perf_counter()
+    try:
+        job = run_pregel('sssp', algo_params={'source': 'nodes/6'})
+        elapsed = time.perf_counter() - start
+        if job['state'] == 'done':
+            results["sssp"] = elapsed
+            print(f"  SSSP time: {elapsed:.2f}s")
+        else:
+            print(f"  SSSP failed: {job['state']}")
+            results["sssp"] = "N/A"
+    except Exception as e:
+        print(f"  SSSP failed: {e}")
+        results["sssp"] = "N/A"
+
+    # --- CDLP (Label Propagation via Pregel) ---
+    print("\n[ArangoDB] Running CDLP...")
+    start = time.perf_counter()
+    try:
+        job = run_pregel('labelpropagation', max_gss=10)
+        elapsed = time.perf_counter() - start
+        if job['state'] == 'done':
+            results["cdlp"] = elapsed
+            print(f"  CDLP time: {elapsed:.2f}s")
+        else:
+            print(f"  CDLP failed: {job['state']}")
+            results["cdlp"] = "N/A"
+    except Exception as e:
+        print(f"  CDLP failed: {e}")
+        results["cdlp"] = "N/A"
+
+    # --- BFS (via AQL traversal) ---
+    print("\n[ArangoDB] Running BFS from vertex 6...")
+    start = time.perf_counter()
+    try:
+        cursor = db.aql.execute("""
+            FOR v, e, p IN 0..100 ANY 'nodes/6' GRAPH 'bench'
+                OPTIONS {bfs: true, uniqueVertices: 'global'}
+                COLLECT depth = LENGTH(p.edges) WITH COUNT INTO cnt
+                RETURN {depth: depth, count: cnt}
+        """, ttl=3600, max_runtime=3600)
+        rows = list(cursor)
+        total_reached = sum(r['count'] for r in rows)
+        elapsed = time.perf_counter() - start
+        results["bfs"] = elapsed
+        print(f"  BFS time: {elapsed:.2f}s (reached {total_reached} nodes)")
+    except Exception as e:
+        print(f"  BFS failed: {e}")
+        results["bfs"] = "N/A"
+
+    # Cleanup
+    try:
+        db.delete_graph('bench', drop_collections=True)
+    except Exception:
+        pass
+
+    return results
+
+
+# =============================================================================
 # SUMMARY
 # =============================================================================
 def print_summary(all_results):
@@ -690,7 +945,7 @@ def print_summary(all_results):
     print("BENCHMARK SUMMARY  -  datagen-7_5-fb (633K vertices, 34M edges)")
     print("=" * 70)
 
-    algos = ["load", "pagerank", "wcc", "lcc", "bfs", "sssp"]
+    algos = ["load", "pagerank", "wcc", "lcc", "bfs", "sssp", "cdlp"]
     systems = list(all_results.keys())
 
     header = f"{'Algorithm':<15}"
