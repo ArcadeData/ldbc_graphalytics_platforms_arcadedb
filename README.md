@@ -191,8 +191,6 @@ All 6 algorithms passed with validation.
 
 | System | Version | Edition | License | Mode | Overhead |
 |--------|---------|---------|---------|------|----------|
-| System | Version | Edition | License | Mode | Overhead |
-|--------|---------|---------|---------|------|----------|
 | **ArcadeDB** | 26.4.1 | Open Source | Apache 2.0 | Embedded (in-process, Java 21) | None |
 | **Kuzu** | 0.11.3 | Open Source | MIT | Embedded (in-process, C++ via Python) | None |
 | **DuckPGQ** | DuckDB 1.5.0 | Open Source | MIT | Embedded (in-process, C++ via Python) | None |
