@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-LDBC Graphalytics Benchmark: Kuzu vs DuckPGQ vs Memgraph vs Neo4j vs ArangoDB
+LDBC Graphalytics Benchmark: Kuzu vs DuckPGQ vs Memgraph vs Neo4j vs ArangoDB vs FalkorDB
 Dataset: datagen-7_5-fb (633K vertices, 34M edges, undirected, weighted)
 Algorithms: PageRank, WCC, BFS, LCC, SSSP, CDLP
 
@@ -8,6 +8,7 @@ Usage:
   python3 benchmark.py                     # Run all, skip loading if data exists
   python3 benchmark.py --reset             # Delete all data and reload from scratch
   python3 benchmark.py kuzu duckpgq        # Run only specific systems
+  python3 benchmark.py falkordb             # Run only FalkorDB
   python3 benchmark.py --reset memgraph    # Reset and run only Memgraph
 """
 
@@ -1011,6 +1012,209 @@ def run_arangodb_benchmark():
 
 
 # =============================================================================
+# FALKORDB BENCHMARK (requires Docker)
+# =============================================================================
+FALKORDB_DATA_DIR = "/tmp/falkordb_benchmark"
+
+def run_falkordb_benchmark():
+    import redis
+    from falkordb import FalkorDB
+    print("\n" + "=" * 70)
+    print("FALKORDB BENCHMARK")
+    print("=" * 70)
+
+    results = {}
+
+    if RESET and os.path.isdir(FALKORDB_DATA_DIR):
+        print("  [FalkorDB] --reset: removing persisted data...")
+        shutil.rmtree(FALKORDB_DATA_DIR)
+
+    os.makedirs(FALKORDB_DATA_DIR, exist_ok=True)
+
+    try:
+        fdb = FalkorDB(host='localhost', port=6379)
+        g = fdb.select_graph('bench')
+    except Exception as e:
+        print(f"  Cannot connect to FalkorDB: {e}")
+        print(f"  Start with: docker run -d --name falkordb -p 6379:6379 -v {FALKORDB_DATA_DIR}:/var/lib/falkordb/data falkordb/falkordb")
+        return {"error": str(e)}
+
+    # Disable query timeout (default 1000ms is too low for large graphs)
+    try:
+        rc = redis.Redis(host='localhost', port=6379)
+        rc.execute_command("GRAPH.CONFIG", "SET", "TIMEOUT", 0)
+        print("  Query timeout disabled")
+    except Exception:
+        pass
+
+    # Check if data already loaded
+    needs_load = True
+    if not RESET:
+        try:
+            r = g.ro_query("MATCH ()-[e]->() RETURN count(e) AS c")
+            if r.result_set and r.result_set[0][0] > 0:
+                needs_load = False
+                print(f"\n[FalkorDB] Data already loaded ({r.result_set[0][0]} edges), skipping import")
+        except Exception:
+            pass
+
+    if RESET:
+        # Delete existing graph if present
+        try:
+            g.delete()
+            g = fdb.select_graph('bench')
+        except Exception:
+            pass
+
+    if needs_load:
+        print("\n[FalkorDB] Loading data...")
+        start = time.perf_counter()
+
+        # Load vertices in batches
+        print("  Loading vertices...")
+        batch_size = 5000
+        with open(VERTEX_FILE) as f:
+            batch = []
+            for line in f:
+                vid = int(line.strip())
+                batch.append(vid)
+                if len(batch) >= batch_size:
+                    g.query("UNWIND $ids AS id CREATE (:Node {id: id})", {"ids": batch})
+                    batch = []
+            if batch:
+                g.query("UNWIND $ids AS id CREATE (:Node {id: id})", {"ids": batch})
+
+        # Create index on Node.id for edge linking
+        try:
+            g.query("CREATE INDEX FOR (n:Node) ON (n.id)")
+        except Exception:
+            pass
+
+        # Load edges in batches
+        print("  Loading edges...")
+        with open(EDGE_FILE) as f:
+            batch = []
+            for line in f:
+                parts = line.strip().split()
+                batch.append([int(parts[0]), int(parts[1]), float(parts[2])])
+                if len(batch) >= batch_size:
+                    g.query("""
+                        UNWIND $edges AS e
+                        MATCH (a:Node {id: e[0]}), (b:Node {id: e[1]})
+                        CREATE (a)-[:EDGE {weight: e[2]}]->(b)
+                    """, {"edges": batch})
+                    batch = []
+            if batch:
+                g.query("""
+                    UNWIND $edges AS e
+                    MATCH (a:Node {id: e[0]}), (b:Node {id: e[1]})
+                    CREATE (a)-[:EDGE {weight: e[2]}]->(b)
+                """, {"edges": batch})
+
+        load_time = time.perf_counter() - start
+        results["load"] = load_time
+        print(f"  Load time: {load_time:.2f}s")
+
+    r = g.ro_query("MATCH (n:Node) RETURN count(n) AS c")
+    print(f"  Vertices: {r.result_set[0][0]}")
+    r = g.ro_query("MATCH ()-[e:EDGE]->() RETURN count(e) AS c")
+    print(f"  Edges: {r.result_set[0][0]}")
+
+    # --- PageRank ---
+    print("\n[FalkorDB] Running PageRank...")
+    start = time.perf_counter()
+    try:
+        r = g.ro_query("""
+            CALL algo.pageRank('Node', 'EDGE')
+            YIELD node, score
+            RETURN node.id AS id, score
+            ORDER BY score DESC LIMIT 10
+        """)
+        for row in r.result_set[:3]:
+            print(f"    Top PR: node={row[0]}, rank={row[1]:.6f}")
+        elapsed = time.perf_counter() - start
+        results["pagerank"] = elapsed
+        print(f"  PageRank time: {elapsed:.2f}s")
+    except Exception as e:
+        print(f"  PageRank failed: {e}")
+        results["pagerank"] = "N/A"
+
+    # --- WCC (Weakly Connected Components) ---
+    print("\n[FalkorDB] Running WCC...")
+    start = time.perf_counter()
+    try:
+        r = g.ro_query("""
+            CALL algo.WCC(null)
+            YIELD node, componentId
+            RETURN componentId, count(*) AS size
+            ORDER BY size DESC LIMIT 10
+        """)
+        for row in r.result_set[:3]:
+            print(f"    Component: id={row[0]}, size={row[1]}")
+        elapsed = time.perf_counter() - start
+        results["wcc"] = elapsed
+        print(f"  WCC time: {elapsed:.2f}s")
+    except Exception as e:
+        print(f"  WCC failed: {e}")
+        results["wcc"] = "N/A"
+
+    # --- BFS ---
+    print("\n[FalkorDB] Running BFS from vertex 6...")
+    start = time.perf_counter()
+    try:
+        r = g.ro_query("""
+            MATCH (src:Node {id: 6})
+            CALL algo.BFS(src, 999, 'EDGE')
+            YIELD nodes
+            RETURN size(nodes) AS reached
+        """)
+        reached = r.result_set[0][0]
+        elapsed = time.perf_counter() - start
+        results["bfs"] = elapsed
+        print(f"  BFS time: {elapsed:.2f}s (reached {reached} nodes)")
+    except Exception as e:
+        print(f"  BFS failed: {e}")
+        results["bfs"] = "N/A"
+
+    # --- SSSP ---
+    # FalkorDB's algo.SSpaths does not support full single-source Dijkstra;
+    # it only returns paths to direct neighbors. Not usable for SSSP benchmark.
+    print("\n[FalkorDB] SSSP: not supported (algo.SSpaths is pair-oriented, not full SSSP)")
+    results["sssp"] = "N/A"
+
+    # --- CDLP (Community Detection via Label Propagation) ---
+    print("\n[FalkorDB] Running CDLP...")
+    start = time.perf_counter()
+    try:
+        r = g.ro_query("""
+            CALL algo.labelPropagation({
+                nodeLabels: ['Node'],
+                relationshipTypes: ['EDGE'],
+                maxIterations: 10
+            })
+            YIELD node, communityId
+            RETURN communityId, count(*) AS size
+            ORDER BY size DESC LIMIT 10
+        """)
+        for row in r.result_set[:3]:
+            print(f"    Community: id={row[0]}, size={row[1]}")
+        elapsed = time.perf_counter() - start
+        results["cdlp"] = elapsed
+        print(f"  CDLP time: {elapsed:.2f}s")
+    except Exception as e:
+        print(f"  CDLP failed: {e}")
+        results["cdlp"] = "N/A"
+
+    # --- LCC (Local Clustering Coefficient) ---
+    # FalkorDB has no built-in LCC algorithm. Cypher-based triangle counting
+    # is infeasible on 34M edges (would require enumerating all triangles).
+    print("\n[FalkorDB] LCC: not supported (no built-in algorithm, Cypher too slow)")
+    results["lcc"] = "N/A"
+
+    return results
+
+
+# =============================================================================
 # SUMMARY
 # =============================================================================
 def print_summary(all_results):
@@ -1045,6 +1249,7 @@ AVAILABLE_SYSTEMS = {
     "memgraph": ("Memgraph", run_memgraph_benchmark),
     "neo4j": ("Neo4j", run_neo4j_benchmark),
     "arangodb": ("ArangoDB", run_arangodb_benchmark),
+    "falkordb": ("FalkorDB", run_falkordb_benchmark),
 }
 
 if __name__ == "__main__":
