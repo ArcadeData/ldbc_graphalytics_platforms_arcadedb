@@ -7,7 +7,7 @@ Uses ArcadeDB in **embedded mode** with the Graph Analytical View (GAV) engine, 
 This repository contains two benchmark modes:
 
 1. **Official LDBC Graphalytics** — standardized framework with per-algorithm isolation, validation, and reporting
-2. **Native multi-vendor comparison** — load once, run all algorithms, compare ArcadeDB vs Kuzu vs DuckPGQ vs Memgraph vs Neo4j
+2. **Native multi-vendor comparison** — load once, run all algorithms, compare ArcadeDB vs Kuzu vs DuckPGQ vs Memgraph vs Neo4j vs FalkorDB vs HugeGraph
 
 ## Supported Algorithms
 
@@ -121,7 +121,7 @@ for rid, r in sorted(runs.items(), key=lambda x: x[1]['timestamp']):
 
 Located in `native-benchmark/`. Loads the graph once and runs all algorithms sequentially on the same in-memory structure. This provides a fair apples-to-apples comparison since all systems use the same approach.
 
-**Systems tested:** ArcadeDB, Kuzu, DuckPGQ, Memgraph, Neo4j, ArangoDB
+**Systems tested:** ArcadeDB, Kuzu, DuckPGQ, Memgraph, Neo4j, ArangoDB, FalkorDB, HugeGraph
 
 ### ArcadeDB (Java)
 
@@ -166,6 +166,20 @@ For ArangoDB, start Docker (use 3.11 — Pregel was removed in 3.12):
 docker run -d --name arangodb -p 8529:8529 -e ARANGO_ROOT_PASSWORD=benchmark arangodb:3.11
 ```
 
+For HugeGraph (Vermeer OLAP engine):
+```bash
+docker network create hugegraph-net
+docker run -d --name vermeer-master --network hugegraph-net \
+  -p 6688:6688 -p 6689:6689 hugegraph/vermeer --env=master
+docker run -d --name vermeer-worker --network hugegraph-net \
+  -p 6788:6788 -p 6789:6789 \
+  -v /path/to/graphs:/data/graphs:ro \
+  hugegraph/vermeer --env=worker --master_peer=vermeer-master:6689
+# Assign worker to common pool:
+WORKER=$(curl -s http://localhost:6688/api/v1/workers | python3 -c "import sys,json; print(json.load(sys.stdin)['workers'][0]['name'])")
+curl -X POST "http://localhost:6688/api/v1/admin/workers/group/\$/${WORKER}"
+```
+
 ### Benchmark Results
 
 Dataset: **datagen-7_5-fb** (633,432 vertices, 34,185,747 edges, undirected, weighted)
@@ -198,17 +212,18 @@ All 6 algorithms passed with validation.
 | **Memgraph** | 3.8.1 | Community | BSL 1.1 | Server (Docker, Bolt protocol) | Network + Docker |
 | **ArangoDB** | 3.11.14 | Community | Apache 2.0 | Server (Docker, HTTP API) | Network + Docker |
 | **FalkorDB** | 4.16.6 | Open Source | Source Available | Server (Docker, Redis protocol) | Network + Docker |
+| **HugeGraph** | Vermeer latest | Open Source | Apache 2.0 | Server (Docker, HTTP API) | Network + Docker |
 
-ArcadeDB, Kuzu, and DuckPGQ all run embedded (in-process, no network overhead). Memgraph, Neo4j, ArangoDB, and FalkorDB run as Docker containers, which adds network serialization overhead. This mainly affects data loading times, not algorithm execution (computation happens server-side).
+ArcadeDB, Kuzu, and DuckPGQ all run embedded (in-process, no network overhead). Memgraph, Neo4j, ArangoDB, FalkorDB, and HugeGraph run as Docker containers, which adds network serialization overhead. This mainly affects data loading times, not algorithm execution (computation happens server-side).
 
-| Algorithm | ArcadeDB | Neo4j 2026 | Kuzu | DuckPGQ | Memgraph | ArangoDB | FalkorDB |
-|-----------|----------|------------|------|---------|----------|----------|----------|
-| **PageRank** | **0.48s** | 11.15s | 4.30s | 6.14s | 16.90s | 157.01s | 1.67s |
-| **WCC** | **0.30s** | 0.75s | 0.43s | 13.93s | crash | 78.03s | 0.85s |
-| **BFS** | **0.13s** | 1.91s | 0.86s | 2,754s | 11.72s | 511.55s | 0.20s |
-| **LCC** | **27.41s** | 45.78s | N/A | 38.59s | N/A | N/A | N/A |
-| **SSSP** | **3.53s** | N/A | N/A | N/A | N/A | 301.93s | N/A |
-| **CDLP** | **3.67s** | 6.43s | N/A | N/A | N/A | 407.41s | 5.38s |
+| Algorithm | ArcadeDB | Neo4j 2026 | Kuzu | DuckPGQ | Memgraph | ArangoDB | FalkorDB | HugeGraph |
+|-----------|----------|------------|------|---------|----------|----------|----------|-----------|
+| **PageRank** | **0.48s** | 11.15s | 4.30s | 6.14s | 16.90s | 157.01s | 1.67s | 4.01s |
+| **WCC** | **0.30s** | 0.75s | 0.43s | 13.93s | crash | 78.03s | 0.85s | 6.71s |
+| **BFS** | **0.13s** | 1.91s | 0.86s | 2,754s | 11.72s | 511.55s | 0.20s | 0.54s |
+| **LCC** | **27.41s** | 45.78s | N/A | 38.59s | N/A | N/A | N/A | 272.04s |
+| **SSSP** | **3.53s** | N/A | N/A | N/A | N/A | 301.93s | N/A | N/A |
+| **CDLP** | **3.67s** | 6.43s | N/A | N/A | N/A | 407.41s | 5.38s | 62.70s |
 
 *Memgraph crashes with segfault (exit 139) during edge loading at ~18-20M of 34M edges.*
 
@@ -220,12 +235,14 @@ ArcadeDB is the fastest on every comparable algorithm and the only system that s
 - **vs Memgraph**: PageRank 35x faster, BFS 90x faster (WCC/LCC/SSSP/CDLP: crash or unavailable)
 - **vs ArangoDB**: PageRank 327x faster, WCC 260x faster, BFS 3,935x faster, SSSP 86x faster, CDLP 111x faster
 - **vs FalkorDB**: PageRank 3.5x faster, WCC 2.8x faster, BFS 1.5x faster, CDLP 1.5x faster (LCC/SSSP: not available)
+- **vs HugeGraph**: PageRank 8.4x faster, WCC 22x faster, BFS 4.2x faster, LCC 9.9x faster, CDLP 17x faster (SSSP: not available)
 
 Notes:
 - Memgraph 3.8.1 crashes with segfault (exit 139) during edge loading at ~18-20M edges. WCC previously failed with OOM at 7.6GB.
 - ArangoDB 3.11 uses Pregel for PageRank/WCC/SSSP/CDLP and AQL traversal for BFS. Pregel was removed in ArangoDB 3.12.
 - Kuzu and DuckPGQ lack native implementations for most algorithms beyond PageRank, WCC, and BFS.
 - FalkorDB (RedisGraph fork) has no built-in LCC or full SSSP algorithm. Its `algo.SSpaths` is pair-oriented, not a full single-source Dijkstra.
+- HugeGraph/Vermeer's SSSP is unweighted (hop-count only), so weighted SSSP is not available. Uses the Vermeer Go-based OLAP engine.
 - None of the competing systems have official LDBC Graphalytics platform drivers. Only ArcadeDB has an official LDBC Graphalytics platform implementation.
 
 ### File Structure
