@@ -18,7 +18,7 @@ package science.atlarge.graphalytics.arcadedb;
 import com.arcadedb.database.Database;
 import com.arcadedb.database.DatabaseFactory;
 import com.arcadedb.database.RID;
-import com.arcadedb.graph.GraphBatchImporter;
+import com.arcadedb.graph.GraphBatch;
 import com.arcadedb.graph.MutableVertex;
 import com.arcadedb.schema.Schema;
 import com.arcadedb.schema.Type;
@@ -35,7 +35,7 @@ import java.util.Map;
 
 /**
  * Graph loader for ArcadeDB. Creates an embedded database and imports vertex/edge
- * data from EVLP-formatted files using the high-performance GraphBatchImporter.
+ * data from EVLP-formatted files using the high-performance GraphBatch.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
@@ -73,15 +73,15 @@ public class ArcadeDBLoader {
             try (Database database = factory.create()) {
                 createSchema(database);
 
-                try (GraphBatchImporter importer = GraphBatchImporter.builder(database)
+                GraphBatch importer = database.batch()
                         .withBatchSize(EDGE_BATCH_SIZE)
                         .withLightEdges(false)
                         .withWAL(false)
-                        .build()) {
+                        .build();
 
-                    Map<Long, RID> vidToRid = loadVertices(database, importer, totalVertices);
-                    loadEdges(importer, totalEdges, vidToRid);
-                }
+                Map<Long, RID> vidToRid = loadVertices(database, importer, totalVertices);
+                loadEdges(importer, totalEdges, vidToRid);
+                importer.close();
             }
         }
 
@@ -107,7 +107,7 @@ public class ArcadeDBLoader {
                 ArcadeDBConstants.VERTEX_TYPE, BUCKETS, ArcadeDBConstants.EDGE_TYPE, BUCKETS);
     }
 
-    private Map<Long, RID> loadVertices(Database database, GraphBatchImporter importer, long totalVertices) throws IOException {
+    private Map<Long, RID> loadVertices(Database database, GraphBatch importer, long totalVertices) throws IOException {
         LOG.info("[Step 1/2] Loading vertices from: {}", formattedGraph.getVertexFilePath());
 
         Map<Long, RID> vidToRid = new HashMap<>();
@@ -148,7 +148,7 @@ public class ArcadeDBLoader {
         return vidToRid;
     }
 
-    private void loadEdges(GraphBatchImporter importer, long totalEdges, Map<Long, RID> vidToRid) throws IOException {
+    private void loadEdges(GraphBatch importer, long totalEdges, Map<Long, RID> vidToRid) throws IOException {
         LOG.info("[Step 2/2] Loading edges from: {} (VID->RID cache: {} entries)",
                 formattedGraph.getEdgeFilePath(), String.format("%,d", vidToRid.size()));
         boolean weighted = formattedGraph.hasEdgeProperties();

@@ -2,7 +2,7 @@ import com.arcadedb.database.Database;
 import com.arcadedb.database.DatabaseFactory;
 import com.arcadedb.graph.MutableVertex;
 import com.arcadedb.database.RID;
-import com.arcadedb.graph.GraphBatchImporter;
+import com.arcadedb.graph.GraphBatch;
 import com.arcadedb.graph.Vertex;
 import com.arcadedb.graph.olap.GraphAlgorithms;
 import com.arcadedb.graph.olap.GraphAnalyticalView;
@@ -76,11 +76,10 @@ public class ArcadeDBBenchmark {
     System.out.println("  Vertices: " + count);
 
     // Load edges
-    GraphBatchImporter importer = GraphBatchImporter.builder(db)
+    GraphBatch importer = db.batch()
         .withBatchSize(100_000)
         .withLightEdges(false)
-        .withWAL(false)
-        .build();
+        .withWAL(false);
 
     int edgeCount = 0;
     try (BufferedReader br = new BufferedReader(new FileReader(EDGE_FILE), 1 << 20)) {

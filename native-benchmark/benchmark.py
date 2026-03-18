@@ -17,9 +17,10 @@ import time
 import os
 import sys
 import shutil
-import argparse
 
-GRAPHS_DIR = "/Users/luca/graphs"
+import bench_common
+from bench_common import fmt, GRAPHS_DIR
+
 VERTEX_FILE = os.path.join(GRAPHS_DIR, "datagen-7_5-fb.v")
 EDGE_FILE = os.path.join(GRAPHS_DIR, "datagen-7_5-fb.e")
 SOURCE_VERTEX = 6
@@ -27,15 +28,6 @@ PR_DAMPING = 0.85
 PR_ITERATIONS = 10
 EXPECTED_VERTICES = 633432
 EXPECTED_EDGES = 34185747
-
-# Global flag set by --reset
-RESET = False
-
-
-def fmt(val):
-    if isinstance(val, (int, float)):
-        return f"{val:>14.2f}s"
-    return f"{str(val):>15}"
 
 
 # =============================================================================
@@ -50,7 +42,7 @@ def run_kuzu_benchmark():
     db_path = "/tmp/kuzu_benchmark"
     results = {}
 
-    if RESET:
+    if bench_common.RESET:
         if os.path.isdir(db_path):
             shutil.rmtree(db_path)
         elif os.path.exists(db_path):
@@ -367,7 +359,7 @@ def run_memgraph_benchmark():
 
     # Check if data already loaded
     needs_load = True
-    if not RESET:
+    if not bench_common.RESET:
         try:
             cursor.execute("MATCH ()-[e]->() RETURN count(e) AS c")
             edge_count = cursor.fetchone()[0]
@@ -584,7 +576,7 @@ def run_neo4j_benchmark():
 
     # Check if data already loaded
     needs_load = True
-    if not RESET:
+    if not bench_common.RESET:
         try:
             with driver.session() as session:
                 r = session.run("MATCH ()-[e]->() RETURN count(e) AS c").single()
@@ -781,7 +773,7 @@ def run_arangodb_benchmark():
 
     # Check if data already loaded
     needs_load = True
-    if not RESET:
+    if not bench_common.RESET:
         try:
             if db.has_collection('edges') and db.collection('edges').count() > 0:
                 needs_load = False
@@ -1026,7 +1018,7 @@ def run_falkordb_benchmark():
 
     results = {}
 
-    if RESET and os.path.isdir(FALKORDB_DATA_DIR):
+    if bench_common.RESET and os.path.isdir(FALKORDB_DATA_DIR):
         print("  [FalkorDB] --reset: removing persisted data...")
         shutil.rmtree(FALKORDB_DATA_DIR)
 
@@ -1050,7 +1042,7 @@ def run_falkordb_benchmark():
 
     # Check if data already loaded
     needs_load = True
-    if not RESET:
+    if not bench_common.RESET:
         try:
             r = g.ro_query("MATCH ()-[e]->() RETURN count(e) AS c")
             if r.result_set and r.result_set[0][0] > 0:
@@ -1059,7 +1051,7 @@ def run_falkordb_benchmark():
         except Exception:
             pass
 
-    if RESET:
+    if bench_common.RESET:
         # Delete existing graph if present
         try:
             g.delete()
@@ -1264,7 +1256,7 @@ def run_hugegraph_benchmark():
 
     # Check if graph already loaded
     needs_load = True
-    if not RESET:
+    if not bench_common.RESET:
         try:
             r = requests.get(f"{vermeer}/graphs")
             for g in r.json().get("graphs", []):
@@ -1358,32 +1350,6 @@ def run_hugegraph_benchmark():
 
 
 # =============================================================================
-# SUMMARY
-# =============================================================================
-def print_summary(all_results):
-    print("\n" + "=" * 70)
-    print("BENCHMARK SUMMARY  -  datagen-7_5-fb (633K vertices, 34M edges)")
-    print("=" * 70)
-
-    algos = ["load", "pagerank", "wcc", "lcc", "bfs", "sssp", "cdlp"]
-    systems = list(all_results.keys())
-
-    header = f"{'Algorithm':<15}"
-    for sys_name in systems:
-        header += f"{sys_name:>15}"
-    print(header)
-    print("-" * len(header))
-
-    for algo in algos:
-        row = f"{algo.upper():<15}"
-        for sys_name in systems:
-            val = all_results[sys_name].get(algo, "N/A")
-            row += fmt(val)
-        print(row)
-    print()
-
-
-# =============================================================================
 # MAIN
 # =============================================================================
 AVAILABLE_SYSTEMS = {
@@ -1396,32 +1362,12 @@ AVAILABLE_SYSTEMS = {
     "hugegraph": ("HugeGraph", run_hugegraph_benchmark),
 }
 
+GRAPHALYTICS_METRICS = ["load", "pagerank", "wcc", "lcc", "bfs", "sssp", "cdlp"]
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="LDBC Graphalytics multi-vendor benchmark")
-    parser.add_argument("--reset", action="store_true",
-                        help="Delete all data and reload from scratch")
-    parser.add_argument("systems", nargs="*",
-                        help=f"Systems to benchmark (default: all). Choices: {', '.join(AVAILABLE_SYSTEMS.keys())}")
-    args = parser.parse_args()
-
-    RESET = args.reset
-
-    systems_to_run = args.systems if args.systems else list(AVAILABLE_SYSTEMS.keys())
-
-    all_results = {}
-    for key in systems_to_run:
-        key = key.lower()
-        if key not in AVAILABLE_SYSTEMS:
-            print(f"Unknown system: {key}. Available: {', '.join(AVAILABLE_SYSTEMS.keys())}")
-            continue
-        name, func = AVAILABLE_SYSTEMS[key]
-        try:
-            r = func()
-            if isinstance(r, dict) and "error" not in r:
-                all_results[name] = r
-        except Exception as e:
-            print(f"\n{name} failed: {e}")
-            import traceback; traceback.print_exc()
-
-    if all_results:
-        print_summary(all_results)
+    bench_common.run_benchmarks(
+        description="LDBC Graphalytics multi-vendor benchmark",
+        available_systems=AVAILABLE_SYSTEMS,
+        summary_title="datagen-7_5-fb (633K vertices, 34M edges)",
+        metrics=GRAPHALYTICS_METRICS,
+    )
