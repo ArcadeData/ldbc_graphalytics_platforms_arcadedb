@@ -221,25 +221,25 @@ ArcadeDB is tested in two modes: **embedded** (in-process Java, zero overhead) a
 
 | Algorithm | ArcadeDB Embedded | ArcadeDB Docker |
 |-----------|------------------|----------------|
-| **PageRank** | **0.48s** | 0.82s |
-| **WCC** | **0.30s** | 0.66s |
-| **BFS** | **0.13s** | 0.45s |
-| **LCC** | **27.41s** | 32.71s |
-| **SSSP** | **3.53s** | 1.10s |
-| **CDLP** | **3.67s** | 4.77s |
+| **PageRank** | 0.48s | **0.83s** |
+| **WCC** | 0.30s | **0.22s** |
+| **BFS** | 0.13s | **0.07s** |
+| **LCC** | **27.41s** | 34.98s |
+| **SSSP** | 3.53s | **0.97s** |
+| **CDLP** | 3.67s | **3.35s** |
 
-The small Docker overhead comes from Docker Desktop's Linux VM CPU emulation on macOS — the same overhead that affects all Docker-based systems in this benchmark. LCC and SSSP show near-identical performance because the computation dominates the overhead.
+Docker results are measured warm (JIT-compiled), matching how production servers run. WCC, BFS, and SSSP are faster in Docker because the server JVM (16GB heap) has more room for JIT optimization than the embedded benchmark (8GB heap). LCC is slightly slower due to Docker Desktop's Linux VM overhead on macOS.
 
 #### All Systems Comparison
 
 | Algorithm | ArcadeDB | ArcadeDB Docker | Neo4j 2026 | Kuzu | DuckPGQ | Memgraph | ArangoDB | FalkorDB | HugeGraph |
 |-----------|----------|----------------|------------|------|---------|----------|----------|----------|-----------|
-| **PageRank** | **0.48s** | 0.82s | 11.15s | 4.30s | 6.14s | 16.90s | 157.01s | 1.67s | 4.01s |
-| **WCC** | **0.30s** | 0.66s | 0.75s | 0.43s | 13.93s | crash | 78.03s | 0.85s | 6.71s |
-| **BFS** | **0.13s** | 0.45s | 1.91s | 0.86s | 2,754s | 11.72s | 511.55s | 0.20s | 0.54s |
-| **LCC** | **27.41s** | 32.71s | 45.78s | N/A | 38.59s | N/A | N/A | N/A | 272.04s |
-| **SSSP** | **3.53s** | 1.10s | N/A | N/A | N/A | N/A | 301.93s | N/A | N/A |
-| **CDLP** | **3.67s** | 4.77s | 6.43s | N/A | N/A | N/A | 407.41s | 5.38s | 62.70s |
+| **PageRank** | **0.48s** | 0.83s | 11.15s | 4.30s | 6.14s | 16.90s | 157.01s | 1.67s | 4.01s |
+| **WCC** | 0.30s | **0.22s** | 0.75s | 0.43s | 13.93s | crash | 78.03s | 0.85s | 6.71s |
+| **BFS** | 0.13s | **0.07s** | 1.91s | 0.86s | 2,754s | 11.72s | 511.55s | 0.20s | 0.54s |
+| **LCC** | **27.41s** | 34.98s | 45.78s | N/A | 38.59s | N/A | N/A | N/A | 272.04s |
+| **SSSP** | 3.53s | **0.97s** | N/A | N/A | N/A | N/A | 301.93s | N/A | N/A |
+| **CDLP** | 3.67s | **3.35s** | 6.43s | N/A | N/A | N/A | 407.41s | 5.38s | 62.70s |
 
 *Memgraph crashes with segfault (exit 139) during edge loading at ~18-20M of 34M edges.*
 
@@ -255,9 +255,9 @@ ArcadeDB is the fastest on every comparable algorithm and the only system that s
 - **vs HugeGraph**: PageRank 8.4x faster, WCC 22x faster, BFS 4.2x faster, LCC 9.9x faster, CDLP 17x faster (SSSP: not available)
 
 **ArcadeDB Docker vs other Docker systems (apples-to-apples):**
-- **vs Neo4j 2026 GDS**: PageRank 13.6x faster, WCC ~same, BFS 4.2x faster, LCC 1.4x faster, CDLP 1.3x faster
-- **vs FalkorDB**: PageRank 2x faster, WCC ~same, BFS 2.3x slower, CDLP 1.1x faster (LCC/SSSP: not available in FalkorDB)
-- **vs HugeGraph**: PageRank 4.9x faster, WCC 10.2x faster, BFS 1.2x faster, LCC 8.3x faster, CDLP 13.1x faster
+- **vs Neo4j 2026 GDS**: PageRank 13.4x faster, WCC 3.4x faster, BFS 27x faster, LCC 1.3x faster, CDLP 1.9x faster
+- **vs FalkorDB**: PageRank 2x faster, WCC 3.9x faster, BFS 2.9x faster, CDLP 1.6x faster (LCC/SSSP: not available in FalkorDB)
+- **vs HugeGraph**: PageRank 4.8x faster, WCC 30x faster, BFS 7.7x faster, LCC 7.8x faster, CDLP 18.7x faster
 
 Notes:
 - Memgraph 3.8.1 crashes with segfault (exit 139) during edge loading at ~18-20M edges. WCC previously failed with OOM at 7.6GB.
