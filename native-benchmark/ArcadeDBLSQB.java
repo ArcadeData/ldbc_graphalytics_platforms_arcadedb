@@ -121,9 +121,10 @@ public class ArcadeDBLSQB {
     loadEdgesFromCSV(db, ridMaps, "HAS_CREATOR", "Post.csv", "Post", 0, "Person", null, 1);
     loadEdgesFromCSV(db, ridMaps, "CONTAINER_OF", "Post.csv", "Forum", 2, "Post", null, 0);
 
-    // Comment edges: HAS_CREATOR (Comment->Person) + REPLY_OF (Comment->Post)
+    // Comment edges: HAS_CREATOR (Comment->Person) + REPLY_OF (Comment->Post + Comment->Comment)
     loadEdgesFromCSV(db, ridMaps, "HAS_CREATOR", "Comment.csv", "Comment", 0, "Person", null, 1);
     loadEdgesFromCSV(db, ridMaps, "REPLY_OF", "Comment.csv", "Comment", 0, "Post", null, 3);
+    loadEdgesFromCSV(db, ridMaps, "REPLY_OF", "Comment.csv", "Comment", 0, "Comment", null, 4);
 
     // Edge tables
     loadEdgeTable(db, ridMaps, "HAS_MEMBER", "Forum_hasMember_Person.csv", "Forum", "Person");
