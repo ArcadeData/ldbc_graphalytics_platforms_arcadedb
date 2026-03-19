@@ -1,11 +1,14 @@
 import com.arcadedb.database.*;
+import com.arcadedb.graph.GraphTraversalProviderRegistry;
 import com.arcadedb.query.sql.executor.*;
+import java.util.concurrent.TimeUnit;
 
 public class RunQ9 {
   public static void main(String[] args) throws Exception {
     var db = new DatabaseFactory("/tmp/arcadedb_lsqb").open();
+    if (!GraphTraversalProviderRegistry.awaitAll(db, 60, TimeUnit.SECONDS))
+      System.err.println("WARNING: Some GAVs did not become ready within 60s");
     var gav = com.arcadedb.graph.olap.GraphAnalyticalViewRegistry.get(db, "lsqb");
-    if (gav != null) { while (!gav.isReady()) Thread.sleep(100); }
     System.out.println("GAV ready: " + (gav != null ? gav.getNodeMapping().size() + " nodes" : "null"));
 
     System.out.println("\nRunning Q9...");

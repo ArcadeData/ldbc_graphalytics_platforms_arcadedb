@@ -4,10 +4,11 @@ Platform driver implementation for the [LDBC Graphalytics](https://ldbcouncil.or
 
 Uses ArcadeDB in **embedded mode** with the Graph Analytical View (GAV) engine, which builds a CSR (Compressed Sparse Row) adjacency index for high-performance graph algorithm execution with zero GC pressure.
 
-This repository contains two benchmark modes:
+This repository contains three benchmark modes:
 
 1. **Official LDBC Graphalytics** — standardized framework with per-algorithm isolation, validation, and reporting
 2. **Native multi-vendor comparison** — load once, run all algorithms, compare ArcadeDB vs Kuzu vs DuckPGQ vs Memgraph vs Neo4j vs FalkorDB vs HugeGraph
+3. **LSQB (Labelled Subgraph Query Benchmark)** — 9 subgraph pattern matching queries on the LDBC SNB social network, comparing ArcadeDB (Cypher) vs DuckDB (SQL)
 
 ## Supported Algorithms
 
@@ -272,9 +273,105 @@ Notes:
 
 ```
 native-benchmark/
-  ArcadeDBBenchmark.java    # ArcadeDB standalone benchmark (Java, embedded)
-  benchmark.py              # Kuzu, DuckPGQ, Memgraph, Neo4j, ArangoDB benchmarks (Python)
+  ArcadeDBBenchmark.java    # ArcadeDB Graphalytics benchmark (Java, embedded)
+  ArcadeDBLSQB.java         # ArcadeDB LSQB benchmark (Java, embedded, Cypher)
+  benchmark.py              # Kuzu, DuckPGQ, Memgraph, Neo4j, ArangoDB Graphalytics benchmarks (Python)
+  lsqb_benchmark.py         # Kuzu, DuckDB, Neo4j LSQB benchmarks (Python)
+  bench_common.py           # Shared benchmark infrastructure
 ```
+
+---
+
+## Mode 3: LSQB (Labelled Subgraph Query Benchmark)
+
+The [LSQB benchmark](https://github.com/ldbc/lsqb) is a lightweight microbenchmark from the LDBC council that focuses on **subgraph pattern matching** — counting how many times a given labelled graph pattern appears in the dataset. It tests the query optimizer's ability to handle multi-way joins, anti-patterns (NOT EXISTS), and type hierarchy (Message supertype with Post/Comment subtypes).
+
+The benchmark uses the LDBC SNB social network dataset (SF1: ~3.9M vertices, ~17.9M edges) and runs 9 Cypher queries (Q1–Q9) covering patterns from simple 2-hop paths to complex 8-hop chains and triangle patterns.
+
+### Dataset
+
+Download the LDBC SNB SF1 dataset (merged-fk format for ArcadeDB/DuckDB, projected-fk for Kuzu):
+
+```bash
+# Merged-fk (for ArcadeDB and DuckDB)
+curl -L -o /path/to/graphs/lsqb-sf1-merged.tar.zst \
+  https://datasets.ldbcouncil.org/lsqb/social-network-sf1-merged-fk.tar.zst
+cd /path/to/graphs && tar --use-compress-program=unzstd -xf lsqb-sf1-merged.tar.zst
+```
+
+Update `DATA_DIR` in `ArcadeDBLSQB.java` to point to the extracted directory.
+
+### Run ArcadeDB (Java, embedded)
+
+```bash
+cd native-benchmark
+LDBC_JAR=../target/graphalytics-platforms-arcadedb-0.1-SNAPSHOT-default.jar
+
+# Compile
+javac -cp "$LDBC_JAR" ArcadeDBLSQB.java
+
+# Run (first run loads data, subsequent runs reuse the database)
+java -Xms4g -Xmx4g --add-modules jdk.incubator.vector -cp ".:$LDBC_JAR" ArcadeDBLSQB
+
+# Force reload from scratch
+java -Xms4g -Xmx4g --add-modules jdk.incubator.vector -cp ".:$LDBC_JAR" ArcadeDBLSQB --reset
+```
+
+### Run DuckDB (Python)
+
+```bash
+cd native-benchmark
+pip install duckdb
+python3 lsqb_benchmark.py duckdb
+```
+
+### Run All Systems (Kuzu, DuckDB, Neo4j)
+
+```bash
+python3 lsqb_benchmark.py              # Run all systems
+python3 lsqb_benchmark.py --reset      # Delete all data and reload
+python3 lsqb_benchmark.py kuzu duckdb  # Run specific systems only
+```
+
+### LSQB Queries
+
+| Query | Pattern | Description |
+|-------|---------|-------------|
+| **Q1** | 8-hop chain | Country←City←Person←Forum→Post←Comment→Tag→TagClass |
+| **Q2** | Diamond | Person-KNOWS-Person with Comment→Post creator path |
+| **Q3** | Triangle | 3 Persons in same Country, all connected by KNOWS |
+| **Q4** | Star | Message with Tag, Creator, Likes, and Replies (inner join) |
+| **Q5** | Fork | Message←Reply with different Tags |
+| **Q6** | 2-hop + interest | Person-KNOWS-Person-KNOWS-Person→Tag |
+| **Q7** | Star (optional) | Same as Q4 but with OPTIONAL MATCH for Likes and Replies |
+| **Q8** | Anti-pattern | Like Q5 but Comment must NOT have the parent's Tag |
+| **Q9** | Anti-pattern | Like Q6 but Person1 must NOT know Person3 |
+
+### LSQB Results
+
+Dataset: **LDBC SNB SF1** (3,947,829 vertices, 17,882,623 edges)
+
+*Benchmarks run on a MacBook Pro 16" (2019), Intel Core i9-9880H 8-core @ 2.3GHz, 32GB RAM, macOS.*
+
+| Query | Expected Count | ArcadeDB | DuckDB | Winner |
+|-------|---------------|----------|--------|--------|
+| **Q1** | 221,636,419 | 0.23s | 0.15s | DuckDB 1.5x |
+| **Q2** | 1,085,627 | 1.35s | 0.02s | DuckDB 68x |
+| **Q3** | 753,570 | 0.16s | 0.04s | DuckDB 4x |
+| **Q4** | 14,836,038 | **0.01s** | 0.08s | **ArcadeDB 8x** |
+| **Q5** | 13,824,510 | 0.40s | 0.04s | DuckDB 10x |
+| **Q6** | 1,668,134,320 | **0.92s** | 2.47s | **ArcadeDB 2.7x** |
+| **Q7** | 26,190,133 | **0.01s** | 0.08s | **ArcadeDB 8x** |
+| **Q8** | 6,907,213 | 1.05s | 0.07s | DuckDB 15x |
+| **Q9** | 1,596,153,418 | **1.58s** | 8.05s | **ArcadeDB 5.1x** |
+
+All 9 queries produce correct results matching the [official LSQB expected output](https://github.com/ldbc/lsqb/blob/main/expected-output/expected-output.csv).
+
+**Analysis:**
+
+- **ArcadeDB wins on Q4 and Q7** — star-shaped joins centered on Message (Tag, Creator, Likes, Replies). With the GAV's CSR acceleration, ArcadeDB completes these in ~12ms, **8x faster than DuckDB**. The benchmark uses `GraphTraversalProviderRegistry.awaitAll()` to ensure the GAV is fully registered with the query optimizer before timing queries.
+- **ArcadeDB wins on Q6 and Q9** — multi-hop path traversals (Person-KNOWS-Person-KNOWS-Person) where graph adjacency lists outperform relational self-joins. These are the two heaviest queries with billion-scale result counts.
+- **DuckDB wins on remaining queries** — Q1 (long chain), Q2 (diamond), Q3 (triangle), Q5 (fork), Q8 (anti-pattern) are join-intensive patterns where DuckDB's columnar vectorized execution excels.
 
 ---
 

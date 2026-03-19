@@ -143,7 +143,7 @@ public class ArcadeDBLSQB {
       System.gc();
     } // end of load block
 
-    // Ensure GAV is ready (reuse persisted one, or build fresh)
+    // Ensure all GAVs (restored or new) are fully built before running queries
     System.out.println("\n[ArcadeDB] Preparing Graph Analytical View...");
     long gavStart = System.currentTimeMillis();
     var gav = com.arcadedb.graph.olap.GraphAnalyticalViewRegistry.get(db, "lsqb");
@@ -157,7 +157,10 @@ public class ArcadeDBLSQB {
           .withEdgeTypes(allEdgeTypes)
           .build();
     }
-    while (!gav.isReady()) Thread.sleep(100);
+    // Wait for all GAVs (including async-restored ones) to be ready for query execution
+    boolean ready = com.arcadedb.graph.GraphTraversalProviderRegistry.awaitAll(db, 60, java.util.concurrent.TimeUnit.SECONDS);
+    if (!ready)
+      System.err.println("WARNING: Some GAVs did not become ready within 60s");
     long gavTime = System.currentTimeMillis() - gavStart;
     System.out.println("  GAV ready: " + gavTime / 1000.0 + "s  (nodes=" + gav.getNodeMapping().size() + ")");
 

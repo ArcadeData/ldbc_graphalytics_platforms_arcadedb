@@ -1,13 +1,15 @@
 import com.arcadedb.database.*;
+import com.arcadedb.graph.GraphTraversalProviderRegistry;
 import com.arcadedb.query.sql.executor.*;
+import java.util.concurrent.TimeUnit;
 
 public class ExplainCypher {
   public static void main(String[] args) throws Exception {
     var db = new DatabaseFactory("/tmp/arcadedb_lsqb").open();
-    // Wait for GAV
+    if (!GraphTraversalProviderRegistry.awaitAll(db, 60, TimeUnit.SECONDS))
+      System.err.println("WARNING: Some GAVs did not become ready within 60s");
     var gav = com.arcadedb.graph.olap.GraphAnalyticalViewRegistry.get(db, "lsqb");
     if (gav != null) {
-      while (!gav.isReady()) Thread.sleep(100);
       System.out.println("GAV ready: " + gav.getNodeMapping().size() + " nodes");
     } else {
       System.out.println("No GAV found");

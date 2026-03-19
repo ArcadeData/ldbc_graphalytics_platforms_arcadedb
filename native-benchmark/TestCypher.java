@@ -17,8 +17,8 @@ public class TestCypher {
 
     Database db = new DatabaseFactory(dbPath).open();
 
-    // Ensure GAV is ready (may have been restored from persistence)
-    System.out.println("Waiting for GAV...");
+    // Ensure all GAVs are ready (including async-restored ones)
+    System.out.println("Waiting for GAVs...");
     long gavStart = System.currentTimeMillis();
     var gav = com.arcadedb.graph.olap.GraphAnalyticalViewRegistry.get(db, "lsqb");
     if (gav == null) {
@@ -29,8 +29,8 @@ public class TestCypher {
               "REPLY_OF","HAS_TAG","HAS_TYPE","HAS_CREATOR","KNOWS","LIKES","HAS_INTEREST")
           .build();
     }
-    // Wait for CSR to be ready
-    while (!gav.isReady()) Thread.sleep(100);
+    if (!com.arcadedb.graph.GraphTraversalProviderRegistry.awaitAll(db, 60, java.util.concurrent.TimeUnit.SECONDS))
+      System.err.println("WARNING: Some GAVs did not become ready within 60s");
     System.out.println("GAV ready in " + (System.currentTimeMillis() - gavStart) + "ms, nodes=" + gav.getNodeMapping().size());
 
     // Test simple counts first

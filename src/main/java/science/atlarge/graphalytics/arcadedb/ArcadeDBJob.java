@@ -16,6 +16,7 @@
 package science.atlarge.graphalytics.arcadedb;
 
 import com.arcadedb.database.Database;
+import com.arcadedb.graph.GraphTraversalProviderRegistry;
 import com.arcadedb.graph.olap.GraphAnalyticalView;
 import com.arcadedb.graph.olap.GraphAnalyticalViewRegistry;
 import org.apache.logging.log4j.LogManager;
@@ -106,34 +107,31 @@ public abstract class ArcadeDBJob {
         try {
             // Check if GAV was already restored from persistence on database open
             GraphAnalyticalView gav = GraphAnalyticalViewRegistry.get(db, "benchmark");
-            if (gav != null) {
-                LOG.info("Graph Analytical View 'benchmark' already registered (restored from persistence), waiting for it to be ready...");
-                boolean ready = gav.awaitReady(600, TimeUnit.SECONDS);
-                long elapsed = System.currentTimeMillis() - start;
-                if (ready) {
-                    LOG.info("Graph Analytical View ready in {}.{}s - status: {}",
-                            elapsed / 1000, String.format("%03d", elapsed % 1000), gav.getStatus());
-                    LOG.info(gav.getStats());
-                } else {
-                    LOG.warn("Graph Analytical View not ready after {}s - status: {}, falling back to OLTP",
-                            elapsed / 1000, gav.getStatus());
-                }
-                return;
+            if (gav == null) {
+                // Build a new GAV (skip persistence since this is a benchmark-only view)
+                LOG.info("Building Graph Analytical View (OLAP mode enabled)...");
+                gav = GraphAnalyticalView.builder(db)
+                        .withName("benchmark")
+                        .skipPersistence()
+                        .withVertexTypes(ArcadeDBConstants.VERTEX_TYPE)
+                        .withEdgeTypes(ArcadeDBConstants.EDGE_TYPE)
+                        .withEdgeProperties(ArcadeDBConstants.WEIGHT_PROPERTY)
+                        .build();
+            } else {
+                LOG.info("Graph Analytical View 'benchmark' already registered (restored from persistence)");
             }
 
-            // Build a new GAV (skip persistence since this is a benchmark-only view)
-            LOG.info("Building Graph Analytical View (OLAP mode enabled)...");
-            gav = GraphAnalyticalView.builder(db)
-                    .withName("benchmark")
-                    .skipPersistence()
-                    .withVertexTypes(ArcadeDBConstants.VERTEX_TYPE)
-                    .withEdgeTypes(ArcadeDBConstants.EDGE_TYPE)
-                    .withEdgeProperties(ArcadeDBConstants.WEIGHT_PROPERTY)
-                    .build();
+            // Wait for all GAVs (including async-restored ones) to be fully ready
+            boolean ready = GraphTraversalProviderRegistry.awaitAll(db, 600, TimeUnit.SECONDS);
             long elapsed = System.currentTimeMillis() - start;
-            LOG.info("Graph Analytical View built in {}.{}s - status: {}",
-                    elapsed / 1000, String.format("%03d", elapsed % 1000), gav.getStatus());
-            LOG.info(gav.getStats());
+            if (ready) {
+                LOG.info("Graph Analytical View ready in {}.{}s - status: {}",
+                        elapsed / 1000, String.format("%03d", elapsed % 1000), gav.getStatus());
+                LOG.info(gav.getStats());
+            } else {
+                LOG.warn("Graph Analytical View not ready after {}s - status: {}, falling back to OLTP",
+                        elapsed / 1000, gav.getStatus());
+            }
         } catch (Exception e) {
             long elapsed = System.currentTimeMillis() - start;
             LOG.warn("GraphAnalyticalView build failed after {}s - falling back to OLTP: {}",
