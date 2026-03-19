@@ -798,6 +798,7 @@ def run_arcadedb_benchmark():
         load_edges("CONTAINER_OF", d("Post.csv"), "Forum", "forum_containerof", "Post", "id")
         load_edges("HAS_CREATOR", d("Comment.csv"), "Comment", "id", "Person", "hascreator_person")
         load_edges("REPLY_OF", d("Comment.csv"), "Comment", "id", "Post", "replyof_post")
+        load_edges("REPLY_OF", d("Comment.csv"), "Comment", "id", "Comment", "replyof_comment")
 
         # Load edges from edge tables
         print("  Loading edge tables...")
@@ -812,6 +813,28 @@ def run_arcadedb_benchmark():
         load_time = time.perf_counter() - start
         results["load"] = load_time
         print(f"  Load time: {load_time:.2f}s")
+
+    # Build GAV for OLAP acceleration
+    print("\n[ArcadeDB] Building Graph Analytical View...")
+    gav_start = time.perf_counter()
+    sql("CREATE GRAPH ANALYTICAL VIEW lsqb "
+        "VERTEX TYPES (Country, City, TagClass, Tag, Person, Forum, Post, Comment) "
+        "EDGE TYPES (IS_PART_OF, IS_LOCATED_IN, HAS_MEMBER, CONTAINER_OF, "
+        "REPLY_OF, HAS_TAG, HAS_TYPE, HAS_CREATOR, KNOWS, LIKES, HAS_INTEREST)")
+    # Wait for GAV to be ready
+    import requests as _req
+    for _ in range(600):
+        time.sleep(1)
+        try:
+            r_gav = sql("SELECT status FROM schema:graphAnalyticalViews WHERE name = 'lsqb'")
+            if r_gav.status_code == 200:
+                status = r_gav.json().get("result", [{}])[0].get("status", "")
+                if status == "READY" or status == "ready":
+                    break
+        except Exception:
+            pass
+    gav_time = time.perf_counter() - gav_start
+    print(f"  GAV ready: {gav_time:.2f}s")
 
     # Run LSQB queries using Cypher.
     # ArcadeDB supports openCypher and Post/Comment both extend Message,
@@ -1151,6 +1174,7 @@ AVAILABLE_SYSTEMS = {
     "neo4j": ("Neo4j", run_neo4j_benchmark),
     "memgraph": ("Memgraph", run_memgraph_benchmark),
     "postgresql": ("PostgreSQL", run_postgresql_benchmark),
+    "arcadedb": ("ArcadeDB-Server", run_arcadedb_benchmark),
 }
 
 if __name__ == "__main__":
