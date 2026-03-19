@@ -19,9 +19,9 @@ import java.util.Map;
  * Loads datagen-7_5-fb once, builds GAV once, runs all 6 algorithms.
  * Comparable to the Kuzu/DuckPGQ Python benchmark scripts.
  */
-public class ArcadeDBBenchmark {
+public class ArcadeDBEmbeddedBenchmark {
 
-  static final String GRAPHS_DIR    = "/Users/luca/graphs";
+  static final String GRAPHS_DIR    = "../datasets/datagen-7_5-fb";
   static final String VERTEX_FILE   = GRAPHS_DIR + "/datagen-7_5-fb.v";
   static final String EDGE_FILE     = GRAPHS_DIR + "/datagen-7_5-fb.e";
   static final String DB_PATH       = "/tmp/arcadedb_benchmark";

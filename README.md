@@ -43,19 +43,33 @@ The build produces a self-contained distribution in `graphalytics-1.3.0-arcadedb
 
 ## Dataset
 
-Download datasets from the [LDBC Graphalytics data repository](https://ldbcouncil.org/benchmarks/graphalytics/). For example, `datagen-7_5-fb` (633K vertices, 34M edges):
+Use the built-in dataset manager to browse and download datasets from the [LDBC data repository](https://ldbcouncil.org/benchmarks/graphalytics/):
+
+```bash
+# See all available datasets (40+ Graphalytics + 9 LSQB scale factors)
+python3 datasets.py available
+
+# Download the standard Graphalytics benchmark dataset (633K vertices, 34M edges, ~155 MB)
+python3 datasets.py download datagen-7_5-fb
+
+# Download the LSQB social network dataset (SF1, ~3.9M vertices, ~17.9M edges)
+python3 datasets.py download lsqb-sf1
+
+# Show downloaded datasets with size and vertex/edge counts
+python3 datasets.py
+```
+
+Datasets are downloaded into the `datasets/` directory (git-ignored). After downloading `datagen-7_5-fb`:
 
 ```
-/path/to/graphs/
-  datagen-7_5-fb.v              # vertex file (one ID per line)
-  datagen-7_5-fb.e              # edge file (src dst weight, space-separated)
-  datagen-7_5-fb.properties     # graph metadata
-  datagen-7_5-fb-BFS/           # validation data per algorithm
-  datagen-7_5-fb-WCC/
-  datagen-7_5-fb-PR/
-  datagen-7_5-fb-CDLP/
-  datagen-7_5-fb-LCC/
-  datagen-7_5-fb-SSSP/
+datasets/
+  datagen-7_5-fb/
+    datagen-7_5-fb.v              # vertex file (one ID per line)
+    datagen-7_5-fb.e              # edge file (src dst weight, space-separated)
+    datagen-7_5-fb.properties     # graph metadata
+    datagen-7_5-fb-BFS/           # validation data per algorithm
+    datagen-7_5-fb-WCC/
+    ...
 ```
 
 ---
@@ -70,8 +84,8 @@ Edit files in `graphalytics-1.3.0-arcadedb-0.1-SNAPSHOT/config/`:
 
 **benchmark.properties:**
 ```properties
-graphs.root-directory = /path/to/graphs
-graphs.validation-directory = /path/to/graphs
+graphs.root-directory = ../datasets
+graphs.validation-directory = ../datasets
 benchmark.runner.max-memory = 16384
 ```
 
@@ -120,7 +134,7 @@ for rid, r in sorted(runs.items(), key=lambda x: x[1]['timestamp']):
 
 ## Mode 2: Native Multi-Vendor Comparison
 
-Located in `native-benchmark/`. Loads the graph once and runs all algorithms sequentially on the same in-memory structure. This provides a fair apples-to-apples comparison since all systems use the same approach.
+Located in `ldbc-native/`. Loads the graph once and runs all algorithms sequentially on the same in-memory structure. This provides a fair apples-to-apples comparison since all systems use the same approach.
 
 **Systems tested:** ArcadeDB, Kuzu, DuckPGQ, Memgraph, Neo4j, ArangoDB, FalkorDB, HugeGraph
 
@@ -128,19 +142,19 @@ Located in `native-benchmark/`. Loads the graph once and runs all algorithms seq
 
 ```bash
 # Compile (use the LDBC platform fat JAR for dependencies)
-LDBC_JAR=graphalytics-1.3.0-arcadedb-0.1-SNAPSHOT/lib/graphalytics-platforms-arcadedb-0.1-SNAPSHOT-default.jar
-cd native-benchmark
-javac --add-modules jdk.incubator.vector -cp "../$LDBC_JAR" ArcadeDBBenchmark.java
+LDBC_JAR=target/graphalytics-platforms-arcadedb-0.1-SNAPSHOT-default.jar
+cd ldbc-native
+javac --add-modules jdk.incubator.vector -cp "../$LDBC_JAR" ArcadeDBEmbeddedBenchmark.java
 
 # Run
-java --add-modules jdk.incubator.vector -Xms8g -Xmx8g -cp ".:../$LDBC_JAR" ArcadeDBBenchmark
+java --add-modules jdk.incubator.vector -Xms8g -Xmx8g -cp ".:../$LDBC_JAR" ArcadeDBEmbeddedBenchmark
 ```
 
 ### Kuzu, DuckPGQ, Memgraph, Neo4j, ArangoDB (Python)
 
 ```bash
 # Create virtual environment and install dependencies
-cd native-benchmark
+cd ldbc-native
 python3 -m venv .venv
 source .venv/bin/activate
 pip install kuzu duckdb pymgclient neo4j python-arango
@@ -174,7 +188,7 @@ docker run -d --name vermeer-master --network hugegraph-net \
   -p 6688:6688 -p 6689:6689 hugegraph/vermeer --env=master
 docker run -d --name vermeer-worker --network hugegraph-net \
   -p 6788:6788 -p 6789:6789 \
-  -v /path/to/graphs:/data/graphs:ro \
+  -v "$(pwd)/datasets":/data/graphs:ro \
   hugegraph/vermeer --env=worker --master_peer=vermeer-master:6689
 # Assign worker to common pool:
 WORKER=$(curl -s http://localhost:6688/api/v1/workers | python3 -c "import sys,json; print(json.load(sys.stdin)['workers'][0]['name'])")
@@ -272,12 +286,18 @@ Notes:
 ### File Structure
 
 ```
-native-benchmark/
-  ArcadeDBBenchmark.java    # ArcadeDB Graphalytics benchmark (Java, embedded)
-  ArcadeDBLSQB.java         # ArcadeDB LSQB benchmark (Java, embedded, Cypher)
-  benchmark.py              # Kuzu, DuckPGQ, Memgraph, Neo4j, ArangoDB Graphalytics benchmarks (Python)
-  lsqb_benchmark.py         # Kuzu, DuckDB, Neo4j LSQB benchmarks (Python)
-  bench_common.py           # Shared benchmark infrastructure
+shared/
+  bench_common.py                  # Shared benchmark infrastructure
+
+ldbc-native/
+  ArcadeDBEmbeddedBenchmark.java   # ArcadeDB Graphalytics benchmark (Java, embedded)
+  ArcadeDBEmbeddedLoader.java      # ArcadeDB graph loader (Java, embedded)
+  benchmark.py                     # Kuzu, DuckPGQ, Memgraph, Neo4j, ArangoDB Graphalytics benchmarks (Python)
+
+lsqb/
+  ArcadeDBEmbeddedLSQB.java        # ArcadeDB LSQB benchmark (Java, embedded, Cypher)
+  lsqb_benchmark.py                # Kuzu, DuckDB, Neo4j LSQB benchmarks (Python)
+  tools/                           # Debug/profiling helpers
 ```
 
 ---
@@ -290,37 +310,42 @@ The benchmark uses the LDBC SNB social network dataset (SF1: ~3.9M vertices, ~17
 
 ### Dataset
 
-Download the LDBC SNB SF1 dataset (merged-fk format for ArcadeDB/DuckDB, projected-fk for Kuzu):
+LSQB datasets come in two formats (both contain the same data):
+
+| Format | Entity CSVs | Relationships | Best for |
+|--------|-------------|---------------|----------|
+| **merged-fk** | ID + FK columns (e.g. `City.csv` has `ispartof_country`) | FKs in entity rows + separate CSVs for M:N | SQL databases (DuckDB, PostgreSQL), ArcadeDB, Neo4j |
+| **projected-fk** | ID only | Every relationship in a separate edge CSV (e.g. `City_isPartOf_Country.csv`) | Graph DB bulk loaders (Kuzu) |
 
 ```bash
-# Merged-fk (for ArcadeDB and DuckDB)
-curl -L -o /path/to/graphs/lsqb-sf1-merged.tar.zst \
-  https://datasets.ldbcouncil.org/lsqb/social-network-sf1-merged-fk.tar.zst
-cd /path/to/graphs && tar --use-compress-program=unzstd -xf lsqb-sf1-merged.tar.zst
-```
+# Download LSQB SF1 (both merged-fk and projected-fk formats)
+python3 datasets.py download lsqb-sf1
 
-Update `DATA_DIR` in `ArcadeDBLSQB.java` to point to the extracted directory.
+# Or download only the format you need
+python3 datasets.py download lsqb-sf1 --format merged-fk    # for ArcadeDB, DuckDB, PostgreSQL, Neo4j
+python3 datasets.py download lsqb-sf1 --format projected-fk # for Kuzu
+```
 
 ### Run ArcadeDB (Java, embedded)
 
 ```bash
-cd native-benchmark
+cd lsqb
 LDBC_JAR=../target/graphalytics-platforms-arcadedb-0.1-SNAPSHOT-default.jar
 
 # Compile
-javac -cp "$LDBC_JAR" ArcadeDBLSQB.java
+javac -cp "$LDBC_JAR" ArcadeDBEmbeddedLSQB.java
 
 # Run (first run loads data, subsequent runs reuse the database)
-java -Xms4g -Xmx4g --add-modules jdk.incubator.vector -cp ".:$LDBC_JAR" ArcadeDBLSQB
+java -Xms4g -Xmx4g --add-modules jdk.incubator.vector -cp ".:$LDBC_JAR" ArcadeDBEmbeddedLSQB
 
 # Force reload from scratch
-java -Xms4g -Xmx4g --add-modules jdk.incubator.vector -cp ".:$LDBC_JAR" ArcadeDBLSQB --reset
+java -Xms4g -Xmx4g --add-modules jdk.incubator.vector -cp ".:$LDBC_JAR" ArcadeDBEmbeddedLSQB --reset
 ```
 
 ### Run DuckDB (Python)
 
 ```bash
-cd native-benchmark
+cd lsqb
 pip install duckdb
 python3 lsqb_benchmark.py duckdb
 ```
@@ -328,6 +353,7 @@ python3 lsqb_benchmark.py duckdb
 ### Run All Systems (Kuzu, DuckDB, Neo4j)
 
 ```bash
+cd lsqb
 python3 lsqb_benchmark.py              # Run all systems
 python3 lsqb_benchmark.py --reset      # Delete all data and reload
 python3 lsqb_benchmark.py kuzu duckdb  # Run specific systems only

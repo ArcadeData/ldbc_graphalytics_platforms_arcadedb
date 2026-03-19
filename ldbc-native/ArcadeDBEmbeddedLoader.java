@@ -5,7 +5,7 @@ import com.arcadedb.schema.*;
 import java.io.*;
 import java.util.*;
 
-public class ArcadeDBLoader {
+public class ArcadeDBEmbeddedLoader {
     public static void main(String[] args) throws Exception {
         String dbPath = args[0];
         String vertexFile = args[1];

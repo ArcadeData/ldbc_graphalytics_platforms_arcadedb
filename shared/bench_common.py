@@ -7,7 +7,7 @@ import time
 import os
 import argparse
 
-GRAPHS_DIR = "/Users/luca/graphs"
+GRAPHS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'datasets')
 
 # Global flag set by --reset
 RESET = False

@@ -6,12 +6,12 @@ Queries: 9 subgraph pattern matching queries (Q1-Q9)
 
 Setup:
   # Download dataset (SF1, ~50MB)
-  curl -L -o /Users/luca/graphs/lsqb-sf1-projected.tar.zst \\
+  curl -L -o ../datasets/lsqb-sf1-projected.tar.zst \\
     https://datasets.ldbcouncil.org/lsqb/social-network-sf1-projected-fk.tar.zst
-  curl -L -o /Users/luca/graphs/lsqb-sf1-merged.tar.zst \\
+  curl -L -o ../datasets/lsqb-sf1-merged.tar.zst \\
     https://datasets.ldbcouncil.org/lsqb/social-network-sf1-merged-fk.tar.zst
-  cd /Users/luca/graphs && tar --use-compress-program=unzstd -xf lsqb-sf1-projected.tar.zst
-  cd /Users/luca/graphs && tar --use-compress-program=unzstd -xf lsqb-sf1-merged.tar.zst
+  cd ../datasets && tar --use-compress-program=unzstd -xf lsqb-sf1-projected.tar.zst
+  cd ../datasets && tar --use-compress-program=unzstd -xf lsqb-sf1-merged.tar.zst
 
 Usage:
   python3 lsqb_benchmark.py                   # Run all systems
@@ -22,7 +22,10 @@ Usage:
 
 import time
 import os
+import sys
 import shutil
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'shared'))
 
 import bench_common
 from bench_common import GRAPHS_DIR

@@ -1,12 +1,10 @@
-target/
-*.iml
-.idea/
+# Dataset files (large graph data - download into datasets/)
+datasets/*
+!datasets/.gitkeep
+
+# Compiled Java classes
 *.class
-*.jar
-*.tar.gz
-graphalytics-*/
-intermediate/
-output/
-config/
+
+# Runtime logs
+**/log/
 .DS_Store
-/native-benchmark/log

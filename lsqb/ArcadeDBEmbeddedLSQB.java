@@ -16,15 +16,15 @@ import java.util.*;
  * (Post and Comment extend Message), then runs all 9 LSQB queries via Cypher.
  *
  * Compile:
- *   LDBC_JAR=../graphalytics-1.3.0-arcadedb-0.1-SNAPSHOT/lib/graphalytics-platforms-arcadedb-0.1-SNAPSHOT-default.jar
- *   javac -cp "$LDBC_JAR" ArcadeDBLSQB.java
+ *   LDBC_JAR=../target/graphalytics-platforms-arcadedb-0.1-SNAPSHOT-default.jar
+ *   javac -cp "$LDBC_JAR" ArcadeDBEmbeddedLSQB.java
  *
  * Run:
- *   java -Xms4g -Xmx4g -cp ".:$LDBC_JAR" ArcadeDBLSQB
+ *   java -Xms4g -Xmx4g -cp ".:$LDBC_JAR" ArcadeDBEmbeddedLSQB
  */
-public class ArcadeDBLSQB {
+public class ArcadeDBEmbeddedLSQB {
 
-  static final String DATA_DIR = "/Users/luca/graphs/social-network-sf1-merged-fk";
+  static final String DATA_DIR = "../datasets/social-network-sf1-merged-fk";
   static final String DB_PATH  = "/tmp/arcadedb_lsqb";
 
   public static void main(String[] args) throws Exception {

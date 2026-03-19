@@ -19,11 +19,13 @@ import os
 import sys
 import shutil
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'shared'))
+
 import bench_common
 from bench_common import fmt, GRAPHS_DIR
 
-VERTEX_FILE = os.path.join(GRAPHS_DIR, "datagen-7_5-fb.v")
-EDGE_FILE = os.path.join(GRAPHS_DIR, "datagen-7_5-fb.e")
+VERTEX_FILE = os.path.join(GRAPHS_DIR, "datagen-7_5-fb", "datagen-7_5-fb.v")
+EDGE_FILE = os.path.join(GRAPHS_DIR, "datagen-7_5-fb", "datagen-7_5-fb.e")
 SOURCE_VERTEX = 6
 PR_DAMPING = 0.85
 PR_ITERATIONS = 10
@@ -51,7 +53,7 @@ def run_kuzu_benchmark():
 
     # Check if data already loaded
     needs_load = True
-    if os.path.exists(db_path) and not RESET:
+    if os.path.exists(db_path) and not bench_common.RESET:
         try:
             db = kuzu.Database(db_path)
             conn = kuzu.Connection(db)
@@ -1222,7 +1224,7 @@ def run_hugegraph_benchmark():
         -p 6688:6688 -p 6689:6689 hugegraph/vermeer --env=master
       docker run -d --name vermeer-worker --network hugegraph-net \\
         -p 6788:6788 -p 6789:6789 \\
-        -v /Users/luca/graphs:/data/graphs:ro \\
+        -v "$(cd ../datasets && pwd)":/data/graphs:ro \\
         hugegraph/vermeer --env=worker --master_peer=vermeer-master:6689
     Then assign worker to the common pool:
       curl -X POST http://localhost:6688/api/v1/admin/workers/group/\\$/$(
@@ -1361,7 +1363,7 @@ def run_arcadedb_docker_benchmark():
     Setup:
       docker run -d --name arcadedb -p 2480:2480 -p 2424:2424 \
         -e JAVA_OPTS="-Darcadedb.server.rootPassword=benchmark -Xms16g -Xmx16g --add-modules jdk.incubator.vector" \
-        -v /Users/luca/graphs:/data/graphs:ro \
+        -v "$(cd ../datasets && pwd)":/data/graphs:ro \
         -v /tmp/arcadedb-docker-data:/home/arcadedb/databases \
         arcadedata/arcadedb:latest
     """
@@ -1393,7 +1395,7 @@ def run_arcadedb_docker_benchmark():
     # The database is created by the Java loader and then mounted into Docker.
     # This separates "load" (embedded, ~160s) from "compute" (Docker, HTTP API).
     db_path = "/tmp/arcadedb-docker-data/bench"
-    needs_load = not os.path.isdir(db_path) or RESET
+    needs_load = not os.path.isdir(db_path) or bench_common.RESET
 
     if needs_load:
         if os.path.isdir(db_path):
@@ -1404,13 +1406,13 @@ def run_arcadedb_docker_benchmark():
         start = time.perf_counter()
 
         ldbc_jar = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-            "..", "graphalytics-1.3.0-arcadedb-0.1-SNAPSHOT", "lib",
+            "..", "target",
             "graphalytics-platforms-arcadedb-0.1-SNAPSHOT-default.jar")
         bench_dir = os.path.dirname(os.path.abspath(__file__))
 
-        # Compile and run the Java loader (ArcadeDBBenchmark writes to DB_PATH)
+        # Compile and run the Java loader (ArcadeDBEmbeddedBenchmark writes to DB_PATH)
         # We patch DB_PATH via a tiny wrapper that just loads and exits
-        loader_src = os.path.join(bench_dir, "ArcadeDBLoader.java")
+        loader_src = os.path.join(bench_dir, "ArcadeDBEmbeddedLoader.java")
         with open(loader_src, "w") as f:
             f.write("""
 import com.arcadedb.database.*;
@@ -1419,7 +1421,7 @@ import com.arcadedb.schema.*;
 import java.io.*;
 import java.util.*;
 
-public class ArcadeDBLoader {
+public class ArcadeDBEmbeddedLoader {
     public static void main(String[] args) throws Exception {
         String dbPath = args[0];
         String vertexFile = args[1];
@@ -1484,7 +1486,7 @@ public class ArcadeDBLoader {
             "java", "--add-modules", "jdk.incubator.vector",
             "-Xms8g", "-Xmx8g",
             "-cp", f".:{ldbc_jar}",
-            "ArcadeDBLoader", db_path, VERTEX_FILE, EDGE_FILE
+            "ArcadeDBEmbeddedLoader", db_path, VERTEX_FILE, EDGE_FILE
         ], cwd=bench_dir, capture_output=True, text=True)
         print(proc.stdout)
         if proc.returncode != 0:
