@@ -377,7 +377,7 @@ python3 lsqb_benchmark.py kuzu duckdb  # Run specific systems only
 
 Dataset: **LDBC SNB SF1** (3,947,829 vertices, 17,882,623 edges)
 
-*Benchmarks run on a MacBook Pro 16" (2019), Intel Core i9-9880H 8-core @ 2.3GHz, 32GB RAM, macOS.*
+*Benchmarks run on a MacBook Pro 16" (2026), Apple M5 Pro, 48GB RAM, 1TB SSD, macOS.*
 
 | System | Version | Mode | Language |
 |--------|---------|------|----------|
