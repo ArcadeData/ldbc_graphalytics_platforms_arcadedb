@@ -32,7 +32,12 @@ public class ArcadeDBLSQB {
     System.out.println("ArcadeDB LSQB BENCHMARK (embedded, Cypher)");
     System.out.println("======================================================================");
 
-    boolean reset = args.length > 0 && args[0].equals("--reset");
+    boolean reset = false;
+    boolean noGav = false;
+    for (String arg : args) {
+      if (arg.equals("--reset")) reset = true;
+      if (arg.equals("--no-gav")) noGav = true;
+    }
     DatabaseFactory factory = new DatabaseFactory(DB_PATH);
     Database db;
     long loadTime;
@@ -143,26 +148,35 @@ public class ArcadeDBLSQB {
       System.gc();
     } // end of load block
 
-    // Ensure all GAVs (restored or new) are fully built before running queries
-    System.out.println("\n[ArcadeDB] Preparing Graph Analytical View...");
-    long gavStart = System.currentTimeMillis();
-    var gav = com.arcadedb.graph.olap.GraphAnalyticalViewRegistry.get(db, "lsqb");
-    if (gav == null) {
-      var allVertexTypes = new String[]{"Country","City","TagClass","Tag","Person","Forum","Post","Comment"};
-      var allEdgeTypes = new String[]{"IS_PART_OF","IS_LOCATED_IN","HAS_MEMBER","CONTAINER_OF",
-          "REPLY_OF","HAS_TAG","HAS_TYPE","HAS_CREATOR","KNOWS","LIKES","HAS_INTEREST"};
-      gav = com.arcadedb.graph.olap.GraphAnalyticalView.builder(db)
-          .withName("lsqb")
-          .withVertexTypes(allVertexTypes)
-          .withEdgeTypes(allEdgeTypes)
-          .build();
+    if (noGav) {
+      System.out.println("\n[ArcadeDB] Skipping GAV (OLTP-only mode)");
+      // Drop any existing GAVs so queries don't use them
+      var existingGav = com.arcadedb.graph.olap.GraphAnalyticalViewRegistry.get(db, "lsqb");
+      if (existingGav != null) existingGav.drop();
+      existingGav = com.arcadedb.graph.olap.GraphAnalyticalViewRegistry.get(db, "bench_gav");
+      if (existingGav != null) existingGav.drop();
+    } else {
+      // Ensure all GAVs (restored or new) are fully built before running queries
+      System.out.println("\n[ArcadeDB] Preparing Graph Analytical View...");
+      long gavStart = System.currentTimeMillis();
+      var gav = com.arcadedb.graph.olap.GraphAnalyticalViewRegistry.get(db, "lsqb");
+      if (gav == null) {
+        var allVertexTypes = new String[]{"Country","City","TagClass","Tag","Person","Forum","Post","Comment"};
+        var allEdgeTypes = new String[]{"IS_PART_OF","IS_LOCATED_IN","HAS_MEMBER","CONTAINER_OF",
+            "REPLY_OF","HAS_TAG","HAS_TYPE","HAS_CREATOR","KNOWS","LIKES","HAS_INTEREST"};
+        gav = com.arcadedb.graph.olap.GraphAnalyticalView.builder(db)
+            .withName("lsqb")
+            .withVertexTypes(allVertexTypes)
+            .withEdgeTypes(allEdgeTypes)
+            .build();
+      }
+      // Wait for all GAVs (including async-restored ones) to be ready for query execution
+      boolean ready = com.arcadedb.graph.GraphTraversalProviderRegistry.awaitAll(db, 60, java.util.concurrent.TimeUnit.SECONDS);
+      if (!ready)
+        System.err.println("WARNING: Some GAVs did not become ready within 60s");
+      long gavTime = System.currentTimeMillis() - gavStart;
+      System.out.println("  GAV ready: " + gavTime / 1000.0 + "s  (nodes=" + gav.getNodeMapping().size() + ")");
     }
-    // Wait for all GAVs (including async-restored ones) to be ready for query execution
-    boolean ready = com.arcadedb.graph.GraphTraversalProviderRegistry.awaitAll(db, 60, java.util.concurrent.TimeUnit.SECONDS);
-    if (!ready)
-      System.err.println("WARNING: Some GAVs did not become ready within 60s");
-    long gavTime = System.currentTimeMillis() - gavStart;
-    System.out.println("  GAV ready: " + gavTime / 1000.0 + "s  (nodes=" + gav.getNodeMapping().size() + ")");
 
     // --- QUERIES ---
     Map<String, String> queries = new LinkedHashMap<>();
