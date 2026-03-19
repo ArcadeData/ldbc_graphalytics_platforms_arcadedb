@@ -599,6 +599,8 @@ def run_neo4j_benchmark():
                       rows_comment)
             batch_run(s, "UNWIND $rows AS r WITH r WHERE r.replyof_post <> '' MATCH (a:Comment {id: toInteger(r.id)}), (b:Post {id: toInteger(r.replyof_post)}) CREATE (a)-[:REPLY_OF]->(b)",
                       rows_comment)
+            batch_run(s, "UNWIND $rows AS r WITH r WHERE r.replyof_comment <> '' MATCH (a:Comment {id: toInteger(r.id)}), (b:Comment {id: toInteger(r.replyof_comment)}) CREATE (a)-[:REPLY_OF]->(b)",
+                      rows_comment)
 
             # Edges from edge tables
             print("  Loading edge tables...")
@@ -838,12 +840,317 @@ def run_arcadedb_benchmark():
 
 
 # =========================================================================
+# MEMGRAPH BENCHMARK (Cypher via Bolt, uses neo4j driver)
+# =========================================================================
+def run_memgraph_benchmark():
+    from neo4j import GraphDatabase
+    print("\n" + "=" * 70)
+    print("MEMGRAPH LSQB BENCHMARK")
+    print("=" * 70)
+
+    results = {}
+    data_dir = data_dir_merged()
+
+    if not os.path.isdir(data_dir):
+        print(f"  Dataset not found: {data_dir}")
+        return {"error": "Dataset not found"}
+
+    try:
+        driver = GraphDatabase.driver("bolt://localhost:7689", auth=("", ""))
+        driver.verify_connectivity()
+    except Exception as e:
+        print(f"  Cannot connect to Memgraph: {e}")
+        print("  Start with: docker run -d --name memgraph-lsqb -p 7689:7687 memgraph/memgraph-mage")
+        return {"error": str(e)}
+
+    needs_load = True
+    if not bench_common.RESET:
+        try:
+            with driver.session() as session:
+                r = session.run("MATCH (p:Person) RETURN count(p) AS c").single()
+                if r and r["c"] > 0:
+                    needs_load = False
+                    print(f"\n[Memgraph] Data already loaded ({r['c']} persons), skipping import")
+        except Exception:
+            pass
+
+    if needs_load:
+        print("\n[Memgraph] Loading LSQB data...")
+        start = time.perf_counter()
+
+        with driver.session() as session:
+            session.run("MATCH (n) DETACH DELETE n")
+
+        import csv
+        d = lambda f: os.path.join(data_dir, f)
+
+        def load_csv(path, delim='|'):
+            with open(path) as f:
+                reader = csv.DictReader(f, delimiter=delim)
+                return list(reader)
+
+        def batch_run(session, query, data, batch_size=10000):
+            for i in range(0, len(data), batch_size):
+                session.run(query, rows=data[i:i+batch_size])
+
+        with driver.session() as s:
+            # Create indexes
+            for label in ["Country", "City", "TagClass", "Tag", "Person", "Forum", "Post", "Comment", "Message"]:
+                s.run(f"CREATE INDEX ON :{label}(id)")
+
+            # Nodes
+            print("  Loading nodes...")
+            batch_run(s, "UNWIND $rows AS r CREATE (:Country {id: toInteger(r.id)})", load_csv(d('Country.csv')))
+            batch_run(s, "UNWIND $rows AS r CREATE (:City {id: toInteger(r.id)})", load_csv(d('City.csv')))
+            batch_run(s, "UNWIND $rows AS r CREATE (:TagClass {id: toInteger(r.id)})", load_csv(d('TagClass.csv')))
+            batch_run(s, "UNWIND $rows AS r CREATE (:Tag {id: toInteger(r.id)})", load_csv(d('Tag.csv')))
+            batch_run(s, "UNWIND $rows AS r CREATE (:Person {id: toInteger(r.id)})", load_csv(d('Person.csv')))
+            batch_run(s, "UNWIND $rows AS r CREATE (:Forum {id: toInteger(r.id)})", load_csv(d('Forum.csv')))
+            batch_run(s, "UNWIND $rows AS r CREATE (:Post:Message {id: toInteger(r.id)})", load_csv(d('Post.csv')))
+            batch_run(s, "UNWIND $rows AS r CREATE (:Comment:Message {id: toInteger(r.id)})", load_csv(d('Comment.csv')))
+
+            # Edges from FK columns
+            print("  Loading edges from FKs...")
+            batch_run(s, "UNWIND $rows AS r MATCH (a:City {id: toInteger(r.id)}), (b:Country {id: toInteger(r.ispartof_country)}) CREATE (a)-[:IS_PART_OF]->(b)",
+                      load_csv(d('City.csv')))
+            batch_run(s, "UNWIND $rows AS r MATCH (a:Person {id: toInteger(r.id)}), (b:City {id: toInteger(r.islocatedin_city)}) CREATE (a)-[:IS_LOCATED_IN]->(b)",
+                      load_csv(d('Person.csv')))
+            batch_run(s, "UNWIND $rows AS r MATCH (a:Tag {id: toInteger(r.id)}), (b:TagClass {id: toInteger(r.hastype_tagclass)}) CREATE (a)-[:HAS_TYPE]->(b)",
+                      load_csv(d('Tag.csv')))
+            batch_run(s, "UNWIND $rows AS r MATCH (a:Post {id: toInteger(r.id)}), (b:Person {id: toInteger(r.hascreator_person)}) CREATE (a)-[:HAS_CREATOR]->(b)",
+                      load_csv(d('Post.csv')))
+            batch_run(s, "UNWIND $rows AS r MATCH (f:Forum {id: toInteger(r.forum_containerof)}), (p:Post {id: toInteger(r.id)}) CREATE (f)-[:CONTAINER_OF]->(p)",
+                      load_csv(d('Post.csv')))
+            rows_comment = load_csv(d('Comment.csv'))
+            batch_run(s, "UNWIND $rows AS r MATCH (a:Comment {id: toInteger(r.id)}), (b:Person {id: toInteger(r.hascreator_person)}) CREATE (a)-[:HAS_CREATOR]->(b)",
+                      rows_comment)
+            batch_run(s, "UNWIND $rows AS r WITH r WHERE r.replyof_post <> '' MATCH (a:Comment {id: toInteger(r.id)}), (b:Post {id: toInteger(r.replyof_post)}) CREATE (a)-[:REPLY_OF]->(b)",
+                      rows_comment)
+            batch_run(s, "UNWIND $rows AS r WITH r WHERE r.replyof_comment <> '' MATCH (a:Comment {id: toInteger(r.id)}), (b:Comment {id: toInteger(r.replyof_comment)}) CREATE (a)-[:REPLY_OF]->(b)",
+                      rows_comment)
+
+            # Edge tables
+            print("  Loading edge tables...")
+            batch_run(s, "UNWIND $rows AS r MATCH (a:Forum {id: toInteger(r.id)}), (b:Person {id: toInteger(r.hasmember_person)}) CREATE (a)-[:HAS_MEMBER]->(b)",
+                      load_csv(d('Forum_hasMember_Person.csv')))
+            batch_run(s, "UNWIND $rows AS r MATCH (a:Comment {id: toInteger(r.id)}), (b:Tag {id: toInteger(r.hastag_tag)}) CREATE (a)-[:HAS_TAG]->(b)",
+                      load_csv(d('Comment_hasTag_Tag.csv')))
+            batch_run(s, "UNWIND $rows AS r MATCH (a:Post {id: toInteger(r.id)}), (b:Tag {id: toInteger(r.hastag_tag)}) CREATE (a)-[:HAS_TAG]->(b)",
+                      load_csv(d('Post_hasTag_Tag.csv')))
+            batch_run(s, "UNWIND $rows AS r MATCH (a:Person {id: toInteger(r.person1id)}), (b:Person {id: toInteger(r.person2id)}) CREATE (a)-[:KNOWS]->(b)",
+                      load_csv(d('Person_knows_Person.csv')))
+            batch_run(s, "UNWIND $rows AS r MATCH (a:Person {id: toInteger(r.id)}), (b:Comment {id: toInteger(r.likes_comment)}) CREATE (a)-[:LIKES]->(b)",
+                      load_csv(d('Person_likes_Comment.csv')))
+            batch_run(s, "UNWIND $rows AS r MATCH (a:Person {id: toInteger(r.id)}), (b:Post {id: toInteger(r.likes_post)}) CREATE (a)-[:LIKES]->(b)",
+                      load_csv(d('Person_likes_Post.csv')))
+            batch_run(s, "UNWIND $rows AS r MATCH (a:Person {id: toInteger(r.id)}), (b:Tag {id: toInteger(r.hasinterest_tag)}) CREATE (a)-[:HAS_INTEREST]->(b)",
+                      load_csv(d('Person_hasInterest_Tag.csv')))
+
+        load_time = time.perf_counter() - start
+        results["load"] = load_time
+        print(f"  Load time: {load_time:.2f}s")
+
+    # Run queries
+    for qid in [f"q{i}" for i in range(1, 10)]:
+        query = CYPHER_QUERIES[qid]
+        print(f"\n[Memgraph] Running {qid.upper()}...")
+        start = time.perf_counter()
+        try:
+            with driver.session() as session:
+                r = session.run(query).single()
+                count = r["count"]
+            elapsed = time.perf_counter() - start
+            results[qid] = elapsed
+            print(f"  {qid.upper()} time: {elapsed:.2f}s  (count={count})")
+        except Exception as e:
+            elapsed = time.perf_counter() - start
+            print(f"  {qid.upper()} failed ({elapsed:.2f}s): {e}")
+            results[qid] = "N/A"
+
+    driver.close()
+    return results
+
+
+# =========================================================================
+# POSTGRESQL BENCHMARK (SQL via psycopg2)
+# =========================================================================
+def run_postgresql_benchmark():
+    import psycopg2
+    print("\n" + "=" * 70)
+    print("POSTGRESQL LSQB BENCHMARK")
+    print("=" * 70)
+
+    results = {}
+    data_dir = data_dir_merged()
+
+    if not os.path.isdir(data_dir):
+        print(f"  Dataset not found: {data_dir}")
+        return {"error": "Dataset not found"}
+
+    try:
+        con = psycopg2.connect(host="localhost", port=5433, dbname="lsqb",
+                               user="postgres", password="benchmark")
+    except Exception:
+        # DB might not exist yet — connect to default and create it
+        try:
+            con0 = psycopg2.connect(host="localhost", port=5433, dbname="postgres",
+                                    user="postgres", password="benchmark")
+            con0.autocommit = True
+            con0.cursor().execute("CREATE DATABASE lsqb")
+            con0.close()
+            con = psycopg2.connect(host="localhost", port=5433, dbname="lsqb",
+                                   user="postgres", password="benchmark")
+        except Exception as e:
+            print(f"  Cannot connect to PostgreSQL: {e}")
+            print("  Start with: docker run -d --name postgres-lsqb -p 5433:5432 "
+                  "-e POSTGRES_PASSWORD=benchmark postgres:17")
+            return {"error": str(e)}
+
+    con.autocommit = True
+    cur = con.cursor()
+
+    needs_load = True
+    if not bench_common.RESET:
+        try:
+            cur.execute("SELECT count(*) FROM person")
+            if cur.fetchone()[0] > 0:
+                needs_load = False
+                print("\n[PostgreSQL] Data already loaded, skipping import")
+        except Exception:
+            con.rollback()
+
+    if needs_load:
+        print("\n[PostgreSQL] Loading LSQB data...")
+        start = time.perf_counter()
+
+        d = lambda f: os.path.join(data_dir, f)
+
+        # Drop and recreate tables
+        cur.execute("DROP TABLE IF EXISTS person_knows_person, forum_hasmember_person, comment_hastag_tag, post_hastag_tag, person_hasinterest_tag, person_likes_comment, person_likes_post, comment, post, forum, person, tag, tagclass, city, country CASCADE")
+
+        cur.execute("CREATE TABLE country (countryid BIGINT PRIMARY KEY)")
+        cur.execute("CREATE TABLE city (cityid BIGINT PRIMARY KEY, ispartof_countryid BIGINT)")
+        cur.execute("CREATE TABLE tagclass (tagclassid BIGINT PRIMARY KEY)")
+        cur.execute("CREATE TABLE tag (tagid BIGINT PRIMARY KEY, hastype_tagclassid BIGINT)")
+        cur.execute("CREATE TABLE person (personid BIGINT PRIMARY KEY, islocatedin_cityid BIGINT)")
+        cur.execute("CREATE TABLE forum (forumid BIGINT PRIMARY KEY)")
+        cur.execute("CREATE TABLE post (postid BIGINT PRIMARY KEY, hascreator_personid BIGINT, forum_containerofid BIGINT)")
+        cur.execute("CREATE TABLE comment (commentid BIGINT PRIMARY KEY, hascreator_personid BIGINT, replyof_postid BIGINT, replyof_commentid BIGINT)")
+        cur.execute("CREATE TABLE forum_hasmember_person (forumid BIGINT, personid BIGINT)")
+        cur.execute("CREATE TABLE comment_hastag_tag (commentid BIGINT, tagid BIGINT)")
+        cur.execute("CREATE TABLE post_hastag_tag (postid BIGINT, tagid BIGINT)")
+        cur.execute("CREATE TABLE person_knows_person (person1id BIGINT, person2id BIGINT)")
+        cur.execute("CREATE TABLE person_likes_comment (personid BIGINT, commentid BIGINT)")
+        cur.execute("CREATE TABLE person_likes_post (personid BIGINT, postid BIGINT)")
+        cur.execute("CREATE TABLE person_hasinterest_tag (personid BIGINT, tagid BIGINT)")
+
+        # Load data using COPY
+        import csv
+        def copy_csv(table, csvfile, columns, col_indices):
+            with open(csvfile) as f:
+                reader = csv.reader(f, delimiter='|')
+                header = next(reader)
+                buf = []
+                for row in reader:
+                    vals = []
+                    for idx in col_indices:
+                        v = row[idx] if idx < len(row) else ''
+                        vals.append(v if v != '' else '\\N')
+                    buf.append('\t'.join(vals))
+                data = '\n'.join(buf)
+            from io import StringIO
+            cur.copy_from(StringIO(data), table, columns=columns, null='\\N')
+
+        print("  Loading tables...")
+        copy_csv("country", d("Country.csv"), ("countryid",), (0,))
+        copy_csv("city", d("City.csv"), ("cityid", "ispartof_countryid"), (0, 1))
+        copy_csv("tagclass", d("TagClass.csv"), ("tagclassid",), (0,))
+        copy_csv("tag", d("Tag.csv"), ("tagid", "hastype_tagclassid"), (0, 1))
+        copy_csv("person", d("Person.csv"), ("personid", "islocatedin_cityid"), (0, 1))
+        copy_csv("forum", d("Forum.csv"), ("forumid",), (0,))
+        copy_csv("post", d("Post.csv"), ("postid", "hascreator_personid", "forum_containerofid"), (0, 1, 2))
+        copy_csv("comment", d("Comment.csv"), ("commentid", "hascreator_personid", "replyof_postid", "replyof_commentid"), (0, 1, 3, 4))
+        copy_csv("forum_hasmember_person", d("Forum_hasMember_Person.csv"), ("forumid", "personid"), (0, 1))
+        copy_csv("comment_hastag_tag", d("Comment_hasTag_Tag.csv"), ("commentid", "tagid"), (0, 1))
+        copy_csv("post_hastag_tag", d("Post_hasTag_Tag.csv"), ("postid", "tagid"), (0, 1))
+        copy_csv("person_knows_person", d("Person_knows_Person.csv"), ("person1id", "person2id"), (0, 1))
+        copy_csv("person_likes_comment", d("Person_likes_Comment.csv"), ("personid", "commentid"), (0, 1))
+        copy_csv("person_likes_post", d("Person_likes_Post.csv"), ("personid", "postid"), (0, 1))
+        copy_csv("person_hasinterest_tag", d("Person_hasInterest_Tag.csv"), ("personid", "tagid"), (0, 1))
+
+        # Create views for Message = Post UNION Comment (same as DuckDB)
+        cur.execute("""
+            CREATE OR REPLACE VIEW message_hastag_tag AS
+            SELECT postid AS messageid, tagid FROM post_hastag_tag
+            UNION ALL
+            SELECT commentid AS messageid, tagid FROM comment_hastag_tag
+        """)
+        cur.execute("""
+            CREATE OR REPLACE VIEW message_hascreator_person AS
+            SELECT postid AS messageid, hascreator_personid AS personid FROM post
+            UNION ALL
+            SELECT commentid AS messageid, hascreator_personid AS personid FROM comment
+        """)
+        cur.execute("""
+            CREATE OR REPLACE VIEW comment_replyof_message AS
+            SELECT commentid, replyof_postid AS parentmessageid FROM comment WHERE replyof_postid IS NOT NULL
+            UNION ALL
+            SELECT commentid, replyof_commentid AS parentmessageid FROM comment WHERE replyof_commentid IS NOT NULL
+        """)
+        cur.execute("""
+            CREATE OR REPLACE VIEW person_likes_message AS
+            SELECT personid, commentid AS messageid FROM person_likes_comment
+            UNION ALL
+            SELECT personid, postid AS messageid FROM person_likes_post
+        """)
+
+        # Also need bidirectional KNOWS
+        cur.execute("""
+            CREATE OR REPLACE VIEW person_knows_person_bidi AS
+            SELECT person1id, person2id FROM person_knows_person
+            UNION ALL
+            SELECT person2id AS person1id, person1id AS person2id FROM person_knows_person
+        """)
+
+        load_time = time.perf_counter() - start
+        results["load"] = load_time
+        print(f"  Load time: {load_time:.2f}s")
+
+    # PostgreSQL uses the same SQL queries as DuckDB but with bidirectional KNOWS view
+    pg_queries = dict(SQL_QUERIES)
+    # Replace Person_knows_Person with bidirectional view
+    for qid in pg_queries:
+        pg_queries[qid] = pg_queries[qid].replace("Person_knows_Person", "person_knows_person_bidi")
+
+    for qid in [f"q{i}" for i in range(1, 10)]:
+        query = pg_queries[qid]
+        print(f"\n[PostgreSQL] Running {qid.upper()}...")
+        start = time.perf_counter()
+        try:
+            cur.execute(query)
+            count = cur.fetchone()[0]
+            elapsed = time.perf_counter() - start
+            results[qid] = elapsed
+            print(f"  {qid.upper()} time: {elapsed:.2f}s  (count={count})")
+        except Exception as e:
+            elapsed = time.perf_counter() - start
+            print(f"  {qid.upper()} failed ({elapsed:.2f}s): {e}")
+            con.rollback()
+            results[qid] = "N/A"
+
+    con.close()
+    return results
+
+
+# =========================================================================
 # MAIN
 # =========================================================================
 AVAILABLE_SYSTEMS = {
     "kuzu": ("Kuzu", run_kuzu_benchmark),
     "duckdb": ("DuckDB", run_duckdb_benchmark),
     "neo4j": ("Neo4j", run_neo4j_benchmark),
+    "memgraph": ("Memgraph", run_memgraph_benchmark),
+    "postgresql": ("PostgreSQL", run_postgresql_benchmark),
 }
 
 if __name__ == "__main__":
