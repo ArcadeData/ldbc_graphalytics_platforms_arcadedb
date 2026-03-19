@@ -209,7 +209,6 @@ public class ArcadeDBLSQB {
       System.out.printf("%-10s %9.2fs%n", entry.getKey(), entry.getValue());
 
     db.close();
-    deleteDirectory(new java.io.File(DB_PATH));
   }
 
   // Load edges from entity CSV where FK columns indicate the target
