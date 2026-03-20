@@ -48,7 +48,8 @@ def print_summary(title, metrics, all_results):
     print()
 
 
-def run_benchmarks(description, available_systems, summary_title, metrics):
+def run_benchmarks(description, available_systems, summary_title, metrics,
+                    default_exclude=None):
     """Parse CLI args and execute the benchmark loop.
 
     Args:
@@ -56,8 +57,12 @@ def run_benchmarks(description, available_systems, summary_title, metrics):
         available_systems: {key: (display_name, callable)}.
         summary_title: Passed to print_summary.
         metrics: Ordered list of metric keys for the summary table.
+        default_exclude: Optional set of system keys excluded from default runs.
+                         These systems are still available when explicitly named.
     """
     global RESET
+
+    default_exclude = default_exclude or set()
 
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--reset", action="store_true",
@@ -69,7 +74,10 @@ def run_benchmarks(description, available_systems, summary_title, metrics):
 
     RESET = args.reset
 
-    systems_to_run = args.systems if args.systems else list(available_systems.keys())
+    if args.systems:
+        systems_to_run = args.systems
+    else:
+        systems_to_run = [k for k in available_systems if k not in default_exclude]
 
     all_results = {}
     for key in systems_to_run:
