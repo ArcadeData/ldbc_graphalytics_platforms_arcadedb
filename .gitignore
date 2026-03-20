@@ -2,9 +2,17 @@
 datasets/*
 !datasets/.gitkeep
 
+# Build artifacts
+target/
+*.jar
+*.tar.gz
+graphalytics-1.3.0-arcadedb-*/
+
 # Compiled Java classes
 *.class
 
 # Runtime logs
 **/log/
 .DS_Store
+/target
+/target

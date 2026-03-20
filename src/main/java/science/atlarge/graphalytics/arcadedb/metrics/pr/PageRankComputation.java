@@ -16,6 +16,7 @@
 package science.atlarge.graphalytics.arcadedb.metrics.pr;
 
 import com.arcadedb.database.Database;
+import com.arcadedb.database.Identifiable;
 import com.arcadedb.graph.MutableVertex;
 import com.arcadedb.graph.Vertex;
 import com.arcadedb.query.opencypher.procedures.algo.AlgoPageRank;
@@ -82,7 +83,7 @@ public class PageRankComputation {
         Iterator<Result> it = results.iterator();
         while (it.hasNext()) {
             Result row = it.next();
-            Vertex v = ((Vertex) row.getProperty("node"));
+            Vertex v = ((Identifiable) row.getProperty("node")).asVertex();
             double score = ((Number) row.getProperty("score")).doubleValue();
             MutableVertex mv = v.modify();
             mv.set(PAGERANK, score);

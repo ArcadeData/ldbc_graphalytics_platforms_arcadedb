@@ -16,6 +16,7 @@
 package science.atlarge.graphalytics.arcadedb.metrics.lcc;
 
 import com.arcadedb.database.Database;
+import com.arcadedb.database.Identifiable;
 import com.arcadedb.graph.MutableVertex;
 import com.arcadedb.graph.Vertex;
 import com.arcadedb.query.opencypher.procedures.algo.AlgoLocalClusteringCoefficient;
@@ -62,7 +63,7 @@ public class LocalClusteringCoefficientComputation {
         Iterator<Result> it = results.iterator();
         while (it.hasNext()) {
             Result row = it.next();
-            Vertex v = ((Vertex) row.getProperty("node"));
+            Vertex v = ((Identifiable) row.getProperty("node")).asVertex();
             double lcc = ((Number) row.getProperty("localClusteringCoefficient")).doubleValue();
             MutableVertex mv = v.modify();
             mv.set(LCC, lcc);

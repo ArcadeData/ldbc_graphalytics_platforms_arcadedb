@@ -25,6 +25,8 @@ import science.atlarge.graphalytics.execution.*;
 import science.atlarge.graphalytics.arcadedb.metrics.ArcadeDBJobFactory;
 import science.atlarge.graphalytics.report.result.BenchmarkMetrics;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
@@ -34,7 +36,7 @@ import java.nio.file.Paths;
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
-public class ArcadeDBPlatform implements Platform {
+public class ArcadedbPlatform implements Platform {
 
 	protected static final Logger LOG = LogManager.getLogger();
 	private static final String PLATFORM_NAME = "arcadedb";
@@ -90,6 +92,16 @@ public class ArcadeDBPlatform implements Platform {
 		BenchmarkRunSetup benchmarkRunSetup = runSpecification.getBenchmarkRunSetup();
 		Path logDir = benchmarkRunSetup.getLogDir().resolve("platform").resolve("runner.logs");
 		ArcadeDBCollector.startPlatformLogging(logDir);
+
+		// Write current PID as executable.pid so the framework can find the platform process.
+		// In embedded mode, the platform runs in the same JVM as the runner.
+		try {
+			Path pidFile = benchmarkRunSetup.getLogDir().resolve("platform").resolve("executable.pid");
+			Files.createDirectories(pidFile.getParent());
+			Files.writeString(pidFile, String.valueOf(ProcessHandle.current().pid()));
+		} catch (IOException e) {
+			LOG.warn("Failed to write executable.pid: {}", e.getMessage());
+		}
 	}
 
 	@Override
@@ -168,7 +180,8 @@ public class ArcadeDBPlatform implements Platform {
 
 	@Override
 	public void terminate(RunSpecification runSpecification) {
-		BenchmarkRunner.terminatePlatform(runSpecification);
+		// No-op: ArcadeDB runs in-process (embedded mode), so there is no
+		// external platform process to terminate.
 	}
 
 	@Override

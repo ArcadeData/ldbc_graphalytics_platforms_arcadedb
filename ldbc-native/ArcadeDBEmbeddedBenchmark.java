@@ -79,7 +79,8 @@ public class ArcadeDBEmbeddedBenchmark {
     GraphBatch importer = db.batch()
         .withBatchSize(100_000)
         .withLightEdges(false)
-        .withWAL(false);
+        .withWAL(false)
+        .build();
 
     int edgeCount = 0;
     try (BufferedReader br = new BufferedReader(new FileReader(EDGE_FILE), 1 << 20)) {

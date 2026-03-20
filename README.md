@@ -25,17 +25,10 @@ This repository contains three benchmark modes:
 
 - Java 21 or later (required for `jdk.incubator.vector` SIMD support)
 - Maven 3.x
-- ArcadeDB engine built locally
 
 ## Build
 
 ```bash
-# 1. Build ArcadeDB engine
-cd /path/to/arcadedb
-mvn install -DskipTests -pl engine -am -q
-
-# 2. Build the LDBC platform driver
-cd /path/to/ldbc_graphalytics_platforms_arcadedb
 mvn package -DskipTests
 ```
 
@@ -80,28 +73,28 @@ Uses the official [LDBC Graphalytics framework](https://github.com/ldbc/ldbc_gra
 
 ### Configuration
 
-Edit files in `graphalytics-1.3.0-arcadedb-0.1-SNAPSHOT/config/`:
+The build produces a ready-to-run distribution with sensible defaults. You can optionally tune the configuration files in `graphalytics-1.3.0-arcadedb-0.1-SNAPSHOT/config/`:
 
-**benchmark.properties:**
+**benchmark.properties** — dataset paths and memory:
 ```properties
-graphs.root-directory = ../datasets
-graphs.validation-directory = ../datasets
-benchmark.runner.max-memory = 16384
+graphs.root-directory = ../datasets          # default: empty (set to your datasets location)
+graphs.validation-directory = ../datasets    # default: empty
+benchmark.runner.max-memory = 16384          # default: empty (MB, recommended: 16384)
 ```
 
-**benchmarks/custom.properties:**
+**benchmarks/custom.properties** — which graphs and algorithms to run:
 ```properties
-benchmark.custom.graphs = datagen-7_5-fb
-benchmark.custom.algorithms = BFS, WCC, PR, CDLP, LCC, SSSP
-benchmark.custom.timeout = 7200
-benchmark.custom.output-required = true
-benchmark.custom.validation-required = true
-benchmark.custom.repetitions = 1
+benchmark.custom.graphs = datagen-7_5-fb                       # default: datagen-7_5-fb
+benchmark.custom.algorithms = BFS, WCC, PR, CDLP, LCC, SSSP   # default: all 6 algorithms
+benchmark.custom.timeout = 7200                                 # default: 7200 (seconds)
+benchmark.custom.output-required = true                         # default: true
+benchmark.custom.validation-required = true                     # default: true
+benchmark.custom.repetitions = 1                                # default: 1
 ```
 
-**platform.properties:**
+**platform.properties** — ArcadeDB-specific settings:
 ```properties
-platform.arcadedb.olap = true
+platform.olap = true   # default: false (enable CSR-accelerated graph algorithms)
 ```
 
 ### Run
@@ -236,7 +229,7 @@ ArcadeDB is tested in two modes: **embedded** (in-process Java, zero overhead) a
 
 | Algorithm | ArcadeDB Embedded | ArcadeDB Docker |
 |-----------|------------------|----------------|
-| **PageRank** | 0.48s | **0.83s** |
+| **PageRank** | **0.48s** | 0.83s |
 | **WCC** | 0.30s | **0.22s** |
 | **BFS** | 0.13s | **0.07s** |
 | **LCC** | **27.41s** | 34.98s |
@@ -282,25 +275,6 @@ Notes:
 - HugeGraph/Vermeer's SSSP is unweighted (hop-count only), so weighted SSSP is not available. Uses the Vermeer Go-based OLAP engine.
 - ArcadeDB Docker results measured warm (JIT-compiled) to match how production servers run. All Docker systems run on Docker Desktop for macOS with 16 CPUs and 24GB RAM.
 - None of the competing systems have official LDBC Graphalytics platform drivers. Only ArcadeDB has an official LDBC Graphalytics platform implementation.
-
-### File Structure
-
-```
-shared/
-  bench_common.py                  # Shared benchmark infrastructure
-
-ldbc-native/
-  ArcadeDBEmbeddedBenchmark.java   # ArcadeDB Graphalytics benchmark (Java, embedded)
-  ArcadeDBEmbeddedLoader.java      # ArcadeDB graph loader (Java, embedded)
-  benchmark.py                     # Kuzu, DuckPGQ, Memgraph, Neo4j, ArangoDB Graphalytics benchmarks (Python)
-
-lsqb/
-  ArcadeDBEmbeddedLSQB.java        # ArcadeDB LSQB benchmark (Java, embedded, Cypher)
-  lsqb_benchmark.py                # Kuzu, DuckDB, Neo4j LSQB benchmarks (Python)
-  tools/                           # Debug/profiling helpers
-```
-
----
 
 ## Mode 3: LSQB (Labelled Subgraph Query Benchmark)
 
@@ -412,6 +386,25 @@ All 9 queries produce correct results matching the [official LSQB expected outpu
 - **ArcadeDB Docker vs other Docker systems** — even with HTTP + network + Docker VM overhead, ArcadeDB Docker is **21–95x faster than Neo4j**, **9–23x faster than PostgreSQL**, and **4–148x faster than Memgraph** on the queries Memgraph completes.
 - **Neo4j and Memgraph** are significantly slower across the board. Memgraph times out on 3 of 9 queries. Neo4j completes all queries but is 10–140x slower than ArcadeDB on every query.
 - **PostgreSQL** is a solid middle ground for a traditional RDBMS — faster than Neo4j/Memgraph but significantly slower than both ArcadeDB and DuckDB.
+
+---
+
+## File Structure
+
+```
+shared/
+  bench_common.py                  # Shared benchmark infrastructure
+
+ldbc-native/
+  ArcadeDBEmbeddedBenchmark.java   # ArcadeDB Graphalytics benchmark (Java, embedded)
+  ArcadeDBEmbeddedLoader.java      # ArcadeDB graph loader (Java, embedded)
+  benchmark.py                     # Kuzu, DuckPGQ, Memgraph, Neo4j, ArangoDB Graphalytics benchmarks (Python)
+
+lsqb/
+  ArcadeDBEmbeddedLSQB.java        # ArcadeDB LSQB benchmark (Java, embedded, Cypher)
+  lsqb_benchmark.py                # Kuzu, DuckDB, Neo4j LSQB benchmarks (Python)
+  tools/                           # Debug/profiling helpers
+```
 
 ---
 

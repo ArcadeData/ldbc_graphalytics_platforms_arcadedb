@@ -16,6 +16,7 @@
 package science.atlarge.graphalytics.arcadedb.metrics.wcc;
 
 import com.arcadedb.database.Database;
+import com.arcadedb.database.Identifiable;
 import com.arcadedb.graph.MutableVertex;
 import com.arcadedb.graph.Vertex;
 import com.arcadedb.query.opencypher.procedures.algo.AlgoWCC;
@@ -66,7 +67,7 @@ public class WeaklyConnectedComponentsComputation {
         Iterator<Result> it = results.iterator();
         while (it.hasNext()) {
             Result row = it.next();
-            Vertex v = ((Vertex) row.getProperty("node"));
+            Vertex v = ((Identifiable) row.getProperty("node")).asVertex();
             int componentId = ((Number) row.getProperty("componentId")).intValue();
 
             long vid = v.getLong(ID_PROPERTY);

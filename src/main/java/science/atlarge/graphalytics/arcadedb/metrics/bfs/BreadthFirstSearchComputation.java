@@ -16,6 +16,7 @@
 package science.atlarge.graphalytics.arcadedb.metrics.bfs;
 
 import com.arcadedb.database.Database;
+import com.arcadedb.database.Identifiable;
 import com.arcadedb.graph.GraphTraversalProvider;
 import com.arcadedb.graph.GraphTraversalProviderRegistry;
 import com.arcadedb.graph.MutableVertex;
@@ -164,7 +165,7 @@ public class BreadthFirstSearchComputation {
         Iterator<Result> it = results.iterator();
         while (it.hasNext()) {
             Result row = it.next();
-            Vertex v = ((Vertex) row.getProperty("node"));
+            Vertex v = ((Identifiable) row.getProperty("node")).asVertex();
             int depth = ((Number) row.getProperty("depth")).intValue();
             MutableVertex mv = v.modify();
             mv.set(DISTANCE, (long) depth);

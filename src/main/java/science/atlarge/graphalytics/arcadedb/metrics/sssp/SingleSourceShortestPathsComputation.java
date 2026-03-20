@@ -16,6 +16,7 @@
 package science.atlarge.graphalytics.arcadedb.metrics.sssp;
 
 import com.arcadedb.database.Database;
+import com.arcadedb.database.Identifiable;
 import com.arcadedb.graph.GraphTraversalProvider;
 import com.arcadedb.graph.GraphTraversalProviderRegistry;
 import com.arcadedb.graph.MutableVertex;
@@ -165,7 +166,7 @@ public class SingleSourceShortestPathsComputation {
         Iterator<Result> it = results.iterator();
         while (it.hasNext()) {
             Result row = it.next();
-            Vertex v = ((Vertex) row.getProperty("node"));
+            Vertex v = ((Identifiable) row.getProperty("node")).asVertex();
             double cost = ((Number) row.getProperty("cost")).doubleValue();
             MutableVertex mv = v.modify();
             mv.set(SSSP, cost);
