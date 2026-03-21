@@ -389,6 +389,46 @@ All 9 queries produce correct results matching the [official LSQB expected outpu
 
 ---
 
+## SurrealDB
+
+SurrealDB is implemented in both benchmark modes but **excluded from default runs** because it scores N/A on every metric — all 6 Graphalytics algorithms and all 9 LSQB queries.
+
+### Why it's excluded
+
+Despite marketing itself as a multi-model database with "graph capabilities," SurrealDB lacks the fundamentals needed for graph benchmarking:
+
+- **No graph algorithms** — zero support for PageRank, WCC, BFS, CDLP, LCC, or SSSP. Every other database in the benchmark ships with at least some of these.
+- **Broken recursive traversal** — the `->edge.{1..N}->node` syntax doesn't actually recurse beyond 1 hop. On the real graph, "BFS" found only 34 nodes (direct neighbors) instead of the expected 633K.
+- **No pattern matching** — no Cypher MATCH, no SQL JOINs, no table aliases. This makes self-joins and multi-table queries impossible, so all 9 LSQB queries are either timeouts or cannot be expressed at all.
+- **Extremely slow loading** — 34M edges took ~30 minutes via the HTTP API (1MB payload limit forces 3,400 round-trips), compared to seconds for embedded systems.
+- **Stability issues** — OOM crashes (exit 137) during cleanup, connection resets during schema operations, and `{..+collect}` hangs the server indefinitely.
+
+For the full analysis, see [SURREALDB.md](SURREALDB.md).
+
+### How to enable SurrealDB
+
+```bash
+# Start SurrealDB (Docker)
+docker run -d --name surrealdb -p 8000:8000 \
+  -e SURREAL_LOG=warn \
+  -v /tmp/surrealdb_data:/data \
+  surrealdb/surrealdb:v2 start \
+  --user root --pass benchmark \
+  rocksdb:///data/bench.db
+
+# Run Graphalytics benchmark (warning: loading takes ~30 minutes)
+cd ldbc-native
+python3 benchmark.py surrealdb
+
+# Run LSQB benchmark (warning: loading takes ~9 minutes, all queries N/A)
+cd lsqb
+python3 lsqb_benchmark.py surrealdb
+```
+
+*Tested with SurrealDB v2.6.4 on March 2026.*
+
+---
+
 ## File Structure
 
 ```
