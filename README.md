@@ -363,20 +363,21 @@ Dataset: **LDBC SNB SF1** (3,947,829 vertices, 17,882,623 edges)
 | **PostgreSQL** | 17 | Docker | SQL |
 | **Memgraph** | latest | Docker | Cypher |
 | **Dgraph** | v25.3.0 | Docker (HTTP API) | DQL |
+| **SurrealDB** | v2.6.4 | Docker (HTTP API) | SurrealQL |
 
-| Query | Expected Count | ArcadeDB Embedded | ArcadeDB Docker | DuckDB | Kuzu | Neo4j | PostgreSQL | Memgraph | Dgraph | Winner |
-|-------|---------------|----------|-----------------|--------|------|-------|------------|----------|--------|--------|
-| **Q1** | 221,636,419 | **0.23s** | 0.39s | 0.15s | 5.83s | 8.25s | 6.56s | 60.45s | 2.52s | DuckDB 1.5x |
-| **Q2** | 1,085,627 | 0.20s | 0.27s | **0.02s** | 0.14s | 2.06s | 0.34s | timeout | N/A | DuckDB 10x |
-| **Q3** | 753,570 | 0.10s | 0.15s | **0.05s** | 2.44s | 14.31s | 2.12s | timeout | N/A | DuckDB 2x |
-| **Q4** | 14,836,038 | **0.02s** | 0.02s | 0.08s | N/A | 7.82s | 6.86s | 4.50s | 8.13s | **ArcadeDB 4x** |
-| **Q5** | 13,824,510 | 0.31s | 0.32s | **0.04s** | N/A | 6.72s | 0.69s | 3.86s | N/A | DuckDB 8x |
-| **Q6** | 1,668,134,320 | **0.75s** | 0.77s | 2.18s | 1.41s | 52.06s | 17.72s | 148.14s | N/A | **ArcadeDB 2.9x** |
-| **Q7** | 26,190,133 | 0.03s | **0.02s** | 0.08s | N/A | 10.45s | 11.22s | 5.59s | 5.97s | **ArcadeDB 4x** |
-| **Q8** | 6,907,213 | 0.58s | 0.83s | **0.07s** | N/A | 12.91s | 1.31s | 3.37s | N/A | DuckDB 8x |
-| **Q9** | 1,596,153,418 | **1.17s** | 1.20s | 7.77s | 6.15s | 59.09s | 22.25s | timeout | N/A | **ArcadeDB 6.6x** |
+| Query | Expected Count | ArcadeDB Embedded | ArcadeDB Docker | DuckDB | Kuzu | Neo4j | PostgreSQL | Memgraph | Dgraph | SurrealDB | Winner |
+|-------|---------------|----------|-----------------|--------|------|-------|------------|----------|--------|-----------|--------|
+| **Q1** | 221,636,419 | **0.23s** | 0.39s | 0.15s | 5.83s | 8.25s | 6.56s | 60.45s | 2.52s | timeout | DuckDB 1.5x |
+| **Q2** | 1,085,627 | 0.20s | 0.27s | **0.02s** | 0.14s | 2.06s | 0.34s | timeout | N/A | timeout | DuckDB 10x |
+| **Q3** | 753,570 | 0.10s | 0.15s | **0.05s** | 2.44s | 14.31s | 2.12s | timeout | N/A | N/A | DuckDB 2x |
+| **Q4** | 14,836,038 | **0.02s** | 0.02s | 0.08s | N/A | 7.82s | 6.86s | 4.50s | 8.13s | timeout | **ArcadeDB 4x** |
+| **Q5** | 13,824,510 | 0.31s | 0.32s | **0.04s** | N/A | 6.72s | 0.69s | 3.86s | N/A | timeout | DuckDB 8x |
+| **Q6** | 1,668,134,320 | **0.75s** | 0.77s | 2.18s | 1.41s | 52.06s | 17.72s | 148.14s | N/A | N/A | **ArcadeDB 2.9x** |
+| **Q7** | 26,190,133 | 0.03s | **0.02s** | 0.08s | N/A | 10.45s | 11.22s | 5.59s | 5.97s | timeout | **ArcadeDB 4x** |
+| **Q8** | 6,907,213 | 0.58s | 0.83s | **0.07s** | N/A | 12.91s | 1.31s | 3.37s | N/A | N/A | DuckDB 8x |
+| **Q9** | 1,596,153,418 | **1.17s** | 1.20s | 7.77s | 6.15s | 59.09s | 22.25s | timeout | N/A | N/A | **ArcadeDB 6.6x** |
 
-All 9 queries produce correct results matching the [official LSQB expected output](https://github.com/ldbc/lsqb/blob/main/expected-output/expected-output.csv). Kuzu skips Q4/Q5/Q7/Q8 (no `:Message` supertype support). Memgraph times out on Q2/Q3/Q9 (600s limit). Dgraph answers 3 of 9 queries using DQL value-variable propagation and `math()` (see [Dgraph section](#dgraph) below). ArcadeDB Docker runs under the same conditions as Neo4j, PostgreSQL, Memgraph, and Dgraph (Docker Desktop for macOS).
+All 9 queries produce correct results matching the [official LSQB expected output](https://github.com/ldbc/lsqb/blob/main/expected-output/expected-output.csv). Kuzu skips Q4/Q5/Q7/Q8 (no `:Message` supertype support). Memgraph times out on Q2/Q3/Q9 (600s limit). Dgraph answers 3 of 9 queries using DQL value-variable propagation and `math()` (see [Dgraph section](#dgraph) below). SurrealDB has queries written for Q1/Q2/Q4/Q5/Q7 but all timeout at 120s due to O(n*m) nested subquery execution without index acceleration (see [SurrealDB section](#surrealdb)). ArcadeDB Docker runs under the same conditions as Neo4j, PostgreSQL, Memgraph, Dgraph, and SurrealDB (Docker Desktop for macOS).
 
 **Analysis:**
 
@@ -400,7 +401,7 @@ Despite marketing itself as a multi-model database with "graph capabilities," Su
 
 - **No graph algorithms** — zero support for PageRank, WCC, BFS, CDLP, LCC, or SSSP. Every other database in the benchmark ships with at least some of these.
 - **Broken recursive traversal** — the `->edge.{1..N}->node` syntax doesn't actually recurse beyond 1 hop. On the real graph, "BFS" found only 34 nodes (direct neighbors) instead of the expected 633K.
-- **No pattern matching** — no Cypher MATCH, no SQL JOINs, no table aliases. This makes self-joins and multi-table queries impossible, so all 9 LSQB queries are either timeouts or cannot be expressed at all.
+- **No pattern matching** — no Cypher MATCH, no SQL JOINs, no table aliases. This makes self-joins and multi-table queries impossible. LSQB queries Q3, Q6, Q8, Q9 cannot be expressed at all. Queries Q1, Q2, Q4, Q5, Q7 are implemented using nested subqueries with `$parent` dereferencing and `array::len()` for cross-product counting, but all timeout at 120s — the O(n*m) nested loop execution without index acceleration is too slow for 3.9M vertices / 17.9M edges.
 - **Extremely slow loading** — 34M edges took ~30 minutes via the HTTP API (1MB payload limit forces 3,400 round-trips), compared to seconds for embedded systems.
 - **Stability issues** — OOM crashes (exit 137) during cleanup, connection resets during schema operations, and `{..+collect}` hangs the server indefinitely.
 
@@ -421,7 +422,7 @@ docker run -d --name surrealdb -p 8000:8000 \
 cd ldbc-native
 python3 benchmark.py surrealdb
 
-# Run LSQB benchmark (warning: loading takes ~9 minutes, all queries N/A)
+# Run LSQB benchmark (warning: loading takes ~9 minutes, Q1/Q2/Q4/Q5/Q7 timeout, rest N/A)
 cd lsqb
 python3 lsqb_benchmark.py surrealdb
 ```
