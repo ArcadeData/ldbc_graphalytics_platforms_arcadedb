@@ -362,20 +362,21 @@ Dataset: **LDBC SNB SF1** (3,947,829 vertices, 17,882,623 edges)
 | **Neo4j** | 2025 Community | Docker | Cypher |
 | **PostgreSQL** | 17 | Docker | SQL |
 | **Memgraph** | latest | Docker | Cypher |
+| **Dgraph** | v25.3.0 | Docker (HTTP API) | DQL |
 
-| Query | Expected Count | ArcadeDB Embedded | ArcadeDB Docker | DuckDB | Kuzu | Neo4j | PostgreSQL | Memgraph | Winner |
-|-------|---------------|----------|-----------------|--------|------|-------|------------|----------|--------|
-| **Q1** | 221,636,419 | **0.23s** | 0.39s | 0.15s | 5.83s | 8.25s | 6.56s | 60.45s | DuckDB 1.5x |
-| **Q2** | 1,085,627 | 0.20s | 0.27s | **0.02s** | 0.14s | 2.06s | 0.34s | timeout | DuckDB 10x |
-| **Q3** | 753,570 | 0.10s | 0.15s | **0.05s** | 2.44s | 14.31s | 2.12s | timeout | DuckDB 2x |
-| **Q4** | 14,836,038 | **0.02s** | 0.02s | 0.08s | N/A | 7.82s | 6.86s | 4.50s | **ArcadeDB 4x** |
-| **Q5** | 13,824,510 | 0.31s | 0.32s | **0.04s** | N/A | 6.72s | 0.69s | 3.86s | DuckDB 8x |
-| **Q6** | 1,668,134,320 | **0.75s** | 0.77s | 2.18s | 1.41s | 52.06s | 17.72s | 148.14s | **ArcadeDB 2.9x** |
-| **Q7** | 26,190,133 | 0.03s | **0.02s** | 0.08s | N/A | 10.45s | 11.22s | 5.59s | **ArcadeDB 4x** |
-| **Q8** | 6,907,213 | 0.58s | 0.83s | **0.07s** | N/A | 12.91s | 1.31s | 3.37s | DuckDB 8x |
-| **Q9** | 1,596,153,418 | **1.17s** | 1.20s | 7.77s | 6.15s | 59.09s | 22.25s | timeout | **ArcadeDB 6.6x** |
+| Query | Expected Count | ArcadeDB Embedded | ArcadeDB Docker | DuckDB | Kuzu | Neo4j | PostgreSQL | Memgraph | Dgraph | Winner |
+|-------|---------------|----------|-----------------|--------|------|-------|------------|----------|--------|--------|
+| **Q1** | 221,636,419 | **0.23s** | 0.39s | 0.15s | 5.83s | 8.25s | 6.56s | 60.45s | 2.52s | DuckDB 1.5x |
+| **Q2** | 1,085,627 | 0.20s | 0.27s | **0.02s** | 0.14s | 2.06s | 0.34s | timeout | N/A | DuckDB 10x |
+| **Q3** | 753,570 | 0.10s | 0.15s | **0.05s** | 2.44s | 14.31s | 2.12s | timeout | N/A | DuckDB 2x |
+| **Q4** | 14,836,038 | **0.02s** | 0.02s | 0.08s | N/A | 7.82s | 6.86s | 4.50s | 8.13s | **ArcadeDB 4x** |
+| **Q5** | 13,824,510 | 0.31s | 0.32s | **0.04s** | N/A | 6.72s | 0.69s | 3.86s | N/A | DuckDB 8x |
+| **Q6** | 1,668,134,320 | **0.75s** | 0.77s | 2.18s | 1.41s | 52.06s | 17.72s | 148.14s | N/A | **ArcadeDB 2.9x** |
+| **Q7** | 26,190,133 | 0.03s | **0.02s** | 0.08s | N/A | 10.45s | 11.22s | 5.59s | 5.97s | **ArcadeDB 4x** |
+| **Q8** | 6,907,213 | 0.58s | 0.83s | **0.07s** | N/A | 12.91s | 1.31s | 3.37s | N/A | DuckDB 8x |
+| **Q9** | 1,596,153,418 | **1.17s** | 1.20s | 7.77s | 6.15s | 59.09s | 22.25s | timeout | N/A | **ArcadeDB 6.6x** |
 
-All 9 queries produce correct results matching the [official LSQB expected output](https://github.com/ldbc/lsqb/blob/main/expected-output/expected-output.csv). Kuzu skips Q4/Q5/Q7/Q8 (no `:Message` supertype support). Memgraph times out on Q2/Q3/Q9 (600s limit). ArcadeDB Docker runs under the same conditions as Neo4j, PostgreSQL, and Memgraph (Docker Desktop for macOS).
+All 9 queries produce correct results matching the [official LSQB expected output](https://github.com/ldbc/lsqb/blob/main/expected-output/expected-output.csv). Kuzu skips Q4/Q5/Q7/Q8 (no `:Message` supertype support). Memgraph times out on Q2/Q3/Q9 (600s limit). Dgraph answers 3 of 9 queries using DQL value-variable propagation and `math()` (see [Dgraph section](#dgraph) below). ArcadeDB Docker runs under the same conditions as Neo4j, PostgreSQL, Memgraph, and Dgraph (Docker Desktop for macOS).
 
 **Analysis:**
 
@@ -426,6 +427,78 @@ python3 lsqb_benchmark.py surrealdb
 ```
 
 *Tested with SurrealDB v2.6.4 on March 2026.*
+
+---
+
+## Dgraph
+
+Dgraph v25.3.0 is implemented in both benchmark modes but **excluded from default runs**. It scores N/A on all 6 Graphalytics algorithms and answers only 3 of 9 LSQB queries.
+
+### Why it's excluded
+
+Dgraph is a distributed graph database with the DQL query language (formerly GraphQL+-). Unlike Cypher or SQL engines, DQL is a hierarchical traversal language that returns nested JSON — it has no `MATCH` clause, no `JOIN`, no table aliases, and no `NOT EXISTS`. This creates fundamental limitations:
+
+- **No graph algorithms** — Dgraph has no built-in PageRank, WCC, BFS (single-source-all-destinations), LCC, SSSP, or CDLP. The only built-in algorithm is `shortest()`, which is point-to-point (requires both source and target UIDs), not single-source-all-destinations as LDBC Graphalytics requires.
+- **No pattern matching** — DQL traverses the graph from root nodes outward and cannot express arbitrary join conditions between different parts of a pattern. This makes 6 of 9 LSQB queries impossible.
+- **Loading via HTTP mutations** — 34M Graphalytics edges take ~204s via batched RDF N-Quad mutations. LSQB (3.9M vertices, 17.9M edges) takes ~214s.
+
+### What Dgraph CAN do (LSQB Q1, Q4, Q7)
+
+Despite lacking pattern matching, three LSQB queries can be expressed in DQL using creative techniques:
+
+**Q1 (chain traversal)** — DQL value variable propagation. The 8-hop chain Country←City←Person←Forum→Post←Comment→Tag→TagClass is expressed as nested reverse-edge traversals (`~is_part_of`, `~is_located_in`, etc.). At the leaf level, `count(has_type)` counts TagClasses per Tag, then `sum(val())` at each parent level propagates the path count upward — giving the exact Cartesian product count (221,636,419). This works because each level's sum is equivalent to multiplying child path counts, which matches `count(*)` semantics for chain patterns.
+
+**Q4 (star pattern)** — DQL `math()` function. For each Message with tags, likes, and replies, the tuple count equals `tags × likes × replies`. Two `var` blocks compute `math(t * l * r)` separately for Posts (replies via `~reply_of_post`) and Comments (replies via `~reply_of_comment`), then `sum()` aggregates both into the correct total (14,836,038).
+
+**Q7 (optional star)** — Like Q4 but with `OPTIONAL MATCH` semantics. Messages without likes or replies still contribute one row each. Expressed as `math(tags × max(likes, 1) × max(replies, 1))` — the `max(count, 1)` emulates the NULL-becomes-one-row behavior of `OPTIONAL MATCH` (26,190,133).
+
+### Why 6 queries are impossible in DQL
+
+| Query | Limitation |
+|-------|-----------|
+| **Q2** (diamond) | Requires per-row correlation: "Comment created by Person1 replies to Post created by Person2, AND Person1 KNOWS Person2." DQL `var` blocks produce global UID sets, not per-row bindings. |
+| **Q3** (triangle) | Requires self-join on Person (3 different Persons in same Country, all connected by KNOWS). DQL has no self-join. |
+| **Q5** (fork) | Requires cross-reference inequality: `tag1 <> tag2` where tag1 is from the message and tag2 is from the reply. DQL cannot compare values across different nesting levels. |
+| **Q6** (2-hop KNOWS) | Requires per-row inequality: `person1 <> person3`. DQL has no way to exclude specific nodes per-traversal. |
+| **Q8** (anti-pattern) | Requires `NOT EXISTS`: "Comment must NOT have the parent's Tag." DQL has no anti-join operator. |
+| **Q9** (anti-pattern) | Requires both `NOT EXISTS` and per-row inequality — combines Q6 and Q8 limitations. |
+
+### Performance comparison (LSQB)
+
+On the 3 queries Dgraph can answer:
+- **Q1**: Dgraph 2.52s — faster than Kuzu (5.83s), Neo4j (8.25s), PostgreSQL (6.56s), and Memgraph (60.45s), but 11x slower than ArcadeDB (0.23s) and 17x slower than DuckDB (0.15s).
+- **Q4**: Dgraph 8.13s — comparable to Neo4j (7.82s) and PostgreSQL (6.86s), but 400x slower than ArcadeDB (0.02s) and 100x slower than DuckDB (0.08s).
+- **Q7**: Dgraph 5.97s — faster than Neo4j (10.45s) and PostgreSQL (11.22s), but 300x slower than ArcadeDB (0.02s) and 75x slower than DuckDB (0.08s).
+
+### How to enable Dgraph
+
+```bash
+# Start Dgraph (Docker — requires two containers: Zero + Alpha)
+docker network create dgraph-net
+docker run -d --name dgraph-zero --network dgraph-net \
+  -p 5080:5080 -p 6080:6080 \
+  dgraph/dgraph:latest dgraph zero --my=dgraph-zero:5080
+docker run -d --name dgraph-alpha --network dgraph-net \
+  -p 8080:8080 -p 9080:9080 \
+  -v /tmp/dgraph_data:/dgraph \
+  dgraph/dgraph:latest dgraph alpha \
+    --my=dgraph-alpha:7080 \
+    --zero=dgraph-zero:5080 \
+    --cache size-mb=8192 \
+    --badger "compression=none; numgoroutines=8" \
+    --security whitelist=0.0.0.0/0 \
+    --limit "mutations-nquad=5000000; query-edge=10000000"
+
+# Run Graphalytics benchmark (loading ~204s, all algorithms N/A)
+cd ldbc-native
+python3 benchmark.py dgraph
+
+# Run LSQB benchmark (loading ~214s, Q1/Q4/Q7 answered, rest N/A)
+cd lsqb
+python3 lsqb_benchmark.py dgraph
+```
+
+*Tested with Dgraph v25.3.0 on March 2026.*
 
 ---
 
