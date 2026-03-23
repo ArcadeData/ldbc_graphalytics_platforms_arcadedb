@@ -157,7 +157,8 @@ public class ArcadeDBEmbeddedLoader {
     _sp.run([
         "docker", "run", "-d", "--name", "arcadedb",
         "-p", "2480:2480", "-p", "2424:2424",
-        "-e", "JAVA_OPTS=-Xms12g -Xmx12g --add-modules jdk.incubator.vector -Darcadedb.server.rootPassword=benchmark",
+        "-e", "ARCADEDB_OPTS_MEMORY=-Xms12g -Xmx12g",
+        "-e", "JAVA_OPTS=--add-modules jdk.incubator.vector -Darcadedb.server.rootPassword=benchmark",
         "-v", "/tmp/arcadedb-docker-data:/home/arcadedb/databases",
         "-v", "/tmp/arcadedb-docker-log:/home/arcadedb/log",
         "arcadedata/arcadedb:26.4.1-SNAPSHOT"
