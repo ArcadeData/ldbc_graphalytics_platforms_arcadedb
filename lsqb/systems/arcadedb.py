@@ -41,7 +41,7 @@ def run_benchmark():
 
     def cypher(cmd, timeout=600):
         return requests.post(f"{base}/api/v1/command/{db}", auth=auth,
-            json={"language": "cypher", "command": cmd}, timeout=timeout)
+            json={"language": "opencypher", "command": cmd}, timeout=timeout)
 
     def sql_batch(cmds, timeout=600):
         return requests.post(f"{base}/api/v1/command/{db}", auth=auth,
@@ -176,38 +176,43 @@ def run_benchmark():
     # Build GAV for OLAP acceleration
     print("\n[ArcadeDB] Building Graph Analytical View...")
     gav_start = time.perf_counter()
+
+    # Drop any existing GAV first
+    try:
+        sql("DROP GRAPH ANALYTICAL VIEW lsqb")
+    except Exception:
+        pass
+
+    # Create the GAV definition
     sql("CREATE GRAPH ANALYTICAL VIEW lsqb "
         "VERTEX TYPES (Country, City, TagClass, Tag, Person, Forum, Post, Comment) "
         "EDGE TYPES (IS_PART_OF, IS_LOCATED_IN, HAS_MEMBER, CONTAINER_OF, "
         "REPLY_OF, HAS_TAG, HAS_TYPE, HAS_CREATOR, KNOWS, LIKES, HAS_INTEREST)")
-    # Wait for GAV to be ready
-    import requests as _req
-    for _ in range(600):
-        time.sleep(1)
+
+    # REBUILD is synchronous and ensures the CSR is built AND traversal providers
+    # are registered with the query optimizer (equivalent to awaitAll() in embedded mode)
+    r_rebuild = sql("REBUILD GRAPH ANALYTICAL VIEW lsqb", timeout=300)
+    if r_rebuild.status_code != 200:
+        print(f"  GAV rebuild failed: {r_rebuild.text[:300]}")
+    else:
+        print("  GAV rebuild OK")
+
+    # Double-check status
+    for _ in range(60):
         try:
             r_gav = sql("SELECT status FROM schema:graphAnalyticalViews WHERE name = 'lsqb'")
             if r_gav.status_code == 200:
-                status = r_gav.json().get("result", [{}])[0].get("status", "")
-                if status == "READY" or status == "ready":
-                    break
+                result = r_gav.json().get("result", [])
+                if result and len(result) > 0:
+                    status = result[0].get("status", "")
+                    if status.upper() == "READY":
+                        break
         except Exception:
             pass
+        time.sleep(1)
+
     gav_time = time.perf_counter() - gav_start
     print(f"  GAV ready: {gav_time:.2f}s")
-
-    # Wait for GAV traversal providers to register with the query optimizer.
-    # The CSR build completing doesn't guarantee the Cypher planner uses it yet.
-    print("  Waiting for traversal providers...")
-    for _ in range(60):
-        try:
-            # A simple traversal query that will use the GAV if providers are registered
-            r_test = cypher("MATCH (p:Person)-[:KNOWS]->(p2:Person) RETURN count(*) AS c", timeout=30)
-            if r_test.status_code == 200:
-                print("  Traversal providers ready")
-                break
-        except Exception:
-            pass
-        time.sleep(2)
 
     # Run LSQB queries using Cypher.
     # ArcadeDB supports openCypher and Post/Comment both extend Message,

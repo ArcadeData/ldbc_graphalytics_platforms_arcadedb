@@ -33,55 +33,51 @@ def data_dir_merged():
 # =========================================================================
 CYPHER_QUERIES = {
     "q1": """
-MATCH (:Country)<-[:IS_PART_OF]-(:City)<-[:IS_LOCATED_IN]-(:Person)<-[:HAS_MEMBER]-(:Forum)-[:CONTAINER_OF]->(:Post)<-[:REPLY_OF]-(:Comment)-[:HAS_TAG]->(:Tag)-[:HAS_TYPE]->(:TagClass)
+MATCH (co:Country)<-[:IS_PART_OF]-(ci:City)<-[:IS_LOCATED_IN]-(p:Person)<-[:HAS_MEMBER]-(f:Forum)-[:CONTAINER_OF]->(po:Post)<-[:REPLY_OF]-(cm:Comment)-[:HAS_TAG]->(t:Tag)-[:HAS_TYPE]->(tc:TagClass)
 RETURN count(*) AS count
 """,
     "q2": """
-MATCH
-  (person1:Person)-[:KNOWS]-(person2:Person),
-  (person1)<-[:HAS_CREATOR]-(comment:Comment)-[:REPLY_OF]->(post:Post)-[:HAS_CREATOR]->(person2)
+MATCH (p1:Person)-[:KNOWS]-(p2:Person), (p1)<-[:HAS_CREATOR]-(c:Comment)-[:REPLY_OF]->(po:Post)-[:HAS_CREATOR]->(p2)
 RETURN count(*) AS count
 """,
     "q3": """
-MATCH (country:Country)
-MATCH (person1:Person)-[:IS_LOCATED_IN]->(city1:City)-[:IS_PART_OF]->(country)
-MATCH (person2:Person)-[:IS_LOCATED_IN]->(city2:City)-[:IS_PART_OF]->(country)
-MATCH (person3:Person)-[:IS_LOCATED_IN]->(city3:City)-[:IS_PART_OF]->(country)
-MATCH (person1)-[:KNOWS]-(person2)-[:KNOWS]-(person3)-[:KNOWS]-(person1)
+MATCH (co:Country)
+MATCH (p1:Person)-[:IS_LOCATED_IN]->(c1:City)-[:IS_PART_OF]->(co)
+MATCH (p2:Person)-[:IS_LOCATED_IN]->(c2:City)-[:IS_PART_OF]->(co)
+MATCH (p3:Person)-[:IS_LOCATED_IN]->(c3:City)-[:IS_PART_OF]->(co)
+MATCH (p1)-[:KNOWS]-(p2)-[:KNOWS]-(p3)-[:KNOWS]-(p1)
 RETURN count(*) AS count
 """,
     "q4": """
-MATCH (:Tag)<-[:HAS_TAG]-(message:Message)-[:HAS_CREATOR]->(creator:Person),
-  (message)<-[:LIKES]-(liker:Person),
-  (message)<-[:REPLY_OF]-(comment:Comment)
+MATCH (tg:Tag)<-[:HAS_TAG]-(m:Message)-[:HAS_CREATOR]->(cr:Person), (m)<-[:LIKES]-(lk:Person), (m)<-[:REPLY_OF]-(rp:Comment)
 RETURN count(*) AS count
 """,
     "q5": """
-MATCH (tag1:Tag)<-[:HAS_TAG]-(message:Message)<-[:REPLY_OF]-(comment:Comment)-[:HAS_TAG]->(tag2:Tag)
-WHERE tag1 <> tag2
+MATCH (t1:Tag)<-[:HAS_TAG]-(m:Message)<-[:REPLY_OF]-(c:Comment)-[:HAS_TAG]->(t2:Tag)
+WHERE t1 <> t2
 RETURN count(*) AS count
 """,
     "q6": """
-MATCH (person1:Person)-[:KNOWS]-(person2:Person)-[:KNOWS]-(person3:Person)-[:HAS_INTEREST]->(tag:Tag)
-WHERE person1 <> person3
+MATCH (p1:Person)-[:KNOWS]-(p2:Person)-[:KNOWS]-(p3:Person)-[:HAS_INTEREST]->(t:Tag)
+WHERE p1 <> p3
 RETURN count(*) AS count
 """,
     "q7": """
-MATCH (:Tag)<-[:HAS_TAG]-(message:Message)-[:HAS_CREATOR]->(creator:Person)
-OPTIONAL MATCH (message)<-[:LIKES]-(liker:Person)
-OPTIONAL MATCH (message)<-[:REPLY_OF]-(comment:Comment)
+MATCH (tg:Tag)<-[:HAS_TAG]-(m:Message)-[:HAS_CREATOR]->(cr:Person)
+OPTIONAL MATCH (m)<-[:LIKES]-(lk:Person)
+OPTIONAL MATCH (m)<-[:REPLY_OF]-(rp:Comment)
 RETURN count(*) AS count
 """,
     "q8": """
-MATCH (tag1:Tag)<-[:HAS_TAG]-(message:Message)<-[:REPLY_OF]-(comment:Comment)-[:HAS_TAG]->(tag2:Tag)
-WHERE NOT (comment)-[:HAS_TAG]->(tag1)
-  AND tag1 <> tag2
+MATCH (t1:Tag)<-[:HAS_TAG]-(m:Message)<-[:REPLY_OF]-(c:Comment)-[:HAS_TAG]->(t2:Tag)
+WHERE NOT (c)-[:HAS_TAG]->(t1)
+  AND t1 <> t2
 RETURN count(*) AS count
 """,
     "q9": """
-MATCH (person1:Person)-[:KNOWS]-(person2:Person)-[:KNOWS]-(person3:Person)-[:HAS_INTEREST]->(tag:Tag)
-WHERE NOT (person1)-[:KNOWS]-(person3)
-  AND person1 <> person3
+MATCH (p1:Person)-[:KNOWS]-(p2:Person)-[:KNOWS]-(p3:Person)-[:HAS_INTEREST]->(t:Tag)
+WHERE NOT (p1)-[:KNOWS]-(p3)
+  AND p1 <> p3
 RETURN count(*) AS count
 """,
 }
