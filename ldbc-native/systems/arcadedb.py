@@ -14,7 +14,7 @@ def run_benchmark():
 
     Setup:
       docker run -d --name arcadedb -p 2480:2480 -p 2424:2424 \
-        -e JAVA_OPTS="-Darcadedb.server.rootPassword=benchmark -Xms16g -Xmx16g --add-modules jdk.incubator.vector" \
+        -e JAVA_OPTS="-Darcadedb.server.rootPassword=benchmark -Xms12g -Xmx12g --add-modules jdk.incubator.vector" \
         -v "$(cd ../datasets && pwd)":/data/graphs:ro \
         -v /tmp/arcadedb-docker-data:/home/arcadedb/databases \
         arcadedata/arcadedb:latest
@@ -105,7 +105,7 @@ public class ArcadeDBEmbeddedLoader {
         db.commit();
         System.out.println("  Vertices: " + count);
 
-        GraphBatchImporter importer = GraphBatchImporter.builder(db)
+        GraphBatch importer = db.batch()
             .withBatchSize(100_000).withLightEdges(false).withWAL(false).build();
         int edgeCount = 0;
         try (BufferedReader br = new BufferedReader(new FileReader(edgeFile), 1 << 20)) {
@@ -157,7 +157,7 @@ public class ArcadeDBEmbeddedLoader {
     _sp.run([
         "docker", "run", "-d", "--name", "arcadedb",
         "-p", "2480:2480", "-p", "2424:2424",
-        "-e", "ARCADEDB_OPTS_MEMORY=-Xms16g -Xmx16g",
+        "-e", "ARCADEDB_OPTS_MEMORY=-Xms12g -Xmx12g",
         "-e", "JAVA_OPTS=-Darcadedb.server.rootPassword=benchmark",
         "-v", "/tmp/arcadedb-docker-data:/home/arcadedb/databases",
         "-v", "/tmp/arcadedb-docker-log:/home/arcadedb/log",
