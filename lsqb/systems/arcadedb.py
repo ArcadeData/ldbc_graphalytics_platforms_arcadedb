@@ -195,6 +195,20 @@ def run_benchmark():
     gav_time = time.perf_counter() - gav_start
     print(f"  GAV ready: {gav_time:.2f}s")
 
+    # Wait for GAV traversal providers to register with the query optimizer.
+    # The CSR build completing doesn't guarantee the Cypher planner uses it yet.
+    print("  Waiting for traversal providers...")
+    for _ in range(60):
+        try:
+            # A simple traversal query that will use the GAV if providers are registered
+            r_test = cypher("MATCH (p:Person)-[:KNOWS]->(p2:Person) RETURN count(*) AS c", timeout=30)
+            if r_test.status_code == 200:
+                print("  Traversal providers ready")
+                break
+        except Exception:
+            pass
+        time.sleep(2)
+
     # Run LSQB queries using Cypher.
     # ArcadeDB supports openCypher and Post/Comment both extend Message,
     # so :Message label matches both.
