@@ -136,7 +136,7 @@ public class ArcadeDBEmbeddedLoader {
         # Run
         proc = _sp.run([
             "java", "--add-modules", "jdk.incubator.vector",
-            "-Xms8g", "-Xmx8g",
+            "-Xms12g", "-Xmx12g",
             "-cp", f".:{ldbc_jar}",
             "ArcadeDBEmbeddedLoader", db_path, VERTEX_FILE, EDGE_FILE
         ], cwd=bench_dir, capture_output=True, text=True)
@@ -158,10 +158,10 @@ public class ArcadeDBEmbeddedLoader {
         "docker", "run", "-d", "--name", "arcadedb",
         "-p", "2480:2480", "-p", "2424:2424",
         "-e", "ARCADEDB_OPTS_MEMORY=-Xms12g -Xmx12g",
-        "-e", "JAVA_OPTS=-Darcadedb.server.rootPassword=benchmark",
+        "-e", "JAVA_OPTS=--add-modules jdk.incubator.vector -Darcadedb.server.rootPassword=benchmark",
         "-v", "/tmp/arcadedb-docker-data:/home/arcadedb/databases",
         "-v", "/tmp/arcadedb-docker-log:/home/arcadedb/log",
-        "arcadedata/arcadedb:latest"
+        "arcadedata/arcadedb:26.4.1-SNAPSHOT"
     ], check=True)
 
     # Wait for server + GAV auto-restore (CSR build takes ~60-90s)
@@ -210,21 +210,17 @@ public class ArcadeDBEmbeddedLoader {
     time.sleep(5)
 
     # Helper to run an algorithm via OpenCypher
-    def run_algo(name, cypher_cmd, timeout=600):
+    def run_algo(name, cypher_cmd, timeout=300):
         print(f"\n[ArcadeDB] Running {name}...")
-        start = time.perf_counter()
-        try:
+        def _run():
             r = cmd(cypher_cmd, language="opencypher", timeout=timeout)
-            elapsed = time.perf_counter() - start
-            if r.status_code == 200:
-                results[name] = elapsed
-                print(f"  {name} time: {elapsed:.2f}s")
-            else:
-                print(f"  {name} failed: {r.text[:200]}")
-                results[name] = "N/A"
-        except Exception as e:
-            print(f"  {name} failed: {e}")
-            results[name] = "N/A"
+            if r.status_code != 200:
+                raise RuntimeError(r.text[:200])
+            return r
+        elapsed, _ = bench_common.run_timed(name, _run, timeout=timeout)
+        results[name] = elapsed
+        if isinstance(elapsed, (int, float)):
+            print(f"  {name} time: {elapsed:.2f}s")
 
     # All queries return count(*) to avoid streaming 633K rows over HTTP.
     # The algorithm runs server-side; we only measure compute time + minimal transfer.
@@ -244,7 +240,7 @@ public class ArcadeDBEmbeddedLoader {
     # --- LCC ---
     run_algo("lcc",
              "CALL algo.localClusteringCoefficient() YIELD localClusteringCoefficient RETURN count(*) AS cnt",
-             timeout=1200)
+             timeout=300)
 
     # --- SSSP (Dijkstra single-source) ---
     run_algo("sssp",
@@ -254,4 +250,8 @@ public class ArcadeDBEmbeddedLoader {
     run_algo("cdlp",
              "CALL algo.labelPropagation({maxIterations: 10}) YIELD communityId RETURN count(*) AS cnt")
 
+    bench_common.cleanup_docker("arcadedb")
     return results
+
+
+run_benchmark._cleanup = lambda: bench_common.cleanup_docker("arcadedb")

@@ -132,4 +132,8 @@ def run_benchmark():
             results[qid] = "N/A"
 
     driver.close()
+    bench_common.cleanup_docker("memgraph-lsqb")
     return results
+
+
+run_benchmark._cleanup = lambda: bench_common.cleanup_docker("memgraph-lsqb")

@@ -6,11 +6,47 @@ Shared infrastructure for LDBC benchmarks (Graphalytics and LSQB).
 import time
 import os
 import argparse
+import signal
+import subprocess
 
 GRAPHS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'datasets')
 
 # Global flag set by --reset
 RESET = False
+
+# 5-minute timeout per algorithm/query
+QUERY_TIMEOUT = 300
+
+
+class QueryTimeout(Exception):
+    pass
+
+
+def _alarm_handler(signum, frame):
+    raise QueryTimeout("timeout")
+
+
+def run_timed(name, func, timeout=QUERY_TIMEOUT):
+    """Run func() with a wall-clock timeout. Returns elapsed seconds or 'timeout'."""
+    print(f"  Running {name}...")
+    old = signal.signal(signal.SIGALRM, _alarm_handler)
+    signal.alarm(timeout)
+    start = time.perf_counter()
+    try:
+        result = func()
+        elapsed = time.perf_counter() - start
+        signal.alarm(0)
+        return elapsed, result
+    except QueryTimeout:
+        print(f"  {name}: TIMEOUT ({timeout}s)")
+        return "timeout", None
+    except Exception as e:
+        signal.alarm(0)
+        print(f"  {name} failed: {e}")
+        return "N/A", None
+    finally:
+        signal.signal(signal.SIGALRM, old)
+        signal.alarm(0)
 
 
 def fmt(val):
@@ -94,6 +130,22 @@ def run_benchmarks(description, available_systems, summary_title, metrics,
         except Exception as e:
             print(f"\n{name} failed: {e}")
             import traceback; traceback.print_exc()
+        finally:
+            # Cleanup: get cleanup info from the system module
+            cleanup = getattr(func, '_cleanup', None)
+            if cleanup:
+                try:
+                    cleanup()
+                except Exception:
+                    pass
 
     if all_results:
         print_summary(summary_title, metrics, all_results)
+
+
+def cleanup_docker(*container_names):
+    """Kill and remove Docker containers."""
+    for name in container_names:
+        subprocess.run(["docker", "rm", "-f", name],
+                       capture_output=True, timeout=30)
+    print(f"  Cleanup: removed Docker containers {', '.join(container_names)}")

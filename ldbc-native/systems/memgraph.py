@@ -39,6 +39,7 @@ def run_benchmark():
         print("\n[Memgraph] Loading data...")
         start = time.perf_counter()
 
+        conn.commit()
         conn.autocommit = True
         cursor.execute("MATCH (n) DETACH DELETE n")
         try:
@@ -105,25 +106,22 @@ def run_benchmark():
         print(f"  Edges: {cursor.fetchone()[0]}")
 
     # --- BFS ---
-    print("\n[Memgraph] Running BFS from vertex 6...")
-    start = time.perf_counter()
-    try:
+    print("\n[Memgraph] Running BFS...")
+    def _run_bfs():
         cursor.execute("""
             MATCH (a:Node {id: 6})-[e:EDGE *BFS]->(b:Node)
             RETURN b.id, size(e) AS dist
         """)
         rows = cursor.fetchall()
-        elapsed = time.perf_counter() - start
-        results["bfs"] = elapsed
-        print(f"  BFS time: {elapsed:.2f}s (reached {len(rows)} nodes)")
-    except Exception as e:
-        print(f"  BFS failed: {e}")
-        results["bfs"] = "N/A"
+        return rows
+    elapsed, result = bench_common.run_timed("BFS", _run_bfs)
+    results["bfs"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  BFS time: {elapsed:.2f}s (reached {len(result)} nodes)")
 
     # --- PageRank ---
     print("\n[Memgraph] Running PageRank...")
-    start = time.perf_counter()
-    try:
+    def _run_pagerank():
         cursor.execute("""
             CALL pagerank.get()
             YIELD node, rank
@@ -133,17 +131,15 @@ def run_benchmark():
         rows = cursor.fetchall()
         for row in rows[:3]:
             print(f"    Top PR: node={row[0]}, rank={row[1]:.6f}")
-        elapsed = time.perf_counter() - start
-        results["pagerank"] = elapsed
+        return rows
+    elapsed, result = bench_common.run_timed("PageRank", _run_pagerank)
+    results["pagerank"] = elapsed
+    if isinstance(elapsed, (int, float)):
         print(f"  PageRank time: {elapsed:.2f}s")
-    except Exception as e:
-        print(f"  PageRank failed: {e}")
-        results["pagerank"] = "N/A"
 
     # --- WCC ---
     print("\n[Memgraph] Running WCC...")
-    start = time.perf_counter()
-    try:
+    def _run_wcc():
         cursor.execute("""
             CALL weakly_connected_components.get()
             YIELD node, component_id
@@ -153,17 +149,15 @@ def run_benchmark():
         rows = cursor.fetchall()
         for row in rows[:3]:
             print(f"    Component: id={row[0]}, size={row[1]}")
-        elapsed = time.perf_counter() - start
-        results["wcc"] = elapsed
+        return rows
+    elapsed, result = bench_common.run_timed("WCC", _run_wcc)
+    results["wcc"] = elapsed
+    if isinstance(elapsed, (int, float)):
         print(f"  WCC time: {elapsed:.2f}s")
-    except Exception as e:
-        print(f"  WCC failed: {e}")
-        results["wcc"] = "N/A"
 
     # --- LCC ---
     print("\n[Memgraph] Running LCC...")
-    start = time.perf_counter()
-    try:
+    def _run_lcc():
         cursor.execute("""
             CALL nxalg.clustering()
             YIELD node, clustering
@@ -173,33 +167,29 @@ def run_benchmark():
         rows = cursor.fetchall()
         for row in rows[:3]:
             print(f"    Top LCC: node={row[0]}, coeff={row[1]:.6f}")
-        elapsed = time.perf_counter() - start
-        results["lcc"] = elapsed
+        return rows
+    elapsed, result = bench_common.run_timed("LCC", _run_lcc)
+    results["lcc"] = elapsed
+    if isinstance(elapsed, (int, float)):
         print(f"  LCC time: {elapsed:.2f}s")
-    except Exception as e:
-        print(f"  LCC failed: {e}")
-        results["lcc"] = "N/A"
 
     # --- SSSP ---
-    print("\n[Memgraph] Running SSSP from vertex 6...")
-    start = time.perf_counter()
-    try:
+    print("\n[Memgraph] Running SSSP...")
+    def _run_sssp():
         cursor.execute("""
             MATCH (a:Node {id: 6})-[e:EDGE *wShortest (e, n | e.weight)]->(b:Node)
             RETURN b.id, size(e) AS hops
         """)
         rows = cursor.fetchall()
-        elapsed = time.perf_counter() - start
-        results["sssp"] = elapsed
-        print(f"  SSSP time: {elapsed:.2f}s (reached {len(rows)} nodes)")
-    except Exception as e:
-        print(f"  SSSP failed: {e}")
-        results["sssp"] = "N/A"
+        return rows
+    elapsed, result = bench_common.run_timed("SSSP", _run_sssp)
+    results["sssp"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  SSSP time: {elapsed:.2f}s (reached {len(result)} nodes)")
 
     # --- CDLP ---
     print("\n[Memgraph] Running CDLP...")
-    start = time.perf_counter()
-    try:
+    def _run_cdlp():
         cursor.execute("""
             CALL community_detection.get()
             YIELD node, community_id
@@ -209,12 +199,15 @@ def run_benchmark():
         rows = cursor.fetchall()
         for row in rows[:3]:
             print(f"    Community: id={row[0]}, size={row[1]}")
-        elapsed = time.perf_counter() - start
-        results["cdlp"] = elapsed
+        return rows
+    elapsed, result = bench_common.run_timed("CDLP", _run_cdlp)
+    results["cdlp"] = elapsed
+    if isinstance(elapsed, (int, float)):
         print(f"  CDLP time: {elapsed:.2f}s")
-    except Exception as e:
-        print(f"  CDLP failed: {e}")
-        results["cdlp"] = "N/A"
 
     conn.close()
+    bench_common.cleanup_docker("memgraph")
     return results
+
+
+run_benchmark._cleanup = lambda: bench_common.cleanup_docker("memgraph")

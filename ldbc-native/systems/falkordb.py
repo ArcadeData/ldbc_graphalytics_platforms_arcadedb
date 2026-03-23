@@ -115,8 +115,7 @@ def run_benchmark():
 
     # --- PageRank ---
     print("\n[FalkorDB] Running PageRank...")
-    start = time.perf_counter()
-    try:
+    def _run_pagerank():
         r = g.ro_query("""
             CALL algo.pageRank('Node', 'EDGE')
             YIELD node, score
@@ -125,17 +124,15 @@ def run_benchmark():
         """)
         for row in r.result_set[:3]:
             print(f"    Top PR: node={row[0]}, rank={row[1]:.6f}")
-        elapsed = time.perf_counter() - start
-        results["pagerank"] = elapsed
+        return r
+    elapsed, _ = bench_common.run_timed("PageRank", _run_pagerank)
+    results["pagerank"] = elapsed
+    if isinstance(elapsed, (int, float)):
         print(f"  PageRank time: {elapsed:.2f}s")
-    except Exception as e:
-        print(f"  PageRank failed: {e}")
-        results["pagerank"] = "N/A"
 
     # --- WCC (Weakly Connected Components) ---
     print("\n[FalkorDB] Running WCC...")
-    start = time.perf_counter()
-    try:
+    def _run_wcc():
         r = g.ro_query("""
             CALL algo.WCC(null)
             YIELD node, componentId
@@ -144,17 +141,15 @@ def run_benchmark():
         """)
         for row in r.result_set[:3]:
             print(f"    Component: id={row[0]}, size={row[1]}")
-        elapsed = time.perf_counter() - start
-        results["wcc"] = elapsed
+        return r
+    elapsed, _ = bench_common.run_timed("WCC", _run_wcc)
+    results["wcc"] = elapsed
+    if isinstance(elapsed, (int, float)):
         print(f"  WCC time: {elapsed:.2f}s")
-    except Exception as e:
-        print(f"  WCC failed: {e}")
-        results["wcc"] = "N/A"
 
     # --- BFS ---
     print("\n[FalkorDB] Running BFS from vertex 6...")
-    start = time.perf_counter()
-    try:
+    def _run_bfs():
         r = g.ro_query("""
             MATCH (src:Node {id: 6})
             CALL algo.BFS(src, 999, 'EDGE')
@@ -162,12 +157,12 @@ def run_benchmark():
             RETURN size(nodes) AS reached
         """)
         reached = r.result_set[0][0]
-        elapsed = time.perf_counter() - start
-        results["bfs"] = elapsed
-        print(f"  BFS time: {elapsed:.2f}s (reached {reached} nodes)")
-    except Exception as e:
-        print(f"  BFS failed: {e}")
-        results["bfs"] = "N/A"
+        print(f"  Reached {reached} nodes")
+        return r
+    elapsed, _ = bench_common.run_timed("BFS", _run_bfs)
+    results["bfs"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  BFS time: {elapsed:.2f}s")
 
     # --- SSSP ---
     # FalkorDB's algo.SSpaths does not support full single-source Dijkstra;
@@ -177,8 +172,7 @@ def run_benchmark():
 
     # --- CDLP (Community Detection via Label Propagation) ---
     print("\n[FalkorDB] Running CDLP...")
-    start = time.perf_counter()
-    try:
+    def _run_cdlp():
         r = g.ro_query("""
             CALL algo.labelPropagation({
                 nodeLabels: ['Node'],
@@ -191,12 +185,11 @@ def run_benchmark():
         """)
         for row in r.result_set[:3]:
             print(f"    Community: id={row[0]}, size={row[1]}")
-        elapsed = time.perf_counter() - start
-        results["cdlp"] = elapsed
+        return r
+    elapsed, _ = bench_common.run_timed("CDLP", _run_cdlp)
+    results["cdlp"] = elapsed
+    if isinstance(elapsed, (int, float)):
         print(f"  CDLP time: {elapsed:.2f}s")
-    except Exception as e:
-        print(f"  CDLP failed: {e}")
-        results["cdlp"] = "N/A"
 
     # --- LCC (Local Clustering Coefficient) ---
     # FalkorDB has no built-in LCC algorithm. Cypher-based triangle counting
@@ -204,4 +197,8 @@ def run_benchmark():
     print("\n[FalkorDB] LCC: not supported (no built-in algorithm, Cypher too slow)")
     results["lcc"] = "N/A"
 
+    bench_common.cleanup_docker("falkordb")
     return results
+
+
+run_benchmark._cleanup = lambda: bench_common.cleanup_docker("falkordb")

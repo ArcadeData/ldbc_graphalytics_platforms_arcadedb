@@ -171,4 +171,8 @@ def run_benchmark():
             results[qid] = "N/A"
 
     con.close()
+    bench_common.cleanup_docker("postgres-lsqb")
     return results
+
+
+run_benchmark._cleanup = lambda: bench_common.cleanup_docker("postgres-lsqb")

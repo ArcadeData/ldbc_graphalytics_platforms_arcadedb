@@ -1,8 +1,37 @@
 """Neo4j benchmark for LDBC Graphalytics."""
 
 import time
+import subprocess as _sp
 
 from ._common import VERTEX_FILE, EDGE_FILE, bench_common
+
+NEO4J_CONTAINER = "neo4j-gds"
+
+
+def _start_neo4j():
+    """Start Neo4j Docker container with GDS plugin."""
+    _sp.run(["docker", "rm", "-f", NEO4J_CONTAINER], capture_output=True)
+    _sp.run([
+        "docker", "run", "-d", "--name", NEO4J_CONTAINER,
+        "-p", "7688:7687", "-p", "7476:7474",
+        "-e", "NEO4J_AUTH=neo4j/benchmark123",
+        "-e", 'NEO4J_PLUGINS=["graph-data-science"]',
+        "-e", "NEO4J_server_memory_heap_initial__size=12g",
+        "-e", "NEO4J_server_memory_heap_max__size=12g",
+        "neo4j:2025-community"
+    ], check=True)
+    print("  Waiting for Neo4j to start...")
+    for i in range(60):
+        try:
+            from neo4j import GraphDatabase
+            d = GraphDatabase.driver("bolt://localhost:7688", auth=("neo4j", "benchmark123"))
+            d.verify_connectivity()
+            d.close()
+            print("  Neo4j ready")
+            return
+        except Exception:
+            time.sleep(3)
+    raise RuntimeError("Neo4j failed to start")
 
 
 def run_benchmark():
@@ -13,13 +42,15 @@ def run_benchmark():
 
     results = {}
 
+    # Try connecting, start container if needed
     try:
         driver = GraphDatabase.driver("bolt://localhost:7688", auth=("neo4j", "benchmark123"))
         driver.verify_connectivity()
-    except Exception as e:
-        print(f"  Cannot connect to Neo4j: {e}")
-        print("  Start with: docker run -d --name neo4j -p 7474:7474 -p 7688:7687 -e NEO4J_AUTH=neo4j/benchmark123 -e NEO4J_PLUGINS='[\"graph-data-science\"]' neo4j:2026-community")
-        return {"error": str(e)}
+    except Exception:
+        print("  Neo4j not running, starting Docker container...")
+        _start_neo4j()
+        driver = GraphDatabase.driver("bolt://localhost:7688", auth=("neo4j", "benchmark123"))
+        driver.verify_connectivity()
 
     # Check if data already loaded
     needs_load = True
@@ -105,8 +136,7 @@ def run_benchmark():
 
     # --- PageRank ---
     print("\n[Neo4j] Running PageRank...")
-    start = time.perf_counter()
-    try:
+    def _run_pagerank():
         with driver.session() as session:
             r = session.run("""
                 CALL gds.pageRank.stream('bench', {dampingFactor: 0.85, maxIterations: 10})
@@ -117,17 +147,15 @@ def run_benchmark():
             rows = list(r)
             for row in rows[:3]:
                 print(f"    Top PR: node={row['id']}, rank={row['score']:.6f}")
-        elapsed = time.perf_counter() - start
-        results["pagerank"] = elapsed
+        return rows
+    elapsed, _ = bench_common.run_timed("PageRank", _run_pagerank)
+    results["pagerank"] = elapsed
+    if isinstance(elapsed, (int, float)):
         print(f"  PageRank time: {elapsed:.2f}s")
-    except Exception as e:
-        print(f"  PageRank failed: {e}")
-        results["pagerank"] = "N/A"
 
     # --- WCC ---
     print("\n[Neo4j] Running WCC...")
-    start = time.perf_counter()
-    try:
+    def _run_wcc():
         with driver.session() as session:
             r = session.run("""
                 CALL gds.wcc.stream('bench')
@@ -138,17 +166,15 @@ def run_benchmark():
             rows = list(r)
             for row in rows[:3]:
                 print(f"    Component: id={row['componentId']}, size={row['size']}")
-        elapsed = time.perf_counter() - start
-        results["wcc"] = elapsed
+        return rows
+    elapsed, _ = bench_common.run_timed("WCC", _run_wcc)
+    results["wcc"] = elapsed
+    if isinstance(elapsed, (int, float)):
         print(f"  WCC time: {elapsed:.2f}s")
-    except Exception as e:
-        print(f"  WCC failed: {e}")
-        results["wcc"] = "N/A"
 
     # --- BFS ---
     print("\n[Neo4j] Running BFS from vertex 6...")
-    start = time.perf_counter()
-    try:
+    def _run_bfs():
         with driver.session() as session:
             # Get internal node ID for source
             src = session.run("MATCH (n:Node {id: 6}) RETURN id(n) AS nid").single()
@@ -160,17 +186,15 @@ def run_benchmark():
             """, src=src_id)
             row = r.single()
             print(f"  Reached: {row['reached']} nodes")
-        elapsed = time.perf_counter() - start
-        results["bfs"] = elapsed
+        return row
+    elapsed, _ = bench_common.run_timed("BFS", _run_bfs)
+    results["bfs"] = elapsed
+    if isinstance(elapsed, (int, float)):
         print(f"  BFS time: {elapsed:.2f}s")
-    except Exception as e:
-        print(f"  BFS failed: {e}")
-        results["bfs"] = "N/A"
 
     # --- LCC ---
     print("\n[Neo4j] Running LCC...")
-    start = time.perf_counter()
-    try:
+    def _run_lcc():
         with driver.session() as session:
             r = session.run("""
                 CALL gds.localClusteringCoefficient.stream('bench')
@@ -181,12 +205,11 @@ def run_benchmark():
             rows = list(r)
             for row in rows[:3]:
                 print(f"    Top LCC: node={row['id']}, coeff={row['coeff']:.6f}")
-        elapsed = time.perf_counter() - start
-        results["lcc"] = elapsed
+        return rows
+    elapsed, _ = bench_common.run_timed("LCC", _run_lcc)
+    results["lcc"] = elapsed
+    if isinstance(elapsed, (int, float)):
         print(f"  LCC time: {elapsed:.2f}s")
-    except Exception as e:
-        print(f"  LCC failed: {e}")
-        results["lcc"] = "N/A"
 
     # Cleanup
     with driver.session() as session:
@@ -195,4 +218,8 @@ def run_benchmark():
         except Exception:
             pass
     driver.close()
+    bench_common.cleanup_docker(NEO4J_CONTAINER)
     return results
+
+
+run_benchmark._cleanup = lambda: bench_common.cleanup_docker(NEO4J_CONTAINER)

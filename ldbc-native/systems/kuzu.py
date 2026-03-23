@@ -88,8 +88,7 @@ def run_benchmark():
 
     # --- PageRank ---
     print("\n[Kuzu] Running PageRank...")
-    start = time.perf_counter()
-    try:
+    def _run_pagerank():
         r = conn.execute("""
             CALL page_rank('pg') RETURN node.id, rank
             ORDER BY rank DESC LIMIT 10
@@ -100,17 +99,15 @@ def run_benchmark():
             if count < 3:
                 print(f"    Top PR: node={row[0]}, rank={row[1]:.6f}")
             count += 1
-        elapsed = time.perf_counter() - start
-        results["pagerank"] = elapsed
+        return count
+    elapsed, _ = bench_common.run_timed("PageRank", _run_pagerank)
+    results["pagerank"] = elapsed
+    if isinstance(elapsed, (int, float)):
         print(f"  PageRank time: {elapsed:.2f}s")
-    except Exception as e:
-        print(f"  PageRank failed: {e}")
-        results["pagerank"] = "N/A"
 
     # --- WCC (Weakly Connected Components) ---
     print("\n[Kuzu] Running WCC...")
-    start = time.perf_counter()
-    try:
+    def _run_wcc():
         r = conn.execute("""
             CALL weakly_connected_components('pg')
             RETURN group_id, count(*) AS size
@@ -122,17 +119,15 @@ def run_benchmark():
             if count < 3:
                 print(f"    Component: group={row[0]}, size={row[1]}")
             count += 1
-        elapsed = time.perf_counter() - start
-        results["wcc"] = elapsed
+        return count
+    elapsed, _ = bench_common.run_timed("WCC", _run_wcc)
+    results["wcc"] = elapsed
+    if isinstance(elapsed, (int, float)):
         print(f"  WCC time: {elapsed:.2f}s")
-    except Exception as e:
-        print(f"  WCC failed: {e}")
-        results["wcc"] = "N/A"
 
     # --- LCC (Local Clustering Coefficient) ---
     print("\n[Kuzu] Running LCC...")
-    start = time.perf_counter()
-    try:
+    def _run_lcc():
         r = conn.execute("""
             CALL local_clustering_coefficient('pg')
             RETURN node.id, coefficient
@@ -144,17 +139,15 @@ def run_benchmark():
             if count < 3:
                 print(f"    Top LCC: node={row[0]}, coeff={row[1]:.6f}")
             count += 1
-        elapsed = time.perf_counter() - start
-        results["lcc"] = elapsed
+        return count
+    elapsed, _ = bench_common.run_timed("LCC", _run_lcc)
+    results["lcc"] = elapsed
+    if isinstance(elapsed, (int, float)):
         print(f"  LCC time: {elapsed:.2f}s")
-    except Exception as e:
-        print(f"  LCC failed: {e}")
-        results["lcc"] = "N/A"
 
     # --- BFS (shortest path from source) ---
     print("\n[Kuzu] Running BFS/Shortest Path from vertex 6...")
-    start = time.perf_counter()
-    try:
+    def _run_bfs():
         r = conn.execute("""
             MATCH (a:Node {id: 6})-[e:Edge* ALL SHORTEST 1..30]->(b:Node)
             RETURN b.id, length(e) LIMIT 50000
@@ -163,12 +156,12 @@ def run_benchmark():
         while r.has_next():
             r.get_next()
             count += 1
-        elapsed = time.perf_counter() - start
-        results["bfs"] = elapsed
-        print(f"  BFS time: {elapsed:.2f}s (reached {count} nodes)")
-    except Exception as e:
-        print(f"  BFS failed: {e}")
-        results["bfs"] = "N/A"
+        print(f"  Reached {count} nodes")
+        return count
+    elapsed, _ = bench_common.run_timed("BFS", _run_bfs)
+    results["bfs"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  BFS time: {elapsed:.2f}s")
 
     # Cleanup
     del conn
