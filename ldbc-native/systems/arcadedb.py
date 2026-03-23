@@ -136,7 +136,7 @@ public class ArcadeDBEmbeddedLoader {
         # Run
         proc = _sp.run([
             "java", "--add-modules", "jdk.incubator.vector",
-            "-Xms16g", "-Xmx16g",
+            "-Xms12g", "-Xmx12g",
             "-cp", f".:{ldbc_jar}",
             "ArcadeDBEmbeddedLoader", db_path, VERTEX_FILE, EDGE_FILE
         ], cwd=bench_dir, capture_output=True, text=True)
@@ -157,11 +157,10 @@ public class ArcadeDBEmbeddedLoader {
     _sp.run([
         "docker", "run", "-d", "--name", "arcadedb",
         "-p", "2480:2480", "-p", "2424:2424",
-        "-e", "ARCADEDB_OPTS_MEMORY=-Xms16g -Xmx16g",
-        "-e", "JAVA_OPTS=-Darcadedb.server.rootPassword=benchmark",
+        "-e", "JAVA_OPTS=-Xms12g -Xmx12g --add-modules jdk.incubator.vector -Darcadedb.server.rootPassword=benchmark",
         "-v", "/tmp/arcadedb-docker-data:/home/arcadedb/databases",
         "-v", "/tmp/arcadedb-docker-log:/home/arcadedb/log",
-        "arcadedata/arcadedb:latest"
+        "arcadedata/arcadedb:26.4.1-SNAPSHOT"
     ], check=True)
 
     # Wait for server + GAV auto-restore (CSR build takes ~60-90s)

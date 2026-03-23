@@ -16,8 +16,8 @@ def _start_neo4j():
         "-p", "7688:7687", "-p", "7476:7474",
         "-e", "NEO4J_AUTH=neo4j/benchmark123",
         "-e", 'NEO4J_PLUGINS=["graph-data-science"]',
-        "-e", "NEO4J_server_memory_heap_initial__size=8g",
-        "-e", "NEO4J_server_memory_heap_max__size=8g",
+        "-e", "NEO4J_server_memory_heap_initial__size=12g",
+        "-e", "NEO4J_server_memory_heap_max__size=12g",
         "neo4j:2025-community"
     ], check=True)
     print("  Waiting for Neo4j to start...")
