@@ -121,41 +121,32 @@ def run_benchmark():
 
     # --- PageRank ---
     print("\n[ArangoDB] Running PageRank...")
-    start = time.perf_counter()
-    try:
+    def _run_pagerank():
         job = run_pregel('pagerank', max_gss=10, algo_params={'threshold': 0.0})
-        elapsed = time.perf_counter() - start
         if job['state'] == 'done':
-            results["pagerank"] = elapsed
-            print(f"  PageRank time: {elapsed:.2f}s")
-        else:
-            print(f"  PageRank failed: {job['state']}")
-            results["pagerank"] = "N/A"
-    except Exception as e:
-        print(f"  PageRank failed: {e}")
-        results["pagerank"] = "N/A"
+            return job
+        raise RuntimeError(f"PageRank failed: {job['state']}")
+    elapsed, _ = bench_common.run_timed("PageRank", _run_pagerank)
+    results["pagerank"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  PageRank time: {elapsed:.2f}s")
 
     # --- WCC ---
     print("\n[ArangoDB] Running WCC...")
-    start = time.perf_counter()
-    try:
+    def _run_wcc():
         job = run_pregel('connectedcomponents')
-        elapsed = time.perf_counter() - start
         if job['state'] == 'done':
-            results["wcc"] = elapsed
-            print(f"  WCC time: {elapsed:.2f}s")
-        else:
-            print(f"  WCC failed: {job['state']}")
-            results["wcc"] = "N/A"
-    except Exception as e:
-        print(f"  WCC failed: {e}")
-        results["wcc"] = "N/A"
+            return job
+        raise RuntimeError(f"WCC failed: {job['state']}")
+    elapsed, _ = bench_common.run_timed("WCC", _run_wcc)
+    results["wcc"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  WCC time: {elapsed:.2f}s")
 
     # --- LCC (via AQL triangle counting) ---
     print("\n[ArangoDB] Running LCC...")
-    start = time.perf_counter()
-    try:
-        client_lcc = ArangoClient(hosts='http://localhost:8529', request_timeout=3600)
+    def _run_lcc():
+        client_lcc = ArangoClient(hosts='http://localhost:8529', request_timeout=300)
         db_lcc = client_lcc.db('_system', username='root', password='benchmark')
         cursor = db_lcc.aql.execute("""
             FOR v IN nodes
@@ -184,67 +175,57 @@ def run_benchmark():
                 SORT lcc DESC
                 LIMIT 10
                 RETURN {id: v.vid, lcc: lcc}
-        """, ttl=3600, max_runtime=3600)
+        """, ttl=300, max_runtime=300)
         rows = list(cursor)
         for row in rows[:3]:
             print(f"    Top LCC: node={row['id']}, coeff={row['lcc']:.6f}")
-        elapsed = time.perf_counter() - start
-        results["lcc"] = elapsed
+        return rows
+    elapsed, _ = bench_common.run_timed("LCC", _run_lcc)
+    results["lcc"] = elapsed
+    if isinstance(elapsed, (int, float)):
         print(f"  LCC time: {elapsed:.2f}s")
-    except Exception as e:
-        print(f"  LCC failed: {e}")
-        results["lcc"] = "N/A"
 
     # --- SSSP (Pregel) ---
     print("\n[ArangoDB] Running SSSP from vertex 6...")
-    start = time.perf_counter()
-    try:
+    def _run_sssp():
         job = run_pregel('sssp', algo_params={'source': 'nodes/6'})
-        elapsed = time.perf_counter() - start
         if job['state'] == 'done':
-            results["sssp"] = elapsed
-            print(f"  SSSP time: {elapsed:.2f}s")
-        else:
-            print(f"  SSSP failed: {job['state']}")
-            results["sssp"] = "N/A"
-    except Exception as e:
-        print(f"  SSSP failed: {e}")
-        results["sssp"] = "N/A"
+            return job
+        raise RuntimeError(f"SSSP failed: {job['state']}")
+    elapsed, _ = bench_common.run_timed("SSSP", _run_sssp)
+    results["sssp"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  SSSP time: {elapsed:.2f}s")
 
     # --- CDLP (Label Propagation via Pregel) ---
     print("\n[ArangoDB] Running CDLP...")
-    start = time.perf_counter()
-    try:
+    def _run_cdlp():
         job = run_pregel('labelpropagation', max_gss=10)
-        elapsed = time.perf_counter() - start
         if job['state'] == 'done':
-            results["cdlp"] = elapsed
-            print(f"  CDLP time: {elapsed:.2f}s")
-        else:
-            print(f"  CDLP failed: {job['state']}")
-            results["cdlp"] = "N/A"
-    except Exception as e:
-        print(f"  CDLP failed: {e}")
-        results["cdlp"] = "N/A"
+            return job
+        raise RuntimeError(f"CDLP failed: {job['state']}")
+    elapsed, _ = bench_common.run_timed("CDLP", _run_cdlp)
+    results["cdlp"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  CDLP time: {elapsed:.2f}s")
 
     # --- BFS (via AQL traversal) ---
     print("\n[ArangoDB] Running BFS from vertex 6...")
-    start = time.perf_counter()
-    try:
+    def _run_bfs():
         cursor = db.aql.execute("""
             FOR v, e, p IN 0..100 ANY 'nodes/6' GRAPH 'bench'
                 OPTIONS {bfs: true, uniqueVertices: 'global'}
                 COLLECT depth = LENGTH(p.edges) WITH COUNT INTO cnt
                 RETURN {depth: depth, count: cnt}
-        """, ttl=3600, max_runtime=3600)
+        """, ttl=300, max_runtime=300)
         rows = list(cursor)
         total_reached = sum(r['count'] for r in rows)
-        elapsed = time.perf_counter() - start
-        results["bfs"] = elapsed
-        print(f"  BFS time: {elapsed:.2f}s (reached {total_reached} nodes)")
-    except Exception as e:
-        print(f"  BFS failed: {e}")
-        results["bfs"] = "N/A"
+        print(f"  BFS reached {total_reached} nodes")
+        return rows
+    elapsed, _ = bench_common.run_timed("BFS", _run_bfs)
+    results["bfs"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  BFS time: {elapsed:.2f}s")
 
     # Cleanup
     try:
@@ -252,4 +233,8 @@ def run_benchmark():
     except Exception:
         pass
 
+    bench_common.cleanup_docker("arangodb")
     return results
+
+
+run_benchmark._cleanup = lambda: bench_common.cleanup_docker("arangodb")

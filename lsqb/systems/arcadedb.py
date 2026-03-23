@@ -218,4 +218,8 @@ def run_benchmark():
             print(f"  {qid.upper()} failed ({elapsed:.2f}s): {e}")
             results[qid] = "N/A"
 
+    bench_common.cleanup_docker("arcadedb-lsqb")
     return results
+
+
+run_benchmark._cleanup = lambda: bench_common.cleanup_docker("arcadedb-lsqb")

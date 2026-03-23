@@ -3,7 +3,7 @@
 import time
 import os
 
-from ._common import VERTEX_FILE, EDGE_FILE
+from ._common import VERTEX_FILE, EDGE_FILE, bench_common
 
 
 def run_benchmark():
@@ -64,25 +64,22 @@ def run_benchmark():
 
     # --- PageRank ---
     print("\n[DuckPGQ] Running PageRank...")
-    start = time.perf_counter()
-    try:
+    def _run_pagerank():
         r = conn.execute("""
             SELECT * FROM pagerank(ldbc, nodes, edges)
             ORDER BY pagerank DESC LIMIT 10
         """).fetchall()
         for row in r[:3]:
             print(f"    Top PR: node={row[0]}, rank={row[1]:.6f}")
-        elapsed = time.perf_counter() - start
-        results["pagerank"] = elapsed
+        return r
+    elapsed, _ = bench_common.run_timed("PageRank", _run_pagerank)
+    results["pagerank"] = elapsed
+    if isinstance(elapsed, (int, float)):
         print(f"  PageRank time: {elapsed:.2f}s")
-    except Exception as e:
-        print(f"  PageRank failed: {e}")
-        results["pagerank"] = "N/A"
 
     # --- WCC ---
     print("\n[DuckPGQ] Running WCC...")
-    start = time.perf_counter()
-    try:
+    def _run_wcc():
         r = conn.execute("""
             SELECT componentId, count(*) AS size
             FROM weakly_connected_component(ldbc, nodes, edges)
@@ -91,46 +88,42 @@ def run_benchmark():
         """).fetchall()
         for row in r[:3]:
             print(f"    Component: id={row[0]}, size={row[1]}")
-        elapsed = time.perf_counter() - start
-        results["wcc"] = elapsed
+        return r
+    elapsed, _ = bench_common.run_timed("WCC", _run_wcc)
+    results["wcc"] = elapsed
+    if isinstance(elapsed, (int, float)):
         print(f"  WCC time: {elapsed:.2f}s")
-    except Exception as e:
-        print(f"  WCC failed: {e}")
-        results["wcc"] = "N/A"
 
     # --- LCC ---
     print("\n[DuckPGQ] Running LCC...")
-    start = time.perf_counter()
-    try:
+    def _run_lcc():
         r = conn.execute("""
             SELECT * FROM local_clustering_coefficient(ldbc, nodes, edges)
             ORDER BY local_clustering_coefficient DESC LIMIT 10
         """).fetchall()
         for row in r[:3]:
             print(f"    Top LCC: node={row[0]}, coeff={row[1]:.6f}")
-        elapsed = time.perf_counter() - start
-        results["lcc"] = elapsed
+        return r
+    elapsed, _ = bench_common.run_timed("LCC", _run_lcc)
+    results["lcc"] = elapsed
+    if isinstance(elapsed, (int, float)):
         print(f"  LCC time: {elapsed:.2f}s")
-    except Exception as e:
-        print(f"  LCC failed: {e}")
-        results["lcc"] = "N/A"
 
     # --- BFS / Shortest Path ---
     print("\n[DuckPGQ] Running Shortest Path from vertex 6...")
-    start = time.perf_counter()
-    try:
+    def _run_bfs():
         r = conn.execute("""
             FROM GRAPH_TABLE(ldbc
                 MATCH p = ANY SHORTEST (a:nodes WHERE a.id = 6)-[e:edges]->{1,30}(b:nodes)
                 COLUMNS (b.id AS dst, path_length(p) AS dist)
             ) LIMIT 50000
         """).fetchall()
-        elapsed = time.perf_counter() - start
-        results["bfs"] = elapsed
-        print(f"  BFS time: {elapsed:.2f}s (reached {len(r)} nodes)")
-    except Exception as e:
-        print(f"  BFS/SP failed: {e}")
-        results["bfs"] = "N/A"
+        print(f"  Reached {len(r)} nodes")
+        return r
+    elapsed, _ = bench_common.run_timed("BFS", _run_bfs)
+    results["bfs"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  BFS time: {elapsed:.2f}s")
 
     conn.close()
     os.remove(db_path)

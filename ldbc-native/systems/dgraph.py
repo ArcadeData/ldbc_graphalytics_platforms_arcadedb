@@ -197,43 +197,67 @@ def run_benchmark():
     # --- BFS (Breadth-First Search) ---
     # Dgraph's shortest() function only works point-to-point (requires both
     # source and target UIDs), not single-source-all-destinations as LDBC
-    # defines BFS. The @recurse directive could traverse the graph but does
-    # not compute distances and would return the entire connected component
-    # as a deeply nested JSON structure — infeasible at 633K vertices.
-    print("\n[Dgraph] BFS: not supported (shortest() is point-to-point only; no single-source BFS)")
-    results["bfs"] = "N/A"
+    # defines BFS.
+    print("\n[Dgraph] Running BFS...")
+    def _run_bfs():
+        raise NotImplementedError("shortest() is point-to-point only; no single-source BFS")
+    elapsed, _ = bench_common.run_timed("BFS", _run_bfs)
+    results["bfs"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  BFS time: {elapsed:.2f}s")
 
     # --- PageRank ---
-    # Dgraph has no built-in PageRank. Implementing iteratively via DQL
-    # would require O(iterations * vertices) round-trip mutations, which
-    # is infeasible at 633K vertices / 34M edges.
-    print("\n[Dgraph] PageRank: not supported (no built-in graph algorithm)")
-    results["pagerank"] = "N/A"
+    # Dgraph has no built-in PageRank.
+    print("\n[Dgraph] Running PageRank...")
+    def _run_pagerank():
+        raise NotImplementedError("no built-in graph algorithm")
+    elapsed, _ = bench_common.run_timed("PageRank", _run_pagerank)
+    results["pagerank"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  PageRank time: {elapsed:.2f}s")
 
     # --- WCC (Weakly Connected Components) ---
-    # No built-in connected components. Would require iterative union-find
-    # via DQL mutations, infeasible at this scale.
-    print("\n[Dgraph] WCC: not supported (no built-in graph algorithm)")
-    results["wcc"] = "N/A"
+    # No built-in connected components.
+    print("\n[Dgraph] Running WCC...")
+    def _run_wcc():
+        raise NotImplementedError("no built-in graph algorithm")
+    elapsed, _ = bench_common.run_timed("WCC", _run_wcc)
+    results["wcc"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  WCC time: {elapsed:.2f}s")
 
     # --- LCC (Local Clustering Coefficient) ---
-    # No built-in LCC. Triangle counting per vertex would require
-    # O(V * d^2) edge lookups via DQL, infeasible on 34M edges.
-    print("\n[Dgraph] LCC: not supported (no built-in graph algorithm)")
-    results["lcc"] = "N/A"
+    # No built-in LCC.
+    print("\n[Dgraph] Running LCC...")
+    def _run_lcc():
+        raise NotImplementedError("no built-in graph algorithm")
+    elapsed, _ = bench_common.run_timed("LCC", _run_lcc)
+    results["lcc"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  LCC time: {elapsed:.2f}s")
 
     # --- SSSP (Single-Source Shortest Path) ---
-    # Dgraph's shortest() supports weighted edges (via facets) but only
-    # between specific source-destination pairs. LDBC SSSP requires
-    # single-source-all-destinations weighted Dijkstra, which is not available.
-    print("\n[Dgraph] SSSP: not supported (shortest() is point-to-point only; no single-source Dijkstra)")
-    results["sssp"] = "N/A"
+    # Dgraph's shortest() is point-to-point only; no single-source Dijkstra.
+    print("\n[Dgraph] Running SSSP...")
+    def _run_sssp():
+        raise NotImplementedError("shortest() is point-to-point only; no single-source Dijkstra")
+    elapsed, _ = bench_common.run_timed("SSSP", _run_sssp)
+    results["sssp"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  SSSP time: {elapsed:.2f}s")
 
     # --- CDLP (Community Detection via Label Propagation) ---
-    # No built-in label propagation. Iterative DQL implementation infeasible
-    # at this scale (synchronous updates of all 633K vertex labels per
-    # iteration).
-    print("\n[Dgraph] CDLP: not supported (no built-in graph algorithm)")
-    results["cdlp"] = "N/A"
+    # No built-in label propagation.
+    print("\n[Dgraph] Running CDLP...")
+    def _run_cdlp():
+        raise NotImplementedError("no built-in graph algorithm")
+    elapsed, _ = bench_common.run_timed("CDLP", _run_cdlp)
+    results["cdlp"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  CDLP time: {elapsed:.2f}s")
 
+    bench_common.cleanup_docker("dgraph-alpha", "dgraph-zero")
     return results
+
+
+run_benchmark._cleanup = lambda: bench_common.cleanup_docker("dgraph-alpha", "dgraph-zero")

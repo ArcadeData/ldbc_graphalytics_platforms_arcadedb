@@ -96,49 +96,78 @@ def run_benchmark():
         results["load"] = load_time
         print(f"  Load time: {load_time:.2f}s")
 
-    # Helper to run a Vermeer compute task
+    # Helper to run a Vermeer compute task (raises on failure)
     def run_algo(name, display_name, params):
-        print(f"\n[HugeGraph] Running {display_name}...")
-        start = time.perf_counter()
-        try:
-            algo_params = {"compute.algorithm": name}
-            algo_params.update(params)
-            r = requests.post(f"{vermeer}/tasks/create/sync", json={
-                "task_type": "compute",
-                "graph": "bench",
-                "params": algo_params
-            }, timeout=600)
-            elapsed = time.perf_counter() - start
-            if r.status_code == 200 and r.json().get("task", {}).get("state") == "complete":
-                results[display_name] = elapsed
-                print(f"  {display_name} time: {elapsed:.2f}s")
-            else:
-                print(f"  {display_name} failed: {r.text[:200]}")
-                results[display_name] = "N/A"
-        except Exception as e:
-            print(f"  {display_name} failed: {e}")
-            results[display_name] = "N/A"
+        algo_params = {"compute.algorithm": name}
+        algo_params.update(params)
+        r = requests.post(f"{vermeer}/tasks/create/sync", json={
+            "task_type": "compute",
+            "graph": "bench",
+            "params": algo_params
+        }, timeout=600)
+        if r.status_code != 200 or r.json().get("task", {}).get("state") != "complete":
+            raise RuntimeError(f"{display_name} failed: {r.text[:200]}")
+        return r.json()
 
     # --- PageRank ---
-    run_algo("pagerank", "pagerank",
-             {"pagerank.damping": "0.85", "pagerank.diff_threshold": "0.00001"})
+    print("\n[HugeGraph] Running PageRank...")
+    def _run_pagerank():
+        return run_algo("pagerank", "pagerank",
+                        {"pagerank.damping": "0.85", "pagerank.diff_threshold": "0.00001"})
+    elapsed, _ = bench_common.run_timed("PageRank", _run_pagerank)
+    results["pagerank"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  PageRank time: {elapsed:.2f}s")
 
     # --- WCC ---
-    run_algo("wcc", "wcc", {})
+    print("\n[HugeGraph] Running WCC...")
+    def _run_wcc():
+        return run_algo("wcc", "wcc", {})
+    elapsed, _ = bench_common.run_timed("WCC", _run_wcc)
+    results["wcc"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  WCC time: {elapsed:.2f}s")
 
     # --- BFS (SSSP unweighted = hop-count BFS) ---
-    run_algo("sssp", "bfs", {"sssp.source": str(SOURCE_VERTEX)})
+    print("\n[HugeGraph] Running BFS...")
+    def _run_bfs():
+        return run_algo("sssp", "bfs", {"sssp.source": str(SOURCE_VERTEX)})
+    elapsed, _ = bench_common.run_timed("BFS", _run_bfs)
+    results["bfs"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  BFS time: {elapsed:.2f}s")
 
     # --- LCC (Clustering Coefficient) ---
-    run_algo("clustering_coefficient", "lcc", {})
+    print("\n[HugeGraph] Running LCC...")
+    def _run_lcc():
+        return run_algo("clustering_coefficient", "lcc", {})
+    elapsed, _ = bench_common.run_timed("LCC", _run_lcc)
+    results["lcc"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  LCC time: {elapsed:.2f}s")
 
     # --- SSSP (weighted — Vermeer's sssp is unweighted/hop-count only) ---
     # Vermeer's built-in SSSP computes unweighted shortest paths (hop count).
     # There is no weighted Dijkstra variant available.
-    print("\n[HugeGraph] SSSP: not supported (Vermeer sssp is unweighted only)")
-    results["sssp"] = "N/A"
+    print("\n[HugeGraph] Running SSSP...")
+    def _run_sssp():
+        raise NotImplementedError("Vermeer sssp is unweighted only")
+    elapsed, _ = bench_common.run_timed("SSSP", _run_sssp)
+    results["sssp"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  SSSP time: {elapsed:.2f}s")
 
     # --- CDLP (Label Propagation) ---
-    run_algo("lpa", "cdlp", {})
+    print("\n[HugeGraph] Running CDLP...")
+    def _run_cdlp():
+        return run_algo("lpa", "cdlp", {})
+    elapsed, _ = bench_common.run_timed("CDLP", _run_cdlp)
+    results["cdlp"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  CDLP time: {elapsed:.2f}s")
 
+    bench_common.cleanup_docker("vermeer-master", "vermeer-worker")
     return results
+
+
+run_benchmark._cleanup = lambda: bench_common.cleanup_docker("vermeer-master", "vermeer-worker")

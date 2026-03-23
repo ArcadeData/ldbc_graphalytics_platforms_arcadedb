@@ -160,45 +160,67 @@ def run_benchmark():
         pass
 
     # --- BFS (Breadth-First Search) ---
-    # SurrealDB's recursive graph traversal (e.g. ->edge.{1..N}->node) does
-    # NOT compose multi-hop paths — {1..30} returns the same results as {1..1}.
-    # True multi-hop BFS would require iterative queries (one per depth level),
-    # but at 633K vertices the frontier grows too large for HTTP query strings.
-    # We report the single-hop traversal as an honest measure of SurrealDB's
-    # graph traversal capability.
-    print("\n[SurrealDB] BFS: not supported (recursive traversal does not compose multi-hop paths)")
-    results["bfs"] = "N/A"
+    # SurrealDB's recursive graph traversal does not compose multi-hop paths.
+    print("\n[SurrealDB] Running BFS...")
+    def _run_bfs():
+        raise NotImplementedError("recursive traversal does not compose multi-hop paths")
+    elapsed, _ = bench_common.run_timed("BFS", _run_bfs)
+    results["bfs"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  BFS time: {elapsed:.2f}s")
 
     # --- PageRank ---
-    # SurrealDB has no built-in PageRank algorithm. Implementing iteratively
-    # via SurrealQL would require O(iterations * vertices) UPDATE queries,
-    # which is infeasible at 633K vertices / 34M edges.
-    print("\n[SurrealDB] PageRank: not supported (no built-in graph algorithm)")
-    results["pagerank"] = "N/A"
+    # SurrealDB has no built-in PageRank algorithm.
+    print("\n[SurrealDB] Running PageRank...")
+    def _run_pagerank():
+        raise NotImplementedError("no built-in graph algorithm")
+    elapsed, _ = bench_common.run_timed("PageRank", _run_pagerank)
+    results["pagerank"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  PageRank time: {elapsed:.2f}s")
 
     # --- WCC (Weakly Connected Components) ---
-    # No built-in connected components algorithm. Would require iterative
-    # union-find via SurrealQL, infeasible at this scale.
-    print("\n[SurrealDB] WCC: not supported (no built-in graph algorithm)")
-    results["wcc"] = "N/A"
+    # No built-in connected components algorithm.
+    print("\n[SurrealDB] Running WCC...")
+    def _run_wcc():
+        raise NotImplementedError("no built-in graph algorithm")
+    elapsed, _ = bench_common.run_timed("WCC", _run_wcc)
+    results["wcc"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  WCC time: {elapsed:.2f}s")
 
     # --- LCC (Local Clustering Coefficient) ---
-    # No built-in LCC. Triangle counting per vertex via SurrealQL would
-    # require O(V * d^2) edge lookups, infeasible on 34M edges.
-    print("\n[SurrealDB] LCC: not supported (no built-in graph algorithm)")
-    results["lcc"] = "N/A"
+    # No built-in LCC.
+    print("\n[SurrealDB] Running LCC...")
+    def _run_lcc():
+        raise NotImplementedError("no built-in graph algorithm")
+    elapsed, _ = bench_common.run_timed("LCC", _run_lcc)
+    results["lcc"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  LCC time: {elapsed:.2f}s")
 
     # --- SSSP (Single-Source Shortest Path) ---
-    # SurrealDB has +shortest modifier for hop-count shortest path (unweighted).
-    # LDBC Graphalytics SSSP requires weighted Dijkstra, which is not available.
-    print("\n[SurrealDB] SSSP: not supported (no weighted Dijkstra; only hop-count shortest path)")
-    results["sssp"] = "N/A"
+    # SurrealDB has no weighted Dijkstra; only hop-count shortest path.
+    print("\n[SurrealDB] Running SSSP...")
+    def _run_sssp():
+        raise NotImplementedError("no weighted Dijkstra; only hop-count shortest path")
+    elapsed, _ = bench_common.run_timed("SSSP", _run_sssp)
+    results["sssp"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  SSSP time: {elapsed:.2f}s")
 
     # --- CDLP (Community Detection via Label Propagation) ---
-    # No built-in label propagation algorithm. Iterative SurrealQL
-    # implementation infeasible at this scale (synchronous updates of all
-    # 633K vertex labels per iteration).
-    print("\n[SurrealDB] CDLP: not supported (no built-in graph algorithm)")
-    results["cdlp"] = "N/A"
+    # No built-in label propagation algorithm.
+    print("\n[SurrealDB] Running CDLP...")
+    def _run_cdlp():
+        raise NotImplementedError("no built-in graph algorithm")
+    elapsed, _ = bench_common.run_timed("CDLP", _run_cdlp)
+    results["cdlp"] = elapsed
+    if isinstance(elapsed, (int, float)):
+        print(f"  CDLP time: {elapsed:.2f}s")
 
+    bench_common.cleanup_docker("surrealdb")
     return results
+
+
+run_benchmark._cleanup = lambda: bench_common.cleanup_docker("surrealdb")
