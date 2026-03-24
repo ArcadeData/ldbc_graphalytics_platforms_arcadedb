@@ -37,7 +37,7 @@ public class ArcadeDBEmbeddedLoader {
         db.commit();
         System.out.println("  Vertices: " + count);
 
-        GraphBatch importer = GraphBatch.builder(db)
+        GraphBatch importer = db.batch()
             .withBatchSize(100_000).withLightEdges(false).withWAL(false).build();
         int edgeCount = 0;
         try (BufferedReader br = new BufferedReader(new FileReader(edgeFile), 1 << 20)) {
