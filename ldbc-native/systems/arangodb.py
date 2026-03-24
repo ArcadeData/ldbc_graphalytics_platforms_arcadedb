@@ -19,7 +19,7 @@ def run_benchmark():
         db.version()
     except Exception as e:
         print(f"  Cannot connect to ArangoDB: {e}")
-        print("  Start with: docker run -d --name arangodb -p 8529:8529 -e ARANGO_ROOT_PASSWORD=benchmark arangodb:latest")
+        print("  Start with: docker run -d --name arangodb -p 8529:8529 -e ARANGO_ROOT_PASSWORD=benchmark arangodb/arangodb:3.11.12")
         return {"error": str(e)}
 
     # Check if data already loaded
