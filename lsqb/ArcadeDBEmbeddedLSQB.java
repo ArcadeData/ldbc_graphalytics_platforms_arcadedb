@@ -20,7 +20,7 @@ import java.util.*;
  *   javac -cp "$LDBC_JAR" ArcadeDBEmbeddedLSQB.java
  *
  * Run:
- *   java -Xms4g -Xmx4g -cp ".:$LDBC_JAR" ArcadeDBEmbeddedLSQB
+ *   java -Xms12g -Xmx12g -cp ".:$LDBC_JAR" ArcadeDBEmbeddedLSQB
  */
 public class ArcadeDBEmbeddedLSQB {
 

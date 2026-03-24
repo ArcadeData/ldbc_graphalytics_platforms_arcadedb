@@ -32,6 +32,7 @@ def run_benchmark():
         print(f"  Cannot connect to ArcadeDB: {e}")
         print("  Start with: docker run -d --name arcadedb-lsqb -p 2480:2480 "
               '-e JAVA_OPTS="-Darcadedb.server.rootPassword=benchmark" '
+              '-e ARCADEDB_OPTS_MEMORY="-Xms12g -Xmx12g" '
               "arcadedata/arcadedb:latest")
         return {"error": str(e)}
 
@@ -96,78 +97,98 @@ def run_benchmark():
                    "LIKES", "HAS_INTEREST"]:
             sql(f"CREATE EDGE TYPE {e}")
 
-        # Helper to load CSV rows
+        # --- Bulk load using /api/v1/batch (JSONL + GraphBatch) ---
+        # Stream all vertices first, then all edges, in a single HTTP request.
+        # This uses ArcadeDB's high-performance GraphBatch API on the server side.
+        import json as jsonlib
+        import io
+
         d = lambda f: os.path.join(data_dir, f)
-        BATCH = 1000
 
-        def load_vertices(vtype, csvfile, extra_props=None):
-            """Load vertices from CSV. Sets cid from 'id' column + optional extra props."""
+        def csv_rows(csvfile):
             with open(csvfile) as f:
-                reader = csv.DictReader(f, delimiter='|')
-                batch = []
-                for row in reader:
-                    parts = [f"cid = {row['id']}"]
-                    if extra_props:
-                        for csv_col, prop in extra_props.items():
-                            v = row.get(csv_col, "")
-                            if v != "":
-                                parts.append(f"{prop} = {v}")
-                    batch.append(f"INSERT INTO {vtype} SET {', '.join(parts)};")
-                    if len(batch) >= BATCH:
-                        sql_batch(batch)
-                        batch = []
-                if batch:
-                    sql_batch(batch)
+                yield from csv.DictReader(f, delimiter='|')
 
-        def load_edges(etype, csvfile, from_type, from_col, to_type, to_col):
-            with open(csvfile) as f:
-                reader = csv.DictReader(f, delimiter='|')
-                batch = []
-                for row in reader:
-                    src, dst = row[from_col], row[to_col]
-                    if src == "" or dst == "":
-                        continue
-                    batch.append(
-                        f"CREATE EDGE {etype} FROM "
-                        f"(SELECT FROM {from_type} WHERE cid = {src}) TO "
-                        f"(SELECT FROM {to_type} WHERE cid = {dst});")
-                    if len(batch) >= BATCH:
-                        sql_batch(batch)
-                        batch = []
-                if batch:
-                    sql_batch(batch)
+        # Build JSONL payload: vertices first (with temp IDs "Type:cid"), then edges
+        print("  Building JSONL payload...")
+        buf = io.StringIO()
+        v_count = 0
 
-        # Load vertices
-        print("  Loading vertices...")
-        load_vertices("Country", d("Country.csv"))
-        load_vertices("City", d("City.csv"))
-        load_vertices("TagClass", d("TagClass.csv"))
-        load_vertices("Tag", d("Tag.csv"))
-        load_vertices("Person", d("Person.csv"))
-        load_vertices("Forum", d("Forum.csv"))
-        load_vertices("Post", d("Post.csv"))
-        load_vertices("Comment", d("Comment.csv"))
+        # Vertex types and their CSV files
+        vertex_files = [
+            ("Country", "Country.csv"),
+            ("City", "City.csv"),
+            ("TagClass", "TagClass.csv"),
+            ("Tag", "Tag.csv"),
+            ("Person", "Person.csv"),
+            ("Forum", "Forum.csv"),
+            ("Post", "Post.csv"),
+            ("Comment", "Comment.csv"),
+        ]
+        for vtype, csvfile in vertex_files:
+            for row in csv_rows(d(csvfile)):
+                rec = {"@type": "vertex", "@class": vtype,
+                       "@id": f"{vtype}:{row['id']}", "cid": int(row['id'])}
+                buf.write(jsonlib.dumps(rec) + "\n")
+                v_count += 1
 
-        # Load edges from FK columns
-        print("  Loading edges from FKs...")
-        load_edges("IS_PART_OF", d("City.csv"), "City", "id", "Country", "ispartof_country")
-        load_edges("IS_LOCATED_IN", d("Person.csv"), "Person", "id", "City", "islocatedin_city")
-        load_edges("HAS_TYPE", d("Tag.csv"), "Tag", "id", "TagClass", "hastype_tagclass")
-        load_edges("HAS_CREATOR", d("Post.csv"), "Post", "id", "Person", "hascreator_person")
-        load_edges("CONTAINER_OF", d("Post.csv"), "Forum", "forum_containerof", "Post", "id")
-        load_edges("HAS_CREATOR", d("Comment.csv"), "Comment", "id", "Person", "hascreator_person")
-        load_edges("REPLY_OF", d("Comment.csv"), "Comment", "id", "Post", "replyof_post")
-        load_edges("REPLY_OF", d("Comment.csv"), "Comment", "id", "Comment", "replyof_comment")
+        # Edge definitions: (type, csv_file, from_type, from_col, to_type, to_col)
+        edge_defs = [
+            # FK-based edges (from vertex CSV files)
+            ("IS_PART_OF", "City.csv", "City", "id", "Country", "ispartof_country"),
+            ("IS_LOCATED_IN", "Person.csv", "Person", "id", "City", "islocatedin_city"),
+            ("HAS_TYPE", "Tag.csv", "Tag", "id", "TagClass", "hastype_tagclass"),
+            ("HAS_CREATOR", "Post.csv", "Post", "id", "Person", "hascreator_person"),
+            ("CONTAINER_OF", "Post.csv", "Forum", "forum_containerof", "Post", "id"),
+            ("HAS_CREATOR", "Comment.csv", "Comment", "id", "Person", "hascreator_person"),
+            ("REPLY_OF", "Comment.csv", "Comment", "id", "Post", "replyof_post"),
+            ("REPLY_OF", "Comment.csv", "Comment", "id", "Comment", "replyof_comment"),
+            # Separate edge tables
+            ("HAS_MEMBER", "Forum_hasMember_Person.csv", "Forum", "id", "Person", "hasmember_person"),
+            ("HAS_TAG", "Comment_hasTag_Tag.csv", "Comment", "id", "Tag", "hastag_tag"),
+            ("HAS_TAG", "Post_hasTag_Tag.csv", "Post", "id", "Tag", "hastag_tag"),
+            ("KNOWS", "Person_knows_Person.csv", "Person", "person1id", "Person", "person2id"),
+            ("LIKES", "Person_likes_Comment.csv", "Person", "id", "Comment", "likes_comment"),
+            ("LIKES", "Person_likes_Post.csv", "Person", "id", "Post", "likes_post"),
+            ("HAS_INTEREST", "Person_hasInterest_Tag.csv", "Person", "id", "Tag", "hasinterest_tag"),
+        ]
+        e_count = 0
+        for etype, csvfile, from_type, from_col, to_type, to_col in edge_defs:
+            for row in csv_rows(d(csvfile)):
+                src, dst = row.get(from_col, ""), row.get(to_col, "")
+                if src == "" or dst == "":
+                    continue
+                rec = {"@type": "edge", "@class": etype,
+                       "@from": f"{from_type}:{src}", "@to": f"{to_type}:{dst}"}
+                buf.write(jsonlib.dumps(rec) + "\n")
+                e_count += 1
 
-        # Load edges from edge tables
-        print("  Loading edge tables...")
-        load_edges("HAS_MEMBER", d("Forum_hasMember_Person.csv"), "Forum", "id", "Person", "hasmember_person")
-        load_edges("HAS_TAG", d("Comment_hasTag_Tag.csv"), "Comment", "id", "Tag", "hastag_tag")
-        load_edges("HAS_TAG", d("Post_hasTag_Tag.csv"), "Post", "id", "Tag", "hastag_tag")
-        load_edges("KNOWS", d("Person_knows_Person.csv"), "Person", "person1id", "Person", "person2id")
-        load_edges("LIKES", d("Person_likes_Comment.csv"), "Person", "id", "Comment", "likes_comment")
-        load_edges("LIKES", d("Person_likes_Post.csv"), "Person", "id", "Post", "likes_post")
-        load_edges("HAS_INTEREST", d("Person_hasInterest_Tag.csv"), "Person", "id", "Tag", "hasinterest_tag")
+        print(f"  Streaming {v_count} vertices + {e_count} edges via /batch...")
+
+        # Stream as chunked transfer to avoid loading entire payload in memory
+        # and to avoid hitting OS socket buffer limits
+        payload_str = buf.getvalue()
+        buf.close()
+
+        def chunk_generator(data, chunk_size=4 * 1024 * 1024):
+            encoded = data.encode("utf-8")
+            for i in range(0, len(encoded), chunk_size):
+                yield encoded[i:i + chunk_size]
+
+        r = requests.post(
+            f"{base}/api/v1/batch/{db}?wal=false&lightEdges=false",
+            auth=auth,
+            data=chunk_generator(payload_str),
+            headers={"Content-Type": "application/x-ndjson",
+                     "Transfer-Encoding": "chunked"},
+            timeout=600)
+        if r.status_code != 200:
+            print(f"  Batch load failed: {r.text[:500]}")
+            return {"error": "Batch load failed"}
+        batch_result = r.json()
+        print(f"  Batch result: {batch_result.get('verticesCreated', '?')} vertices, "
+              f"{batch_result.get('edgesCreated', '?')} edges, "
+              f"{batch_result.get('elapsedMs', '?')}ms")
 
         load_time = time.perf_counter() - start
         results["load"] = load_time
