@@ -17,3 +17,5 @@ graphalytics-1.3.0-arcadedb-*/
 /target
 /target
 graphalytics-1.3.0-arcadedb-0.1-SNAPSHOT-bin.tar.gz
+/ldbc-native/systems/__pycache__
+*.pyc
