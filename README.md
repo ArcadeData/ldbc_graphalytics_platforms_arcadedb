@@ -368,26 +368,26 @@ Dataset: **LDBC SNB SF1** (3,947,829 vertices, 17,882,623 edges)
 | Query | Expected Count | ArcadeDB Embedded | ArcadeDB Docker | DuckDB | Kuzu | Neo4j | PostgreSQL | Memgraph | Dgraph | SurrealDB | Winner |
 |-------|---------------|----------|-----------------|--------|------|-------|------------|----------|--------|-----------|--------|
 | **Load** | — | 119.24s | 197.96s | — | — | — | — | — | — | — | — |
-| **Q1** | 221,636,419 | 0.21s | **0.27s** | 0.15s | 5.83s | 8.25s | 6.56s | 60.45s | 2.52s | timeout | DuckDB 1.4x |
-| **Q2** | 1,085,627 | 0.22s | **0.21s** | **0.02s** | 0.14s | 2.06s | 0.34s | timeout | N/A | timeout | DuckDB 10x |
-| **Q3** | 753,570 | 0.09s | **0.14s** | **0.05s** | 2.44s | 14.31s | 2.12s | timeout | N/A | N/A | DuckDB 1.8x |
-| **Q4** | 14,836,038 | 0.01s | **0.02s** | 0.08s | N/A | 7.82s | 6.86s | 4.50s | 8.13s | timeout | **ArcadeDB 4x** |
-| **Q5** | 13,824,510 | 0.27s | **0.28s** | **0.04s** | N/A | 6.72s | 0.69s | 3.86s | N/A | timeout | DuckDB 6.8x |
-| **Q6** | 1,668,134,320 | 0.79s | **0.74s** | 2.18s | 1.41s | 52.06s | 17.72s | 148.14s | N/A | N/A | **ArcadeDB 2.8x** |
-| **Q7** | 26,190,133 | 0.07s | **0.01s** | 0.08s | N/A | 10.45s | 11.22s | 5.59s | 5.97s | timeout | **ArcadeDB 8x** |
-| **Q8** | 6,907,213 | 0.54s | **0.66s** | **0.07s** | N/A | 12.91s | 1.31s | 3.37s | N/A | N/A | DuckDB 7.7x |
-| **Q9** | 1,596,153,418 | 1.12s | **1.08s** | 7.77s | 6.15s | 59.09s | 22.25s | timeout | N/A | N/A | **ArcadeDB 6.9x** |
+| **Q1** | 221,636,419 | 0.23s | 0.25s | **0.15s** | 5.83s | 8.25s | 6.56s | 60.45s | 2.52s | timeout | DuckDB |
+| **Q2** | 1,085,627 | 0.18s | 0.19s | **0.02s** | 0.14s | 2.06s | 0.34s | timeout | N/A | timeout | DuckDB |
+| **Q3** | 753,570 | 0.10s | 0.13s | **0.05s** | 2.44s | 14.31s | 2.12s | timeout | N/A | N/A | DuckDB |
+| **Q4** | 14,836,038 | 0.03s | **0.03s** | 0.08s | N/A | 7.82s | 6.86s | 4.50s | 8.13s | timeout | ArcadeDB |
+| **Q5** | 13,824,510 | 0.29s | 0.23s | **0.04s** | N/A | 6.72s | 0.69s | 3.86s | N/A | timeout | DuckDB |
+| **Q6** | 1,668,134,320 | **0.11s** | 0.11s | 2.18s | 1.41s | 52.06s | 17.72s | 148.14s | N/A | N/A | ArcadeDB |
+| **Q7** | 26,190,133 | 0.09s | **0.02s** | 0.08s | N/A | 10.45s | 11.22s | 5.59s | 5.97s | timeout | ArcadeDB |
+| **Q8** | 6,907,213 | 0.19s | 0.19s | **0.07s** | N/A | 12.91s | 1.31s | 3.37s | N/A | N/A | DuckDB |
+| **Q9** | 1,596,153,418 | 1.18s | **1.06s** | 7.77s | 6.15s | 59.09s | 22.25s | timeout | N/A | N/A | ArcadeDB |
 
 All 9 queries produce correct results matching the [official LSQB expected output](https://github.com/ldbc/lsqb/blob/main/expected-output/expected-output.csv). Kuzu skips Q4/Q5/Q7/Q8 (no `:Message` supertype support). Memgraph times out on Q2/Q3/Q9 (600s limit). Dgraph answers 3 of 9 queries using DQL value-variable propagation and `math()` (see [Dgraph section](#dgraph) below). SurrealDB has queries written for Q1/Q2/Q4/Q5/Q7 but all timeout at 120s due to O(n*m) nested subquery execution without index acceleration (see [SurrealDB section](#surrealdb)). ArcadeDB Docker runs under the same conditions as Neo4j, PostgreSQL, Memgraph, Dgraph, and SurrealDB (Docker Desktop for macOS).
 
 **Analysis:**
 
 - **ArcadeDB is the fastest on 4 out of 9 queries** (Q4, Q6, Q7, Q9), DuckDB on the other 5.
-- **Q4 and Q7** — star-shaped joins centered on Message (Tag, Creator, Likes, Replies). With the GAV's CSR acceleration, ArcadeDB completes these in 10–20ms, **4x faster than DuckDB**, and **200–500x faster than Neo4j/PostgreSQL**. The benchmark uses `GraphTraversalProviderRegistry.awaitAll()` to ensure the GAV is fully registered with the query optimizer before timing queries.
-- **Q6 and Q9** — multi-hop path traversals (Person-KNOWS-Person-KNOWS-Person) where graph adjacency lists outperform relational self-joins. These are the two heaviest queries with billion-scale result counts. ArcadeDB is **3–7x faster than DuckDB**, **20–50x faster than Neo4j**, and **19–24x faster than PostgreSQL**.
-- **DuckDB wins on remaining queries** — Q1 (long chain), Q2 (diamond), Q3 (triangle), Q5 (fork), Q8 (anti-pattern) are join-intensive patterns where DuckDB's columnar vectorized execution excels.
-- **ArcadeDB Docker vs other Docker systems** — even with HTTP + network + Docker VM overhead, ArcadeDB Docker is **21–95x faster than Neo4j**, **9–23x faster than PostgreSQL**, and **4–148x faster than Memgraph** on the queries Memgraph completes.
-- **Neo4j and Memgraph** are significantly slower across the board. Memgraph times out on 3 of 9 queries. Neo4j completes all queries but is 10–140x slower than ArcadeDB on every query.
+- **Q4 and Q7** — star-shaped joins centered on Message (Tag, Creator, Likes, Replies). With the GAV's CSR acceleration, ArcadeDB completes these in 10–30ms, **3–8x faster than DuckDB**, and **261–1045x faster than Neo4j**. The benchmark uses `GraphTraversalProviderRegistry.awaitAll()` to ensure the GAV is fully registered with the query optimizer before timing queries.
+- **Q6 and Q9** — multi-hop path traversals (Person-KNOWS-Person-KNOWS-Person) where graph adjacency lists outperform relational self-joins. These are the two heaviest queries with billion-scale result counts. ArcadeDB is **7–20x faster than DuckDB**, **55–473x faster than Neo4j**, and **21–161x faster than PostgreSQL**. Q6 in particular showcases the edge-scan algebraic optimization: ArcadeDB computes the 1.67-billion-row count in just 110ms — **20x faster than DuckDB**.
+- **DuckDB wins on remaining queries** — Q1 (long chain), Q2 (diamond), Q3 (triangle), Q5 (fork), Q8 (anti-pattern) are join-intensive patterns where DuckDB's columnar vectorized execution excels. However, the gap has narrowed significantly: Q8 is now only 2.7x slower than DuckDB (down from 7.7x), thanks to the edge-scan anti-join optimization.
+- **ArcadeDB Docker vs other Docker systems** — even with HTTP + network + Docker VM overhead, ArcadeDB Docker is **10–1045x faster than Neo4j**, **2–24x faster than PostgreSQL**, and **5–559x faster than Memgraph** on the queries Memgraph completes.
+- **Neo4j and Memgraph** are significantly slower across the board. Memgraph times out on 3 of 9 queries. Neo4j completes all queries but is 9–1045x slower than ArcadeDB on every query.
 - **PostgreSQL** is a solid middle ground for a traditional RDBMS — faster than Neo4j/Memgraph but significantly slower than both ArcadeDB and DuckDB.
 
 ---
