@@ -225,19 +225,6 @@ All 6 algorithms passed with validation.
 
 ArcadeDB is tested in two modes: **embedded** (in-process Java, zero overhead) and **Docker** (same HTTP/network overhead as the other Docker-based systems). Kuzu and DuckPGQ run embedded. Neo4j, Memgraph, ArangoDB, FalkorDB, and HugeGraph run as Docker containers.
 
-#### ArcadeDB Embedded vs Docker
-
-| Algorithm | ArcadeDB Embedded | ArcadeDB Docker |
-|-----------|------------------|----------------|
-| **PageRank** | **0.48s** | 0.83s |
-| **WCC** | 0.30s | **0.22s** |
-| **BFS** | 0.13s | **0.07s** |
-| **LCC** | **27.41s** | 34.98s |
-| **SSSP** | 3.53s | **0.97s** |
-| **CDLP** | 3.67s | **3.35s** |
-
-Docker results are measured warm (JIT-compiled), matching how production servers run. WCC, BFS, and SSSP are faster in Docker because the server JVM (16GB heap) has more room for JIT optimization than the embedded benchmark (8GB heap). LCC is slightly slower due to Docker Desktop's Linux VM overhead on macOS.
-
 #### All Systems Comparison
 
 | Algorithm | ArcadeDB | ArcadeDB Docker | Neo4j 2026 | Kuzu | DuckPGQ | Memgraph | ArangoDB | FalkorDB | HugeGraph |
