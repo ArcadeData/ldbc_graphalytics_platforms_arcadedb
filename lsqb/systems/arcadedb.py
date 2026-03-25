@@ -36,15 +36,15 @@ def run_benchmark():
               "arcadedata/arcadedb:latest")
         return {"error": str(e)}
 
-    def sql(cmd, timeout=600):
+    def sql(cmd, timeout=bench_common.QUERY_TIMEOUT):
         return requests.post(f"{base}/api/v1/command/{db}", auth=auth,
             json={"language": "sql", "command": cmd}, timeout=timeout)
 
-    def cypher(cmd, timeout=600):
+    def cypher(cmd, timeout=bench_common.QUERY_TIMEOUT):
         return requests.post(f"{base}/api/v1/command/{db}", auth=auth,
             json={"language": "opencypher", "command": cmd}, timeout=timeout)
 
-    def sql_batch(cmds, timeout=600):
+    def sql_batch(cmds, timeout=bench_common.QUERY_TIMEOUT):
         return requests.post(f"{base}/api/v1/command/{db}", auth=auth,
             json={"language": "sqlscript",
                   "command": "BEGIN;\n" + "\n".join(cmds) + "\nCOMMIT;"},

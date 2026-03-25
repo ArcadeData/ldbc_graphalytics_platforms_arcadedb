@@ -114,7 +114,7 @@ def run_benchmark():
         results["load"] = load_time
         print(f"  Load time: {load_time:.2f}s")
 
-    # Run queries
+    # Run queries (300s timeout per query)
     for qid in [f"q{i}" for i in range(1, 10)]:
         query = CYPHER_QUERIES[qid]
         print(f"\n[Memgraph] Running {qid.upper()}...")
@@ -129,7 +129,7 @@ def run_benchmark():
         except Exception as e:
             elapsed = time.perf_counter() - start
             print(f"  {qid.upper()} failed ({elapsed:.2f}s): {e}")
-            results[qid] = "N/A"
+            results[qid] = "timeout" if elapsed >= bench_common.QUERY_TIMEOUT - 1 else "N/A"
 
     driver.close()
     bench_common.cleanup_docker("memgraph-lsqb")

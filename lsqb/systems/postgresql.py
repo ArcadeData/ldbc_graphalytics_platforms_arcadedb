@@ -154,6 +154,9 @@ def run_benchmark():
     for qid in pg_queries:
         pg_queries[qid] = pg_queries[qid].replace("Person_knows_Person", "person_knows_person_bidi")
 
+    # Set 300s statement timeout
+    cur.execute(f"SET statement_timeout = '{bench_common.QUERY_TIMEOUT}s'")
+
     for qid in [f"q{i}" for i in range(1, 10)]:
         query = pg_queries[qid]
         print(f"\n[PostgreSQL] Running {qid.upper()}...")
@@ -168,7 +171,7 @@ def run_benchmark():
             elapsed = time.perf_counter() - start
             print(f"  {qid.upper()} failed ({elapsed:.2f}s): {e}")
             con.rollback()
-            results[qid] = "N/A"
+            results[qid] = "timeout" if elapsed >= bench_common.QUERY_TIMEOUT - 1 else "N/A"
 
     con.close()
     bench_common.cleanup_docker("postgres-lsqb")

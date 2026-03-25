@@ -102,20 +102,16 @@ def run_benchmark():
     else:
         con = duckdb.connect(db_path)
 
-    # Run queries
+    # Run queries (use run_timed for 300s timeout)
     for qid in [f"q{i}" for i in range(1, 10)]:
         query = SQL_QUERIES[qid]
         print(f"\n[DuckDB] Running {qid.upper()}...")
-        start = time.perf_counter()
-        try:
-            r = con.execute(query).fetchone()
-            count = r[0]
-            elapsed = time.perf_counter() - start
-            results[qid] = elapsed
+        def _run(q=query):
+            r = con.execute(q).fetchone()
+            return r[0]
+        elapsed, count = bench_common.run_timed(qid.upper(), _run)
+        results[qid] = elapsed
+        if isinstance(elapsed, (int, float)):
             print(f"  {qid.upper()} time: {elapsed:.2f}s  (count={count})")
-        except Exception as e:
-            elapsed = time.perf_counter() - start
-            print(f"  {qid.upper()} failed ({elapsed:.2f}s): {e}")
-            results[qid] = "N/A"
 
     return results

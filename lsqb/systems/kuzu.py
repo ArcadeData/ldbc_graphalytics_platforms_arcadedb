@@ -144,6 +144,9 @@ RETURN count(*) AS count
     }
     # Q4, Q5, Q7, Q8 require :Message (Post + Comment union) — skip for Kuzu
 
+    # Set 300s query timeout
+    conn.set_query_timeout(bench_common.QUERY_TIMEOUT * 1000)
+
     for qid in [f"q{i}" for i in range(1, 10)]:
         query = kuzu_queries.get(qid)
         if query is None:
@@ -163,6 +166,6 @@ RETURN count(*) AS count
         except Exception as e:
             elapsed = time.perf_counter() - start
             print(f"  {qid.upper()} failed ({elapsed:.2f}s): {e}")
-            results[qid] = "N/A"
+            results[qid] = "timeout" if elapsed >= bench_common.QUERY_TIMEOUT - 1 else "N/A"
 
     return results
