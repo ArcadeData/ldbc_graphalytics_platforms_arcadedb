@@ -520,7 +520,7 @@ cd lsqb
 python3 lsqb_benchmark.py falkordb
 ```
 
-*Tested with FalkorDB latest on April 2026.*
+*Tested with FalkorDB v4.16.8 on April 2026.*
 
 ---
 
