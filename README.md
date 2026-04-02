@@ -8,7 +8,7 @@ This repository contains three benchmark modes:
 
 1. **Official LDBC Graphalytics** — standardized framework with per-algorithm isolation, validation, and reporting
 2. **Native multi-vendor comparison** — load once, run all algorithms, compare ArcadeDB vs Kuzu vs DuckPGQ vs Memgraph vs Neo4j vs FalkorDB vs HugeGraph
-3. **LSQB (Labelled Subgraph Query Benchmark)** — 9 subgraph pattern matching queries on the LDBC SNB social network, comparing ArcadeDB (Cypher) vs DuckDB (SQL)
+3. **LSQB (Labelled Subgraph Query Benchmark)** — 9 subgraph pattern matching queries on the LDBC SNB social network, comparing ArcadeDB (Cypher) vs DuckDB (SQL) vs FalkorDB (Cypher) and others
 
 ## Supported Algorithms
 
@@ -311,7 +311,7 @@ pip install duckdb
 python3 lsqb_benchmark.py duckdb
 ```
 
-### Run All Systems (Kuzu, DuckDB, Neo4j)
+### Run All Systems (Kuzu, DuckDB, Neo4j, FalkorDB, ...)
 
 ```bash
 cd lsqb
@@ -350,22 +350,23 @@ Dataset: **LDBC SNB SF1** (3,947,829 vertices, 17,882,623 edges)
 | **PostgreSQL** | 17 | Docker | SQL |
 | **Memgraph** | latest | Docker | Cypher |
 | **Dgraph** | v25.3.0 | Docker (HTTP API) | DQL |
+| **FalkorDB** | v4.16.8 | Docker | Cypher |
 | **SurrealDB** | v2.6.4 | Docker (HTTP API) | SurrealQL |
 
-| Query | Expected Count | ArcadeDB Embedded | ArcadeDB Docker | DuckDB | Kuzu | Neo4j | PostgreSQL | Memgraph | Dgraph | SurrealDB | Winner |
-|-------|---------------|----------|-----------------|--------|------|-------|------------|----------|--------|-----------|--------|
-| **Load** | — | 119.24s | 197.96s | — | — | — | — | — | — | — | — |
-| **Q1** | 221,636,419 | 0.23s | 0.25s | **0.15s** | 5.83s | 8.25s | 6.56s | 60.45s | 2.52s | timeout | DuckDB |
-| **Q2** | 1,085,627 | 0.18s | 0.19s | **0.02s** | 0.14s | 2.06s | 0.34s | timeout | N/A | timeout | DuckDB |
-| **Q3** | 753,570 | 0.10s | 0.13s | **0.05s** | 2.44s | 14.31s | 2.12s | timeout | N/A | N/A | DuckDB |
-| **Q4** | 14,836,038 | 0.03s | **0.03s** | 0.08s | N/A | 7.82s | 6.86s | 4.50s | 8.13s | timeout | ArcadeDB |
-| **Q5** | 13,824,510 | 0.29s | 0.23s | **0.04s** | N/A | 6.72s | 0.69s | 3.86s | N/A | timeout | DuckDB |
-| **Q6** | 1,668,134,320 | **0.11s** | 0.11s | 2.18s | 1.41s | 52.06s | 17.72s | 148.14s | N/A | N/A | ArcadeDB |
-| **Q7** | 26,190,133 | 0.09s | **0.02s** | 0.08s | N/A | 10.45s | 11.22s | 5.59s | 5.97s | timeout | ArcadeDB |
-| **Q8** | 6,907,213 | 0.19s | 0.19s | **0.07s** | N/A | 12.91s | 1.31s | 3.37s | N/A | N/A | DuckDB |
-| **Q9** | 1,596,153,418 | 1.18s | **1.06s** | 7.77s | 6.15s | 59.09s | 22.25s | timeout | N/A | N/A | ArcadeDB |
+| Query | Expected Count | ArcadeDB Embedded | ArcadeDB Docker | DuckDB | Kuzu | Neo4j | PostgreSQL | Memgraph | Dgraph | FalkorDB | SurrealDB | Winner |
+|-------|---------------|----------|-----------------|--------|------|-------|------------|----------|--------|----------|-----------|--------|
+| **Load** | — | 119.24s | 197.96s | — | — | — | — | — | — | 654.80s | — | — |
+| **Q1** | 221,636,419 | 0.23s | 0.25s | **0.15s** | 5.83s | 8.25s | 6.56s | 60.45s | 2.52s | error | timeout | DuckDB |
+| **Q2** | 1,085,627 | 0.18s | 0.19s | **0.02s** | 0.14s | 2.06s | 0.34s | timeout | N/A | error | timeout | DuckDB |
+| **Q3** | 753,570 | 0.10s | 0.13s | **0.05s** | 2.44s | 14.31s | 2.12s | timeout | N/A | 147.49s | N/A | DuckDB |
+| **Q4** | 14,836,038 | 0.03s | **0.03s** | 0.08s | N/A | 7.82s | 6.86s | 4.50s | 8.13s | 7.19s | timeout | ArcadeDB |
+| **Q5** | 13,824,510 | 0.29s | 0.23s | **0.04s** | N/A | 6.72s | 0.69s | 3.86s | N/A | error | timeout | DuckDB |
+| **Q6** | 1,668,134,320 | **0.11s** | 0.11s | 2.18s | 1.41s | 52.06s | 17.72s | 148.14s | N/A | error | N/A | ArcadeDB |
+| **Q7** | 26,190,133 | 0.09s | **0.02s** | 0.08s | N/A | 10.45s | 11.22s | 5.59s | 5.97s | 10.67s | timeout | ArcadeDB |
+| **Q8** | 6,907,213 | 0.19s | 0.19s | **0.07s** | N/A | 12.91s | 1.31s | 3.37s | N/A | 6.22s | N/A | DuckDB |
+| **Q9** | 1,596,153,418 | 1.18s | **1.06s** | 7.77s | 6.15s | 59.09s | 22.25s | timeout | N/A | error | N/A | ArcadeDB |
 
-All 9 queries produce correct results matching the [official LSQB expected output](https://github.com/ldbc/lsqb/blob/main/expected-output/expected-output.csv). Kuzu skips Q4/Q5/Q7/Q8 (no `:Message` supertype support). Memgraph times out on Q2/Q3/Q9 (600s limit). Dgraph answers 3 of 9 queries using DQL value-variable propagation and `math()` (see [Dgraph section](#dgraph) below). SurrealDB has queries written for Q1/Q2/Q4/Q5/Q7 but all timeout at 120s due to O(n*m) nested subquery execution without index acceleration (see [SurrealDB section](#surrealdb)). ArcadeDB Docker runs under the same conditions as Neo4j, PostgreSQL, Memgraph, Dgraph, and SurrealDB (Docker Desktop for macOS).
+All 9 queries produce correct results matching the [official LSQB expected output](https://github.com/ldbc/lsqb/blob/main/expected-output/expected-output.csv). Kuzu skips Q4/Q5/Q7/Q8 (no `:Message` supertype support). Memgraph times out on Q2/Q3/Q9 (600s limit). Dgraph answers 3 of 9 queries using DQL value-variable propagation and `math()` (see [Dgraph section](#dgraph) below). FalkorDB returns wrong counts on 4 queries and times out on 1 (see [FalkorDB section](#falkordb) below). SurrealDB has queries written for Q1/Q2/Q4/Q5/Q7 but all timeout at 120s due to O(n*m) nested subquery execution without index acceleration (see [SurrealDB section](#surrealdb)). ArcadeDB Docker runs under the same conditions as Neo4j, PostgreSQL, Memgraph, Dgraph, FalkorDB, and SurrealDB (Docker Desktop for macOS).
 
 **Analysis:**
 
@@ -376,6 +377,7 @@ All 9 queries produce correct results matching the [official LSQB expected outpu
 - **ArcadeDB Docker vs other Docker systems** — even with HTTP + network + Docker VM overhead, ArcadeDB Docker is **10–1045x faster than Neo4j**, **2–24x faster than PostgreSQL**, and **5–559x faster than Memgraph** on the queries Memgraph completes.
 - **Neo4j and Memgraph** are significantly slower across the board. Memgraph times out on 3 of 9 queries. Neo4j completes all queries but is 9–1045x slower than ArcadeDB on every query.
 - **PostgreSQL** is a solid middle ground for a traditional RDBMS — faster than Neo4j/Memgraph but significantly slower than both ArcadeDB and DuckDB.
+- **FalkorDB** returns wrong counts on 4 of 9 queries (Q1, Q5, Q6, Q9) and times out on Q2, revealing bugs in its Cypher query optimizer for complex pattern matching. On the 4 queries with correct results (Q3, Q4, Q7, Q8), it is 89x–2950x slower than the fastest system. Loading is also very slow at 655s.
 
 ---
 
@@ -491,6 +493,37 @@ python3 lsqb_benchmark.py dgraph
 
 ---
 
+## FalkorDB
+
+FalkorDB v4.16.8 is a Redis-based graph database that supports a subset of Cypher. It is included in default LSQB runs but produces **correct results on only 4 of 9 queries**.
+
+### Issues found
+
+- **Wrong counts on long pattern chains** — Q1 (8-hop chain) returns 5,375 instead of the expected 221,636,419. FalkorDB's query optimizer appears to silently truncate or miscalculate intermediate results on patterns with more than ~5 hops in a single `MATCH` clause. Splitting the pattern with `WITH` partially fixes the count (133M) but still does not match the expected result. Q5, Q6, and Q9 also return incorrect counts.
+- **Timeouts on complex patterns** — Q2 (diamond pattern with multi-MATCH correlation) does not complete within the 5-minute timeout. Q9 (anti-pattern with `NOT KNOWS` and inequality) also times out.
+- **Very slow loading** — Loading the LSQB dataset (3.9M vertices, 17.9M edges) via Cypher `UNWIND`/`CREATE` batches takes ~655s (over 10 minutes), compared to 119s for ArcadeDB Embedded and seconds for DuckDB/Kuzu.
+- **On the 4 correct queries** (Q3, Q4, Q7, Q8), FalkorDB is 89x–1475x slower than the fastest system:
+  - Q3: 147.49s (vs DuckDB 0.05s — **2950x slower**)
+  - Q4: 7.19s (vs ArcadeDB 0.03s — **240x slower**)
+  - Q7: 10.67s (vs ArcadeDB 0.02s — **534x slower**)
+  - Q8: 6.22s (vs DuckDB 0.07s — **89x slower**)
+
+### How to run FalkorDB (LSQB)
+
+```bash
+# Start FalkorDB (Docker)
+docker run -d --name falkordb-lsqb -p 6379:6379 \
+  -v /tmp/falkordb_lsqb:/var/lib/falkordb/data falkordb/falkordb:latest
+
+# Run LSQB benchmark
+cd lsqb
+python3 lsqb_benchmark.py falkordb
+```
+
+*Tested with FalkorDB latest on April 2026.*
+
+---
+
 ## File Structure
 
 ```
@@ -504,7 +537,7 @@ ldbc-native/
 
 lsqb/
   ArcadeDBEmbeddedLSQB.java        # ArcadeDB LSQB benchmark (Java, embedded, Cypher)
-  lsqb_benchmark.py                # Kuzu, DuckDB, Neo4j LSQB benchmarks (Python)
+  lsqb_benchmark.py                # Kuzu, DuckDB, Neo4j, FalkorDB LSQB benchmarks (Python)
   tools/                           # Debug/profiling helpers
 ```
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 LSQB (Labelled Subgraph Query Benchmark):
-  Kuzu vs DuckDB vs Neo4j vs ArcadeDB vs Memgraph vs PostgreSQL vs SurrealDB vs Dgraph
+  Kuzu vs DuckDB vs Neo4j vs ArcadeDB vs Memgraph vs PostgreSQL vs FalkorDB vs SurrealDB vs Dgraph
 
 Dataset: LDBC SNB social-network-sf1 (or configurable via --sf)
 Queries: 9 subgraph pattern matching queries (Q1-Q9)

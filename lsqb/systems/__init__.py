@@ -13,6 +13,7 @@ from . import memgraph
 from . import postgresql
 from . import surrealdb
 from . import dgraph
+from . import falkordb
 from . import _common
 
 AVAILABLE_SYSTEMS = {
@@ -24,6 +25,7 @@ AVAILABLE_SYSTEMS = {
     "arcadedb": ("ArcadeDB-Server", arcadedb.run_benchmark),
     "surrealdb": ("SurrealDB", surrealdb.run_benchmark),
     "dgraph": ("Dgraph", dgraph.run_benchmark),
+    "falkordb": ("FalkorDB", falkordb.run_benchmark),
 }
 
 # Systems excluded from default runs (must be explicitly named to run).
