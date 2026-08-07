@@ -184,33 +184,18 @@
 				<artifactId>license-maven-plugin</artifactId>
 				<version>2.10</version>
 				<configuration>
+					<!-- The end year in license-header.txt is hardcoded (not "${year}") because
+					     this plugin version (2.10, from 2016) does not resolve the ${year}
+					     placeholder correctly in this config. Bump it manually each January,
+					     or switch to "${year}" if/when the plugin is upgraded. -->
 					<header>${basedir}/license-header.txt</header>
 					<properties>
 						<owner>Delft University of Technology</owner>
 						<project.inceptionYear>2015</project.inceptionYear>
 					</properties>
-					<excludes>
-						<exclude>README</exclude>
-						<exclude>LICENSE</exclude>
-						<exclude>pom.xml</exclude>
-						<exclude>src/test/resources/**</exclude>
-						<exclude>src/main/resources/**</exclude>
-						<exclude>src/main/assembly/**</exclude>
-						<exclude>config-template/**</exclude>
-						<exclude>**/*.mk</exclude>
-						<exclude>**/*.txt</exclude>
-						<exclude>ldbc-native/**</exclude>
-						<exclude>lsqb/**</exclude>
-						<exclude>shared/**</exclude>
-						<exclude>docs/**</exclude>
-						<exclude>**/*.py</exclude>
-						<exclude>**/*.sh</exclude>
-						<exclude>init.sh</exclude>
-						<exclude>datasets.py</exclude>
-						<exclude>**/*.yml</exclude>
-						<exclude>**/*.yaml</exclude>
-						<exclude>**/*.md</exclude>
-					</excludes>
+					<includes>
+						<include>src/main/java/**</include>
+					</includes>
 					<mapping>
 						<java>SLASHSTAR_STYLE</java>
 						<scala>SLASHSTAR_STYLE</scala>
