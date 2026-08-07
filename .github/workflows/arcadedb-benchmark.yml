@@ -157,3 +157,58 @@ jobs:
           name: mode2-embedded-log
           path: mode2-output.log
           retention-days: 90
+
+  mode3-lsqb:
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.mode == 'all' || github.event.inputs.mode == 'mode3'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install zstd
+        run: sudo apt-get update -y && sudo apt-get install -y zstd
+
+      - name: Install Python dependencies
+        run: pip install requests
+
+      - name: Build
+        run: mvn --batch-mode --no-transfer-progress package -DskipTests
+
+      - name: Download dataset
+        run: python3 datasets.py download lsqb-sf0.1 --format merged-fk
+
+      - name: Compile and run LSQB embedded benchmark
+        run: |
+          LDBC_JAR="$GITHUB_WORKSPACE/target/graphalytics-platforms-arcadedb-0.1-SNAPSHOT-default.jar"
+          cd lsqb
+          javac -cp "$LDBC_JAR" ArcadeDBEmbeddedLSQB.java
+          java -Xms8g -Xmx8g -Ddataset.dir="$GITHUB_WORKSPACE/datasets/social-network-sf0.1-merged-fk" -cp ".:$LDBC_JAR" ArcadeDBEmbeddedLSQB --reset | tee "$GITHUB_WORKSPACE/mode3-output.log"
+
+      - name: Summarize results
+        if: always()
+        run: |
+          {
+            echo "### Mode 3 — LSQB Embedded (SF0.1)"
+            echo
+            echo "| Query | Time |"
+            echo "|---|---|"
+            grep -E "^(LOAD|Q[1-9])\s" mode3-output.log | awk '{printf "| %s | %s |\n", $1, $2}'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mode3-lsqb-log
+          path: mode3-output.log
+          retention-days: 90
