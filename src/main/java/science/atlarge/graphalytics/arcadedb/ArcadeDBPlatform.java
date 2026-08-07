@@ -36,7 +36,7 @@ import java.nio.file.Paths;
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */
-public class ArcadedbPlatform implements Platform {
+public class ArcadeDBPlatform implements Platform {
 
 	protected static final Logger LOG = LogManager.getLogger();
 	private static final String PLATFORM_NAME = "arcadedb";
