@@ -7,12 +7,21 @@ on:
     paths:
       - "pom.xml"
       - "src/**"
+      - "license-header.txt"
       - ".github/workflows/java-ci.yml"
   pull_request:
     paths:
       - "pom.xml"
       - "src/**"
+      - "license-header.txt"
       - ".github/workflows/java-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: java-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
