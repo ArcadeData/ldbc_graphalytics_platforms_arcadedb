@@ -83,3 +83,24 @@ documented in `CLAUDE.md` remains how distributions get built for actual use.
    header risk noted above before it hits CI).
 4. Add `.github/workflows/java-ci.yml` per the design above.
 5. Verify the workflow via a PR (or `workflow_dispatch` if needed) before merging.
+
+## Deviations from design
+
+Two things changed during execution and diverge from what's described above:
+
+1. **The license header is vendored locally, not fetched from a URL.** The plan
+   assumed the `<header>` template configured in `pom.xml` would point at
+   `https://graphalytics.org/assets/copyright-notice-template`, but that URL turned
+   out to be unreachable. The header text is instead committed at the repo root as
+   `license-header.txt`, and `pom.xml`'s `license-maven-plugin` points `<header>` at
+   `${basedir}/license-header.txt`. This also means the header's copyright end year
+   is a plain hardcoded value rather than a resolved `${year}` placeholder — see the
+   comment in `pom.xml` next to `<header>` for why.
+
+2. **The license check is scoped to `src/main/java/**` only.** Running the check
+   unscoped (as the "if it happens" caveat above anticipated) flagged roughly 40
+   unrelated Python and shell files across `ldbc-native/`, `lsqb/`, `shared/`, and
+   the repo root. Rather than growing an ever-longer exclude list to paper over
+   files outside the Java platform driver, `license-maven-plugin`'s `<excludes>`
+   block was replaced with a single `<includes>` entry, `src/main/java/**`, so the
+   check only ever applies to the code this CI workflow builds.
