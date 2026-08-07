@@ -60,8 +60,8 @@ jobs:
           DIST=$(tar tzf "$TARBALL" | head -1 | cut -d/ -f1)
           cd "$DIST"
           cp -r config-template config
-          sed -i "s|^graphs.root-directory =\$|graphs.root-directory = $GITHUB_WORKSPACE/datasets|" config/benchmark.properties
-          sed -i "s|^graphs.validation-directory =\$|graphs.validation-directory = $GITHUB_WORKSPACE/datasets|" config/benchmark.properties
+          sed -i "s|^graphs.root-directory =\$|graphs.root-directory = $GITHUB_WORKSPACE/datasets/wiki-Talk|" config/benchmark.properties
+          sed -i "s|^graphs.validation-directory =\$|graphs.validation-directory = $GITHUB_WORKSPACE/datasets/wiki-Talk|" config/benchmark.properties
           sed -i "s|^benchmark.custom.graphs = .*|benchmark.custom.graphs = wiki-Talk|" config/benchmarks/custom.properties
           sed -i "s|^benchmark.custom.algorithms = .*|benchmark.custom.algorithms = BFS, WCC, PR, CDLP, LCC|" config/benchmarks/custom.properties
           sed -i "s|^platform.olap = false|platform.olap = true|" config/platform.properties
