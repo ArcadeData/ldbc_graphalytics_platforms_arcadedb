@@ -102,3 +102,58 @@ jobs:
           name: mode1-official-report
           path: ${{ env.DIST }}/report/
           retention-days: 90
+
+  mode2-embedded:
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.mode == 'all' || github.event.inputs.mode == 'mode2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install zstd
+        run: sudo apt-get update -y && sudo apt-get install -y zstd
+
+      - name: Install Python dependencies
+        run: pip install requests
+
+      - name: Build
+        run: mvn --batch-mode --no-transfer-progress package -DskipTests
+
+      - name: Download dataset
+        run: python3 datasets.py download datagen-7_5-fb
+
+      - name: Compile and run embedded benchmark
+        run: |
+          LDBC_JAR="$GITHUB_WORKSPACE/target/graphalytics-platforms-arcadedb-0.1-SNAPSHOT-default.jar"
+          cd ldbc-native
+          javac --add-modules jdk.incubator.vector -cp "$LDBC_JAR" ArcadeDBEmbeddedBenchmark.java
+          java --add-modules jdk.incubator.vector -Xms8g -Xmx8g -cp ".:$LDBC_JAR" ArcadeDBEmbeddedBenchmark | tee "$GITHUB_WORKSPACE/mode2-output.log"
+
+      - name: Summarize results
+        if: always()
+        run: |
+          {
+            echo "### Mode 2 — ArcadeDB Embedded (datagen-7_5-fb)"
+            echo
+            echo "| Metric | Time |"
+            echo "|---|---|"
+            grep -E "^(LOAD|PR|WCC|BFS|LCC|SSSP|CDLP)\s" mode2-output.log | awk '{printf "| %s | %s |\n", $1, $2}'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mode2-embedded-log
+          path: mode2-output.log
+          retention-days: 90
