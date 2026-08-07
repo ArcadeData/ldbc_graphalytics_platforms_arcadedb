@@ -24,7 +24,7 @@ import java.util.*;
  */
 public class ArcadeDBEmbeddedLSQB {
 
-  static final String DATA_DIR = "../datasets/social-network-sf1-merged-fk";
+  static final String DATA_DIR = System.getProperty("dataset.dir", "../datasets/social-network-sf1-merged-fk");
   static final String DB_PATH  = "/tmp/arcadedb_lsqb";
 
   public static void main(String[] args) throws Exception {
