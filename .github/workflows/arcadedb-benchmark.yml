@@ -1,0 +1,214 @@
+name: ArcadeDB Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Which benchmark mode to run"
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - mode1
+          - mode2
+          - mode3
+  schedule:
+    - cron: "0 3 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arcadedb-benchmark-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  mode1-official:
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.mode == 'all' || github.event.inputs.mode == 'mode1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install zstd
+        run: sudo apt-get update -y && sudo apt-get install -y zstd
+
+      - name: Install Python dependencies
+        run: pip install requests
+
+      - name: Build
+        run: mvn --batch-mode --no-transfer-progress package -DskipTests
+
+      - name: Download dataset
+        run: python3 datasets.py download wiki-Talk
+
+      - name: Extract and configure distribution
+        run: |
+          TARBALL=$(ls graphalytics-*-arcadedb-*-bin.tar.gz)
+          tar xf "$TARBALL"
+          DIST=$(tar tzf "$TARBALL" | head -1 | cut -d/ -f1)
+          cd "$DIST"
+          cp -r config-template config
+          sed -i "s|^graphs.root-directory =\$|graphs.root-directory = $GITHUB_WORKSPACE/datasets|" config/benchmark.properties
+          sed -i "s|^graphs.validation-directory =\$|graphs.validation-directory = $GITHUB_WORKSPACE/datasets|" config/benchmark.properties
+          sed -i "s|^benchmark.custom.graphs = .*|benchmark.custom.graphs = wiki-Talk|" config/benchmarks/custom.properties
+          sed -i "s|^benchmark.custom.algorithms = .*|benchmark.custom.algorithms = BFS, WCC, PR, CDLP, LCC|" config/benchmarks/custom.properties
+          sed -i "s|^platform.olap = false|platform.olap = true|" config/platform.properties
+          echo "DIST=$DIST" >> "$GITHUB_ENV"
+
+      - name: Run Mode 1 benchmark
+        run: |
+          cd "$DIST"
+          bash bin/sh/run-benchmark.sh
+
+      - name: Summarize results
+        if: always()
+        run: |
+          cd "$DIST"
+          LATEST=$(ls -td report/*ARCADEDB* | head -1)
+          {
+            echo "### Mode 1 — Official LDBC Graphalytics (wiki-Talk)"
+            echo
+            echo "| Algorithm | Load (s) | Processing (s) |"
+            echo "|---|---|---|"
+            python3 -c "
+          import json
+          with open('$LATEST/json/results.json') as f:
+              data = json.load(f)
+          result = data.get('result', data.get('experiments', {}))
+          runs = result.get('runs', {})
+          jobs = result.get('jobs', {})
+          for rid, r in sorted(runs.items(), key=lambda x: x[1]['timestamp']):
+              algo = next(j['algorithm'] for j in jobs.values() if rid in j['runs'])
+              print(f\"| {algo} | {r['load_time']} | {r['processing_time']} |\")
+          "
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mode1-official-report
+          path: ${{ env.DIST }}/report/
+          retention-days: 90
+
+  mode2-embedded:
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.mode == 'all' || github.event.inputs.mode == 'mode2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install zstd
+        run: sudo apt-get update -y && sudo apt-get install -y zstd
+
+      - name: Install Python dependencies
+        run: pip install requests
+
+      - name: Build
+        run: mvn --batch-mode --no-transfer-progress package -DskipTests
+
+      - name: Download dataset
+        run: python3 datasets.py download datagen-7_5-fb
+
+      - name: Compile and run embedded benchmark
+        run: |
+          LDBC_JAR="$GITHUB_WORKSPACE/target/graphalytics-platforms-arcadedb-0.1-SNAPSHOT-default.jar"
+          cd ldbc-native
+          javac --add-modules jdk.incubator.vector -cp "$LDBC_JAR" ArcadeDBEmbeddedBenchmark.java
+          java --add-modules jdk.incubator.vector -Xms8g -Xmx8g -cp ".:$LDBC_JAR" ArcadeDBEmbeddedBenchmark | tee "$GITHUB_WORKSPACE/mode2-output.log"
+
+      - name: Summarize results
+        if: always()
+        run: |
+          {
+            echo "### Mode 2 — ArcadeDB Embedded (datagen-7_5-fb)"
+            echo
+            echo "| Metric | Time |"
+            echo "|---|---|"
+            grep -E "^(LOAD|PR|WCC|BFS|LCC|SSSP|CDLP)\s" mode2-output.log | awk '{printf "| %s | %s |\n", $1, $2}'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mode2-embedded-log
+          path: mode2-output.log
+          retention-days: 90
+
+  mode3-lsqb:
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.mode == 'all' || github.event.inputs.mode == 'mode3'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install zstd
+        run: sudo apt-get update -y && sudo apt-get install -y zstd
+
+      - name: Install Python dependencies
+        run: pip install requests
+
+      - name: Build
+        run: mvn --batch-mode --no-transfer-progress package -DskipTests
+
+      - name: Download dataset
+        run: python3 datasets.py download lsqb-sf0.1 --format merged-fk
+
+      - name: Compile and run LSQB embedded benchmark
+        run: |
+          LDBC_JAR="$GITHUB_WORKSPACE/target/graphalytics-platforms-arcadedb-0.1-SNAPSHOT-default.jar"
+          cd lsqb
+          javac -cp "$LDBC_JAR" ArcadeDBEmbeddedLSQB.java
+          java -Xms8g -Xmx8g -Ddataset.dir="$GITHUB_WORKSPACE/datasets/social-network-sf0.1-merged-fk" -cp ".:$LDBC_JAR" ArcadeDBEmbeddedLSQB --reset | tee "$GITHUB_WORKSPACE/mode3-output.log"
+
+      - name: Summarize results
+        if: always()
+        run: |
+          {
+            echo "### Mode 3 — LSQB Embedded (SF0.1)"
+            echo
+            echo "| Query | Time |"
+            echo "|---|---|"
+            grep -E "^(LOAD|Q[1-9])\s" mode3-output.log | awk '{printf "| %s | %s |\n", $1, $2}'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mode3-lsqb-log
+          path: mode3-output.log
+          retention-days: 90
