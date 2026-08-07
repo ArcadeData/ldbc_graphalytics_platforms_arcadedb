@@ -11,7 +11,7 @@
 		<dependencySet>
 			<outputDirectory>.</outputDirectory>
 			<includes>
-				<include>*:resources</include>
+				<include>science.atlarge.graphalytics:graphalytics-core:tar.gz:resources</include>
 			</includes>
 			<unpack>true</unpack>
 			<unpackOptions>
