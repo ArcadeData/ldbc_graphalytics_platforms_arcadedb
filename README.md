@@ -25,6 +25,7 @@ This repository contains three benchmark modes:
 
 - Java 21 or later (required for `jdk.incubator.vector` SIMD support)
 - Maven 3.x
+- Python 3.10+ (for Mode 2 and Mode 3 multi-vendor comparisons; see `pyproject.toml` for per-vendor install extras)
 
 ## Build
 
@@ -146,13 +147,14 @@ java --add-modules jdk.incubator.vector -Xms8g -Xmx8g -cp ".:../$LDBC_JAR" Arcad
 ### Kuzu, DuckPGQ, Memgraph, Neo4j, ArangoDB (Python)
 
 ```bash
-# Create virtual environment and install dependencies
-cd ldbc-native
+# Create virtual environment and install dependencies (from repo root)
 python3 -m venv .venv
 source .venv/bin/activate
-pip install kuzu duckdb pymgclient neo4j python-arango
+pip install -e ".[neo4j,kuzu,duckdb,memgraph,arangodb,falkordb]"
+# or: pip install -e ".[all]" for every vendor, including postgresql
 
 # Run all available benchmarks
+cd ldbc-native
 python3 benchmark.py
 ```
 
@@ -306,8 +308,8 @@ java -Xms4g -Xmx4g --add-modules jdk.incubator.vector -cp ".:$LDBC_JAR" ArcadeDB
 ### Run DuckDB (Python)
 
 ```bash
+pip install -e ".[duckdb]"
 cd lsqb
-pip install duckdb
 python3 lsqb_benchmark.py duckdb
 ```
 
