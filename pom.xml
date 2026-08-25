@@ -52,6 +52,11 @@
 		<!-- Common software dependencies -->
 		<dependency>
 			<groupId>org.apache.logging.log4j</groupId>
+			<artifactId>log4j-api</artifactId>
+			<version>${log4j.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.logging.log4j</groupId>
 			<artifactId>log4j-core</artifactId>
 			<version>${log4j.version}</version>
 		</dependency>
@@ -125,10 +130,28 @@
 								<exclude>META-INF/*.RSA</exclude>
 							</excludes>
 						</filter>
+						<filter>
+							<!-- graphalytics-core's LogUtil targets a log4j-core API removed since
+							     2.8; science.atlarge.graphalytics.util.LogUtil in this project
+							     replaces it with a version compatible with ${log4j.version}. -->
+							<artifact>science.atlarge.graphalytics:graphalytics-core</artifact>
+							<excludes>
+								<exclude>science/atlarge/graphalytics/util/LogUtil.class</exclude>
+							</excludes>
+						</filter>
 					</filters>
 					<transformers>
 						<transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
 							<resource>reference.conf</resource>
+						</transformer>
+						<!-- log4j-api ships as a multi-release jar; without this the shaded
+						     manifest loses "Multi-Release: true" and the JVM silently falls
+						     back to log4j-api's pre-Java-9 StackLocator, whose caller-class
+						     lookup fails at runtime. -->
+						<transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+							<manifestEntries>
+								<Multi-Release>true</Multi-Release>
+							</manifestEntries>
 						</transformer>
 					</transformers>
 				</configuration>
