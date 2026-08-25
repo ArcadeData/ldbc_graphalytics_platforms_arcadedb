@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787685384391,
+  "lastUpdate": 1787686587214,
   "repoUrl": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb",
   "entries": {
     "ArcadeDB Mode 1 — Official LDBC Graphalytics": [
@@ -81,6 +81,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "CDLP processing",
             "value": 29.832,
+            "unit": "s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Roberto Franchini",
+            "username": "robfrank",
+            "email": "ro.franchini@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "bf9cf4e9c3dbc534e46064bdafd743be31a02cfb",
+          "message": "Add CNAME for bench.arcadedb.com custom domain (#25)\n\nCommitted alongside the landing page so it's version-controlled and\nrepublished automatically every publish-benchmarks run, rather than\nrelying solely on GitHub's UI-managed file. Requires a DNS CNAME record\n(bench -> arcadedata.github.io) and enabling the custom domain in repo\nSettings -> Pages, both outside what this commit can do.\n\nCo-authored-by: Claude Sonnet 5 <noreply@anthropic.com>",
+          "timestamp": "2026-08-25T19:32:52Z",
+          "url": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb/commit/bf9cf4e9c3dbc534e46064bdafd743be31a02cfb"
+        },
+        "date": 1787686586319,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "SSSP load",
+            "value": 86.037,
+            "unit": "s"
+          },
+          {
+            "name": "SSSP processing",
+            "value": 19.218,
+            "unit": "s"
+          },
+          {
+            "name": "LCC load",
+            "value": 78.929,
+            "unit": "s"
+          },
+          {
+            "name": "LCC processing",
+            "value": 24.669,
+            "unit": "s"
+          },
+          {
+            "name": "WCC load",
+            "value": 78.929,
+            "unit": "s"
+          },
+          {
+            "name": "WCC processing",
+            "value": 12.422,
+            "unit": "s"
+          },
+          {
+            "name": "BFS load",
+            "value": 78.929,
+            "unit": "s"
+          },
+          {
+            "name": "BFS processing",
+            "value": 23.214,
+            "unit": "s"
+          },
+          {
+            "name": "PR load",
+            "value": 78.929,
+            "unit": "s"
+          },
+          {
+            "name": "PR processing",
+            "value": 13.368,
+            "unit": "s"
+          },
+          {
+            "name": "CDLP load",
+            "value": 78.929,
+            "unit": "s"
+          },
+          {
+            "name": "CDLP processing",
+            "value": 31.582,
             "unit": "s"
           }
         ]
