@@ -40,6 +40,9 @@ class ConvertTests(unittest.TestCase):
             ],
         )
 
+    def test_empty_log_returns_empty_list(self):
+        self.assertEqual(convert("", ["LOAD", "PR"]), [])
+
 
 if __name__ == "__main__":
     unittest.main()

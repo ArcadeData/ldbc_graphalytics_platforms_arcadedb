@@ -101,7 +101,9 @@ jobs:
         run: |
           cd "$DIST"
           LATEST=$(ls -td report/*ARCADEDB* | head -1)
-          python3 "$GITHUB_WORKSPACE/.github/scripts/mode1_to_bench_json.py" "$LATEST/json/results.json" > "$GITHUB_WORKSPACE/bench-data.json"
+          python3 "$GITHUB_WORKSPACE/.github/scripts/mode1_to_bench_json.py" "$LATEST/json/results.json" > "$GITHUB_WORKSPACE/bench-data.json.tmp"
+          python3 -c "import json,sys; sys.exit(0 if json.load(open('$GITHUB_WORKSPACE/bench-data.json.tmp')) else 1)"
+          mv "$GITHUB_WORKSPACE/bench-data.json.tmp" "$GITHUB_WORKSPACE/bench-data.json"
 
       - name: Upload benchmark JSON
         if: always()
@@ -169,7 +171,9 @@ jobs:
       - name: Convert results to benchmark JSON
         if: always()
         run: |
-          python3 .github/scripts/log_to_bench_json.py mode2-output.log LOAD PR WCC BFS LCC SSSP CDLP > bench-data.json
+          python3 .github/scripts/log_to_bench_json.py mode2-output.log LOAD PR WCC BFS LCC SSSP CDLP > bench-data.json.tmp
+          python3 -c "import json,sys; sys.exit(0 if json.load(open('bench-data.json.tmp')) else 1)"
+          mv bench-data.json.tmp bench-data.json
 
       - name: Upload benchmark JSON
         if: always()
@@ -237,7 +241,9 @@ jobs:
       - name: Convert results to benchmark JSON
         if: always()
         run: |
-          python3 .github/scripts/log_to_bench_json.py mode3-output.log LOAD Q1 Q2 Q3 Q4 Q5 Q6 Q7 Q8 Q9 > bench-data.json
+          python3 .github/scripts/log_to_bench_json.py mode3-output.log LOAD Q1 Q2 Q3 Q4 Q5 Q6 Q7 Q8 Q9 > bench-data.json.tmp
+          python3 -c "import json,sys; sys.exit(0 if json.load(open('bench-data.json.tmp')) else 1)"
+          mv bench-data.json.tmp bench-data.json
 
       - name: Upload benchmark JSON
         if: always()
@@ -347,11 +353,12 @@ jobs:
           exclude_assets: ''
 
       - name: Fail if any mode regressed
+        env:
+          M1: ${{ steps.mode1_publish.outcome }}
+          M2: ${{ steps.mode2_publish.outcome }}
+          M3: ${{ steps.mode3_publish.outcome }}
         run: |
-          status=0
-          for outcome in "${{ steps.mode1_publish.outcome }}" "${{ steps.mode2_publish.outcome }}" "${{ steps.mode3_publish.outcome }}"; do
-            if [ "$outcome" = "failure" ]; then
-              status=1
-            fi
+          for outcome in "$M1" "$M2" "$M3"; do
+            [ "$outcome" = "failure" ] && exit 1
           done
-          exit $status
+          exit 0
