@@ -65,7 +65,7 @@ jobs:
           sed -i "s|^benchmark.custom.graphs = .*|benchmark.custom.graphs = datagen-7_5-fb|" config/benchmarks/custom.properties
           sed -i "s|^benchmark.custom.algorithms = .*|benchmark.custom.algorithms = BFS, WCC, PR, CDLP, LCC, SSSP|" config/benchmarks/custom.properties
           sed -i "s|^platform.olap = false|platform.olap = true|" config/platform.properties
-          sed -i "s|-Xms16g -Xmx16g|-Xms1g -Xmx2g|" bin/sh/prepare-benchmark.sh
+          sed -i "s|-Xms16g -Xmx16g|-Xms8g -Xmx8g|" bin/sh/prepare-benchmark.sh
           echo "DIST=$DIST" >> "$GITHUB_ENV"
 
       - name: Run Mode 1 benchmark
