@@ -254,3 +254,104 @@ jobs:
           name: mode3-lsqb-log
           path: mode3-output.log
           retention-days: 90
+
+  publish-benchmarks:
+    needs: [mode1-official, mode2-embedded, mode3-lsqb]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download Mode 1 benchmark data
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          name: mode1-bench-data
+          path: mode1-bench-data
+
+      - name: Download Mode 2 benchmark data
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          name: mode2-bench-data
+          path: mode2-bench-data
+
+      - name: Download Mode 3 benchmark data
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          name: mode3-bench-data
+          path: mode3-bench-data
+
+      - name: Publish Mode 1 results
+        id: mode1_publish
+        if: hashFiles('mode1-bench-data/bench-data.json') != ''
+        continue-on-error: true
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
+        with:
+          name: "ArcadeDB Mode 1 — Official LDBC Graphalytics"
+          tool: 'customSmallerIsBetter'
+          output-file-path: mode1-bench-data/bench-data.json
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: dev/bench/mode1
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          alert-threshold: '150%'
+          comment-on-alert: true
+          fail-on-alert: true
+
+      - name: Publish Mode 2 results
+        id: mode2_publish
+        if: hashFiles('mode2-bench-data/bench-data.json') != ''
+        continue-on-error: true
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
+        with:
+          name: "ArcadeDB Mode 2 — Embedded (datagen-7_5-fb)"
+          tool: 'customSmallerIsBetter'
+          output-file-path: mode2-bench-data/bench-data.json
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: dev/bench/mode2
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          alert-threshold: '150%'
+          comment-on-alert: true
+          fail-on-alert: true
+
+      - name: Publish Mode 3 results
+        id: mode3_publish
+        if: hashFiles('mode3-bench-data/bench-data.json') != ''
+        continue-on-error: true
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
+        with:
+          name: "ArcadeDB Mode 3 — LSQB Embedded (SF0.1)"
+          tool: 'customSmallerIsBetter'
+          output-file-path: mode3-bench-data/bench-data.json
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: dev/bench/mode3
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          alert-threshold: '150%'
+          comment-on-alert: true
+          fail-on-alert: true
+
+      - name: Publish landing page
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./.github/pages
+          destination_dir: .
+          keep_files: true
+          exclude_assets: ''
+
+      - name: Fail if any mode regressed
+        run: |
+          status=0
+          for outcome in "${{ steps.mode1_publish.outcome }}" "${{ steps.mode2_publish.outcome }}" "${{ steps.mode3_publish.outcome }}"; do
+            if [ "$outcome" = "failure" ]; then
+              status=1
+            fi
+          done
+          exit $status
