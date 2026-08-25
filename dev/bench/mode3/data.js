@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787685388826,
+  "lastUpdate": 1787686593170,
   "repoUrl": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb",
   "entries": {
     "ArcadeDB Mode 3 — LSQB Embedded (SF0.1)": [
@@ -71,6 +71,78 @@ window.BENCHMARK_DATA = {
           {
             "name": "Q9",
             "value": 0.15,
+            "unit": "s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Roberto Franchini",
+            "username": "robfrank",
+            "email": "ro.franchini@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "bf9cf4e9c3dbc534e46064bdafd743be31a02cfb",
+          "message": "Add CNAME for bench.arcadedb.com custom domain (#25)\n\nCommitted alongside the landing page so it's version-controlled and\nrepublished automatically every publish-benchmarks run, rather than\nrelying solely on GitHub's UI-managed file. Requires a DNS CNAME record\n(bench -> arcadedata.github.io) and enabling the custom domain in repo\nSettings -> Pages, both outside what this commit can do.\n\nCo-authored-by: Claude Sonnet 5 <noreply@anthropic.com>",
+          "timestamp": "2026-08-25T19:32:52Z",
+          "url": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb/commit/bf9cf4e9c3dbc534e46064bdafd743be31a02cfb"
+        },
+        "date": 1787686592505,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "LOAD",
+            "value": 24.59,
+            "unit": "s"
+          },
+          {
+            "name": "Q1",
+            "value": 0.46,
+            "unit": "s"
+          },
+          {
+            "name": "Q2",
+            "value": 0.06,
+            "unit": "s"
+          },
+          {
+            "name": "Q3",
+            "value": 0.03,
+            "unit": "s"
+          },
+          {
+            "name": "Q4",
+            "value": 0.01,
+            "unit": "s"
+          },
+          {
+            "name": "Q5",
+            "value": 0.05,
+            "unit": "s"
+          },
+          {
+            "name": "Q6",
+            "value": 0.04,
+            "unit": "s"
+          },
+          {
+            "name": "Q7",
+            "value": 0.01,
+            "unit": "s"
+          },
+          {
+            "name": "Q8",
+            "value": 0.03,
+            "unit": "s"
+          },
+          {
+            "name": "Q9",
+            "value": 0.16,
             "unit": "s"
           }
         ]
