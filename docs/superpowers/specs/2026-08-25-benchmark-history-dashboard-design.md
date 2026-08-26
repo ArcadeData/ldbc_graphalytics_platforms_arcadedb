@@ -157,6 +157,20 @@ GitHub UI (or a Pages-scoped API token this session doesn't have) — flagged he
 it isn't missed after the workflow change merges. The `gh-pages` branch itself is
 created automatically by `benchmark-action/github-action-benchmark`'s first
 `auto-push` run; nothing needs to be pre-created.
+it isn't missed after the workflow change merges.
+
+**Correction (discovered during Task 6's real end-to-end run, not assumed):** the
+`gh-pages` branch is NOT auto-created by `benchmark-action/github-action-benchmark` —
+its README explicitly documents that the branch must already exist before the first
+run (`git checkout --orphan gh-pages && git push origin gh-pages:gh-pages`), and on a
+repo with no prior `gh-pages` branch its `git fetch origin gh-pages:gh-pages` fails
+outright (`fatal: couldn't find remote ref gh-pages`). `peaceiris/actions-gh-pages`
+(the landing-page step), by contrast, does gracefully create a fresh orphan branch on
+first use. In practice this means the very first run's three `github-action-benchmark`
+calls fail while the landing-page step succeeds and creates `gh-pages` — after which
+every subsequent run (including a re-triggered one) succeeds normally. If setting this
+up on a fresh repo again, create the `gh-pages` branch before the first run to avoid
+this one-time failure.
 
 ## Out of scope (explicitly deferred)
 
