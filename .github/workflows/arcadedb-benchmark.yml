@@ -14,7 +14,7 @@ on:
           - mode2
           - mode3
   schedule:
-    - cron: "0 3 * * 1"
+    - cron: "0 3 * * *"
 
 permissions:
   contents: read
