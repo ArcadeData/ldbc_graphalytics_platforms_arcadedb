@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787686593170,
+  "lastUpdate": 1787751202305,
   "repoUrl": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb",
   "entries": {
     "ArcadeDB Mode 3 — LSQB Embedded (SF0.1)": [
@@ -143,6 +143,78 @@ window.BENCHMARK_DATA = {
           {
             "name": "Q9",
             "value": 0.16,
+            "unit": "s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "robfrank",
+            "username": "robfrank",
+            "email": "ro.franchini@gmail.com"
+          },
+          "committer": {
+            "name": "robfrank",
+            "username": "robfrank",
+            "email": "ro.franchini@gmail.com"
+          },
+          "id": "01f00a2649a1a354ce3ee7cac66571d1905a9552",
+          "message": "Merge branch 'main' of github.com:ArcadeData/ldbc_graphalytics_platforms_arcadedb",
+          "timestamp": "2026-08-26T13:21:05Z",
+          "url": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb/commit/01f00a2649a1a354ce3ee7cac66571d1905a9552"
+        },
+        "date": 1787751201786,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "LOAD",
+            "value": 21.15,
+            "unit": "s"
+          },
+          {
+            "name": "Q1",
+            "value": 0.41,
+            "unit": "s"
+          },
+          {
+            "name": "Q2",
+            "value": 0.05,
+            "unit": "s"
+          },
+          {
+            "name": "Q3",
+            "value": 0.06,
+            "unit": "s"
+          },
+          {
+            "name": "Q4",
+            "value": 0.01,
+            "unit": "s"
+          },
+          {
+            "name": "Q5",
+            "value": 0.04,
+            "unit": "s"
+          },
+          {
+            "name": "Q6",
+            "value": 0.02,
+            "unit": "s"
+          },
+          {
+            "name": "Q7",
+            "value": 0.01,
+            "unit": "s"
+          },
+          {
+            "name": "Q8",
+            "value": 0.03,
+            "unit": "s"
+          },
+          {
+            "name": "Q9",
+            "value": 0.13,
             "unit": "s"
           }
         ]
