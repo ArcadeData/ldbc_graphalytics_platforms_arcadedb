@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787686589866,
+  "lastUpdate": 1787751199486,
   "repoUrl": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb",
   "entries": {
     "ArcadeDB Mode 2 — Embedded (datagen-7_5-fb)": [
@@ -113,6 +113,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "CDLP",
             "value": 9.1,
+            "unit": "s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "robfrank",
+            "username": "robfrank",
+            "email": "ro.franchini@gmail.com"
+          },
+          "committer": {
+            "name": "robfrank",
+            "username": "robfrank",
+            "email": "ro.franchini@gmail.com"
+          },
+          "id": "01f00a2649a1a354ce3ee7cac66571d1905a9552",
+          "message": "Merge branch 'main' of github.com:ArcadeData/ldbc_graphalytics_platforms_arcadedb",
+          "timestamp": "2026-08-26T13:21:05Z",
+          "url": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb/commit/01f00a2649a1a354ce3ee7cac66571d1905a9552"
+        },
+        "date": 1787751198960,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "LOAD",
+            "value": 141.59,
+            "unit": "s"
+          },
+          {
+            "name": "PR",
+            "value": 0.56,
+            "unit": "s"
+          },
+          {
+            "name": "WCC",
+            "value": 0.53,
+            "unit": "s"
+          },
+          {
+            "name": "BFS",
+            "value": 0.16,
+            "unit": "s"
+          },
+          {
+            "name": "LCC",
+            "value": 13.75,
+            "unit": "s"
+          },
+          {
+            "name": "SSSP",
+            "value": 2.27,
+            "unit": "s"
+          },
+          {
+            "name": "CDLP",
+            "value": 9.25,
             "unit": "s"
           }
         ]
