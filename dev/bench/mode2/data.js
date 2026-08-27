@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787751199486,
+  "lastUpdate": 1787838924696,
   "repoUrl": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb",
   "entries": {
     "ArcadeDB Mode 2 — Embedded (datagen-7_5-fb)": [
@@ -170,6 +170,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "CDLP",
             "value": 9.25,
+            "unit": "s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Roberto Franchini",
+            "username": "robfrank",
+            "email": "ro.franchini@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "a8608d741a96ffcd99fc74089af84ee46f03aa7f",
+          "message": "Run the benchmark workflow daily instead of weekly (#26)\n\nCo-authored-by: Claude Sonnet 5 <noreply@anthropic.com>",
+          "timestamp": "2026-08-26T14:01:57Z",
+          "url": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb/commit/a8608d741a96ffcd99fc74089af84ee46f03aa7f"
+        },
+        "date": 1787838923840,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "LOAD",
+            "value": 138.26,
+            "unit": "s"
+          },
+          {
+            "name": "PR",
+            "value": 0.58,
+            "unit": "s"
+          },
+          {
+            "name": "WCC",
+            "value": 0.51,
+            "unit": "s"
+          },
+          {
+            "name": "BFS",
+            "value": 0.46,
+            "unit": "s"
+          },
+          {
+            "name": "LCC",
+            "value": 11.92,
+            "unit": "s"
+          },
+          {
+            "name": "SSSP",
+            "value": 3.49,
+            "unit": "s"
+          },
+          {
+            "name": "CDLP",
+            "value": 8.7,
             "unit": "s"
           }
         ]
