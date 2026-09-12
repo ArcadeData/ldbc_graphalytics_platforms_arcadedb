@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789113439215,
+  "lastUpdate": 1789199459059,
   "repoUrl": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb",
   "entries": {
     "ArcadeDB Mode 3 — LSQB Embedded (SF0.1)": [
@@ -1367,6 +1367,78 @@ window.BENCHMARK_DATA = {
           {
             "name": "Q9",
             "value": 0.17,
+            "unit": "s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]",
+            "email": "49699333+dependabot[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "02e1d824a2ff1bfc1574bbdda7cb9b3c2344bfff",
+          "message": "Bump actions/setup-java from 5.7.0 to 6.0.0 (#27)\n\nSigned-off-by: dependabot[bot] <support@github.com>",
+          "timestamp": "2026-09-08T08:35:44Z",
+          "url": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb/commit/02e1d824a2ff1bfc1574bbdda7cb9b3c2344bfff"
+        },
+        "date": 1789199458385,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "LOAD",
+            "value": 31.3,
+            "unit": "s"
+          },
+          {
+            "name": "Q1",
+            "value": 0.64,
+            "unit": "s"
+          },
+          {
+            "name": "Q2",
+            "value": 0.08,
+            "unit": "s"
+          },
+          {
+            "name": "Q3",
+            "value": 0.08,
+            "unit": "s"
+          },
+          {
+            "name": "Q4",
+            "value": 0.01,
+            "unit": "s"
+          },
+          {
+            "name": "Q5",
+            "value": 0.05,
+            "unit": "s"
+          },
+          {
+            "name": "Q6",
+            "value": 0.03,
+            "unit": "s"
+          },
+          {
+            "name": "Q7",
+            "value": 0.01,
+            "unit": "s"
+          },
+          {
+            "name": "Q8",
+            "value": 0.04,
+            "unit": "s"
+          },
+          {
+            "name": "Q9",
+            "value": 0.16,
             "unit": "s"
           }
         ]
