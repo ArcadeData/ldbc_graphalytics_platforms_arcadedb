@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789199456351,
+  "lastUpdate": 1789286968275,
   "repoUrl": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb",
   "entries": {
     "ArcadeDB Mode 2 — Embedded (datagen-7_5-fb)": [
@@ -1139,6 +1139,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "CDLP",
             "value": 7.65,
+            "unit": "s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]",
+            "email": "49699333+dependabot[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "02e1d824a2ff1bfc1574bbdda7cb9b3c2344bfff",
+          "message": "Bump actions/setup-java from 5.7.0 to 6.0.0 (#27)\n\nSigned-off-by: dependabot[bot] <support@github.com>",
+          "timestamp": "2026-09-08T08:35:44Z",
+          "url": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb/commit/02e1d824a2ff1bfc1574bbdda7cb9b3c2344bfff"
+        },
+        "date": 1789286967945,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "LOAD",
+            "value": 109.47,
+            "unit": "s"
+          },
+          {
+            "name": "PR",
+            "value": 0.44,
+            "unit": "s"
+          },
+          {
+            "name": "WCC",
+            "value": 0.42,
+            "unit": "s"
+          },
+          {
+            "name": "BFS",
+            "value": 0.31,
+            "unit": "s"
+          },
+          {
+            "name": "LCC",
+            "value": 10.46,
+            "unit": "s"
+          },
+          {
+            "name": "SSSP",
+            "value": 1.62,
+            "unit": "s"
+          },
+          {
+            "name": "CDLP",
+            "value": 7.71,
             "unit": "s"
           }
         ]
