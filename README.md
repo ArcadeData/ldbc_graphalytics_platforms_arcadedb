@@ -213,7 +213,7 @@ All 6 algorithms passed with validation.
 
 #### ArcadeDB release-over-release (26.8.1 → 26.10.1-SNAPSHOT → PR #8955)
 
-Same machine for every column (MacBook M5, `-Xms12g -Xmx12g`), same datasets, one JVM at a time, measured 2026-10-02. This tracks ArcadeDB itself across versions; the multi-vendor tables below were measured earlier (ArcadeDB 26.4.1) and have not been re-run. *Fixed* = engine with [ArcadeData/arcadedb#8955](https://github.com/ArcadeData/arcadedb/pull/8955) (not released yet). Full details, raw numbers and root causes: [`results-26.10.1-SNAPSHOT-vs-26.8.1.md`](results-26.10.1-SNAPSHOT-vs-26.8.1.md) and [`fix-plan-26.10.1-regressions.md`](fix-plan-26.10.1-regressions.md).
+Same machine for every column (MacBook M5, `-Xms12g -Xmx12g`), same datasets, one JVM at a time, measured 2026-10-02. This tracks ArcadeDB itself across versions; the multi-vendor tables below were measured earlier (ArcadeDB 26.4.1) and have not been re-run. *Fixed* = engine with [ArcadeData/arcadedb#8955](https://github.com/ArcadeData/arcadedb/pull/8955), merged to `main` on 2026-10-02 (commit `5e44bc7ab3`) and not yet in a release; the *fixed* column was measured on the PR branch before the review follow-ups, so it should be re-measured on a snapshot built from `main`. Full details, raw numbers and root causes: [`results-26.10.1-SNAPSHOT-vs-26.8.1.md`](results-26.10.1-SNAPSHOT-vs-26.8.1.md) and [`fix-plan-26.10.1-regressions.md`](fix-plan-26.10.1-regressions.md).
 
 **Mode 1 (official framework, datagen-7_5-fb), processing_time in seconds, all runs validated:**
 
