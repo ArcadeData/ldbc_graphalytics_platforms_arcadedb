@@ -256,6 +256,10 @@ docker rm -f vermeer-master vermeer-worker
 docker network rm hugegraph-net
 ```
 
+## Keeping results current
+
+After any benchmark run on a new ArcadeDB version (or a fix branch), update the "ArcadeDB release-over-release" section of `README.md` and `results-*.md` with the new numbers (same machine, same method, one JVM at a time), and note which engine build or PR each column refers to. Do not overwrite the multi-vendor tables unless those vendors were re-run too.
+
 ## Key Files
 
 - `shared/bench_common.py` — Timeout (`QUERY_TIMEOUT=300`), `run_timed()`, `cleanup_docker()`, CLI parsing
