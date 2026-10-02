@@ -79,3 +79,11 @@ Same machine/method; fixed engine classes overlaid on the 26.10.1 fat jar. All M
 | Q5 | 0.21 | 3.75 | 0.29 | 14.14 | 6.51 | 14.93 |
 | Q7 | 0.01 | 12.01 | 0.13 | 3.89 | 44.12 | 1.04 |
 Other queries unchanged within noise. Mode 2 unchanged (BFS 0.078s, PR 0.174s, LCC 2.1s, load 51s).
+
+## Final run on the merged build (2026-10-02, ArcadeDB main @ 02ac27327d, includes PR #8955)
+Snapshot rebuilt by the user from main; same machine/method. All 12 Mode 1 runs validated (6/6 each); all LSQB counts identical to 26.8.1.
+
+Mode 1 T_p (s): OLAP PR 2.61, BFS 8.25, WCC 3.92, CDLP 14.67, LCC 6.24, SSSP 7.00. OLTP PR 45.8, BFS 91.1, WCC 75.8, CDLP 69.8, LCC 177.2, SSSP 54.9.
+Mode 2: load 57.6, PR 0.21, WCC 0.076, BFS 0.075, LCC 2.345, SSSP 0.996, CDLP 1.13.
+LSQB OLAP: load 126.5, Q1 0.415, Q2 0.235, Q3 0.123, Q4 0.124, Q5 0.284, Q6 0.160, Q7 0.113, Q8 0.198, Q9 1.656.
+LSQB OLTP: Q1 3.73, Q2 5.75, Q3 3.78, Q4 1.11, Q5 13.37, Q6 14.22, Q7 1.16, Q8 9.46, Q9 1.39.
