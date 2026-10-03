@@ -211,41 +211,39 @@ Using the LDBC Graphalytics framework (graph reloaded per algorithm):
 
 All 6 algorithms passed with validation.
 
-#### ArcadeDB release-over-release (26.8.1 → 26.10.1-SNAPSHOT before the fixes → `main` after PR #8955)
+#### ArcadeDB release-over-release (26.8.1 → 26.10.1-SNAPSHOT)
 
-Same machine for every column (MacBook M5, `-Xms12g -Xmx12g`), same datasets, one JVM at a time, measured 2026-10-02. This tracks ArcadeDB itself across versions; the multi-vendor tables below were measured earlier (ArcadeDB 26.4.1) and have not been re-run. The last column is the `26.10.1-SNAPSHOT` built from ArcadeDB `main` @ `02ac27327d`, which contains [ArcadeData/arcadedb#8955](https://github.com/ArcadeData/arcadedb/pull/8955) (not in a release yet); the middle column is the snapshot built before that PR. Raw numbers and root causes: [`results-26.10.1-SNAPSHOT-vs-26.8.1.md`](results-26.10.1-SNAPSHOT-vs-26.8.1.md) and [`fix-plan-26.10.1-regressions.md`](fix-plan-26.10.1-regressions.md).
+Same machine for every column (MacBook M5, `-Xms12g -Xmx12g`), same datasets, one JVM at a time, measured 2026-10-02. This tracks ArcadeDB itself across versions; the multi-vendor tables below were measured earlier (ArcadeDB 26.4.1) and have not been re-run. The 26.10.1 column is the `26.10.1-SNAPSHOT` built from ArcadeDB `main` @ `02ac27327d` (not in a release yet). Raw numbers: [`results-26.10.1-SNAPSHOT-vs-26.8.1.md`](results-26.10.1-SNAPSHOT-vs-26.8.1.md).
 
 **Mode 1 (official framework, datagen-7_5-fb), processing_time in seconds, all runs validated:**
 
-| Algorithm | OLAP (GAV) 26.8.1 | OLAP 26.10.1 pre-fix | OLAP main `02ac27327d` | OLTP 26.8.1 | OLTP 26.10.1 pre-fix | OLTP main `02ac27327d` |
-|-----------|------|------|------|------|------|------|
-| **PR** | 3.04 | 2.24 | 2.61 | 43.6 | 41.5 | 45.8 |
-| **BFS** | 7.14 | 154–258 ⚠ | 8.25 | 98.8 | 71.4 | 91.1 |
-| **WCC** | 3.14 | 14.8 / 3.0 (rerun) | 3.92 | 94.3 | 66.0 | 75.8 |
-| **CDLP** | 13.5 | 11.8 | 14.7 | 58.3 | 45.6 | 69.8 |
-| **LCC** | 5.80 | 5.32 | 6.24 | 169 | 155 | 177 |
-| **SSSP** | 6.45 | 6.37 | 7.00 | 54.6 | 79.8 / 38.6 (alone) | 54.9 |
+| Algorithm | OLAP (GAV) 26.8.1 | OLAP 26.10.1 | OLTP 26.8.1 | OLTP 26.10.1 |
+|-----------|------|------|------|------|
+| **PR** | 3.04 | 2.61 | 43.6 | 45.8 |
+| **BFS** | 7.14 | 8.25 | 98.8 | 91.1 |
+| **WCC** | 3.14 | 3.92 | 94.3 | 75.8 |
+| **CDLP** | 13.5 | 14.7 | 58.3 | 69.8 |
+| **LCC** | 5.80 | 6.24 | 169 | 177 |
+| **SSSP** | 6.45 | 7.00 | 54.6 | 54.9 |
 
-OLTP numbers vary about 2x between runs on this machine (e.g. the same OLTP build gave CDLP 62.5s and 69.8s, LCC 168s and 177s in two runs); do not read small OLTP differences as real. The OLAP BFS regression in 26.10.1 only appears when BFS runs after other algorithms have written result properties (bulk `UPDATE` hitting a `LocalBucket` free-space scan, ArcadeDB #8660).
+OLTP numbers vary about 2x between runs on this machine (e.g. the same OLTP build gave CDLP 62.5s and 69.8s, LCC 168s and 177s in two runs); do not read small OLTP differences as real.
 
-**Mode 2 (embedded, GAV, datagen-7_5-fb), seconds (26.8.1 → main `02ac27327d`):** load 60.2 → 57.6, GAV build 19.5 → ~17, PR 0.14 → 0.21, WCC 0.075 → 0.076, BFS 0.058 → 0.075, LCC 2.19 → 2.35, SSSP 0.86 → 1.00, CDLP 1.06 → 1.13. These sub-second algorithm times are dominated by noise at this scale; nothing here moved because of the fixes.
+**Mode 2 (embedded, GAV, datagen-7_5-fb), seconds (26.8.1 → 26.10.1):** load 60.2 → 57.6, GAV build 19.5 → ~17, PR 0.14 → 0.21, WCC 0.075 → 0.076, BFS 0.058 → 0.075, LCC 2.19 → 2.35, SSSP 0.86 → 1.00, CDLP 1.06 → 1.13. These sub-second algorithm times are dominated by noise at this scale.
 
 **Mode 3 (LSQB SF1, embedded Cypher), seconds; all 9 counts identical in every column:**
 
-| Query | OLAP 26.8.1 | OLAP 26.10.1 pre-fix | OLAP main `02ac27327d` | OLTP 26.8.1 | OLTP 26.10.1 pre-fix | OLTP main `02ac27327d` |
-|-------|------|------|------|------|------|------|
-| **Load** | 145.0 | 108.3 | 126.5 | — | — | — |
-| **Q1** | 0.32 | 0.33 | 0.42 | 3.21 | 3.35 | 3.73 |
-| **Q2** | 0.15 | 0.17 | 0.24 | 7.85 | 5.84 | 5.75 |
-| **Q3** | 0.09 | 0.10 | 0.12 | 8.02 | 6.64 | 3.78 |
-| **Q4** | 0.01 | 5.36 ⚠ | 0.12 | 4.10 | 12.61 ⚠ | 1.11 |
-| **Q5** | 0.21 | 3.75 ⚠ | 0.28 | 14.14 | 6.51 | 13.37 |
-| **Q6** | 0.09 | 0.13 | 0.16 | 26.99 | 26.69 | 14.22 |
-| **Q7** | 0.01 | 12.01 ⚠ | 0.11 | 3.89 | 44.12 ⚠ | 1.16 |
-| **Q8** | 0.11 | 0.16 | 0.20 | 10.87 | 8.10 | 9.46 |
-| **Q9** | 0.97 | 1.48 | 1.66 | 1.09 | 1.16 | 1.39 |
-
-⚠ = regression in the pre-fix 26.10.1-SNAPSHOT, fixed by #8955: Q4/Q7 came from the star-join count push-down declining on labelled arm endpoints (#6337), Q5 from the count push-down rejecting a non-adjacent overlapping pair (#8426), BFS from the free-space map listing pages with a full record table (#8660). Remaining gap: Q4/Q7 on OLAP are still ~10x above 26.8.1's 0.01s (about 0.1s) because the endpoint-label check is recomputed per query, and the OLAP Q1/Q2/Q9 and load figures sit slightly above 26.8.1 (0.05–0.7s), within what this machine varies between runs.
+| Query | OLAP 26.8.1 | OLAP 26.10.1 | OLTP 26.8.1 | OLTP 26.10.1 |
+|-------|------|------|------|------|
+| **Load** | 145.0 | 126.5 | — | — |
+| **Q1** | 0.32 | 0.42 | 3.21 | 3.73 |
+| **Q2** | 0.15 | 0.24 | 7.85 | 5.75 |
+| **Q3** | 0.09 | 0.12 | 8.02 | 3.78 |
+| **Q4** | 0.01 | 0.12 | 4.10 | 1.11 |
+| **Q5** | 0.21 | 0.28 | 14.14 | 13.37 |
+| **Q6** | 0.09 | 0.16 | 26.99 | 14.22 |
+| **Q7** | 0.01 | 0.11 | 3.89 | 1.16 |
+| **Q8** | 0.11 | 0.20 | 10.87 | 9.46 |
+| **Q9** | 0.97 | 1.66 | 1.09 | 1.39 |
 
 *Keep this section updated: after every benchmark run on a new ArcadeDB version, add the new column here and in the results file.*
 
