@@ -62,7 +62,7 @@ python3 benchmark.py arcadedb kuzu      # specific vendors only
 python3 benchmark.py --reset neo4j      # force reload + run
 ```
 
-**Default vendors**: arcadedb, kuzu, duckpgq, memgraph, neo4j, arangodb, falkordb, hugegraph
+**Default vendors**: arcadedb, kuzu, ladybug, duckpgq, memgraph, neo4j, arangodb, falkordb, hugegraph
 **Excluded by default** (must name explicitly): surrealdb, dgraph
 
 #### ArcadeDB Embedded (Mode 2)
@@ -87,7 +87,7 @@ python3 lsqb_benchmark.py kuzu duckdb        # specific vendors
 python3 lsqb_benchmark.py --reset arcadedb   # force reload
 ```
 
-**Default vendors**: kuzu, duckdb, neo4j, memgraph, postgresql, arcadedb
+**Default vendors**: kuzu, ladybug, duckdb, neo4j, memgraph, postgresql, arcadedb
 **Excluded by default**: surrealdb, dgraph
 
 #### ArcadeDB Embedded (Mode 3)
@@ -102,6 +102,32 @@ java -Xms12g -Xmx12g --add-modules jdk.incubator.vector -cp ".:$LDBC_JAR" Arcade
 
 ## Running Benchmarks — Critical Rules
 
+### JVM: Eclipse Temurin 25 only, with compact object headers
+
+All ArcadeDB benchmark runs (embedded Java, Mode 1 runner, the Java loader used by the Docker benchmark)
+MUST use **Eclipse Temurin 25** with `-XX:+UseCompactObjectHeaders`. **Never use GraalVM** (its default
+Graal JIT was 2-4x slower and erratic on the vectorised OLAP paths) and no other JDK for published numbers.
+`shared/bench_java.py` finds Temurin 25 (`LDBC_JAVA_HOME`, `~/Library/Java/JavaVirtualMachines`, ...) and
+refuses anything else; `weekend.py` and `scripts/run_mode1.py` use it automatically, so no flags are needed.
+When running by hand: `$TEMURIN_HOME/bin/java --add-modules jdk.incubator.vector -Xms12g -Xmx12g -XX:+UseCompactObjectHeaders ...`.
+Compact headers are OFF by default in Java 25 (`server.sh` only enables them when the JVM supports them), so the flag
+must be passed explicitly. Reference numbers for JDK 21 vs GraalVM 25 vs Temurin 25 are in
+`results-m5-multivendor-2026-10-03.md`; the multi-vendor tables in `README.md` use the Temurin 25 values.
+
+### Power: measure on AC power only
+
+macOS throttles the CPU on battery, so timings taken unplugged are not comparable with the rest. `weekend.py` refuses
+to run on battery (`--allow-battery` overrides it, and the numbers are then unreliable); the Python suites print a
+warning and flag every vendor measured on battery in the summary and the JSON report. Check with `pmset -g batt`.
+
+### Correctness: always validate results, never report timing alone
+
+Every benchmark result must be checked for correctness, not only timed.
+- **Graphalytics (Mode 1):** the official framework validates every output (`benchmark.custom.validation-required = true`); a run that fails validation is not a result.
+- **Graphalytics (Mode 2, all vendors):** drivers can export full per-vertex outputs (`GRAPHALYTICS_DUMP_DIR=<dir>`, plus `GRAPHALYTICS_DUMP_ONLY=1` to export right after the load and skip the timed runs). `scripts/validate_outputs.py` compares them with the official reference outputs `datasets/<graph>/<graph>-<ALGO>`: BFS and CDLP exact, WCC same partition, PageRank/LCC/SSSP within 1e-4 relative error. For the derived `graph500-22-w` use `--swap 6:248533`. Engines that return only the visited set (Neo4j BFS) are checked with `BFSREACH`.
+- **LSQB:** every query count must equal the official expected count.
+- A timing whose output is invalid is reported as **invalid**, not ranked. Known driver issues found by validation (BFS capped at `LIMIT 50000`, BFS/PageRank following stored edge direction on graphs that store each undirected edge once, top-10 aggregations instead of full outputs) must be fixed or flagged before comparing vendors.
+
 ### JVM heap: 12GB for all Java-based systems
 
 All JVM-based systems (ArcadeDB, Neo4j) MUST use `-Xms12g -Xmx12g` (or equivalent Docker env vars). This ensures fair comparison — same heap budget for all vendors.
@@ -110,19 +136,54 @@ All JVM-based systems (ArcadeDB, Neo4j) MUST use `-Xms12g -Xmx12g` (or equivalen
 - ArcadeDB Docker: `-e ARCADEDB_OPTS_MEMORY="-Xms12g -Xmx12g"`
 - Neo4j Docker: `-e NEO4J_server_memory_heap_initial__size=12g -e NEO4J_server_memory_heap_max__size=12g`
 
-### Timeout: 5 minutes max per operation
+### Timeouts: 5 minutes per operation, hard limits per vendor
 
-Every operation (load, algorithm, query) MUST timeout after 5 minutes (300s).
-This is configured in `shared/bench_common.py` as `QUERY_TIMEOUT = 300`.
-The `run_timed()` wrapper enforces this via SIGALRM.
+Three layers, because a client blocked in a C extension ignores Python signals:
 
-**Loading phases must also use `run_timed()`** — wrap the entire load in a function
-and call `bench_common.run_timed("load", _load_func)`. If load times out, skip
-all algorithms and return immediately.
+1. **Per operation (in process):** every load/algorithm/query times out after 5 minutes
+   (`QUERY_TIMEOUT = 300` in `shared/bench_common.py`, `run_timed()` via SIGALRM). This only
+   works if Python regains control, so it is the *first* defence, not the guarantee.
+2. **Per vendor (parent process, the guarantee):** `benchmark.py` / `lsqb_benchmark.py` run every
+   vendor in its own child process group. The parent kills the whole group when the vendor
+   exceeds `--vendor-timeout` (default 3600 s total) or prints nothing for `--idle-timeout`
+   (default 600 s): SIGTERM, then SIGKILL after `--kill-grace` (default 10 s), then the vendor's
+   containers are stopped. Operations that finished before the kill are kept in the results,
+   the operation in flight is reported as `timeout`, never-started ones as `N/A`.
+   If the vendor was killed before its first load ever completed, its persisted data is wiped.
+   `--no-isolate` runs in-process for debugging (no hard limits).
+3. **Mode 1 (official framework):** `benchmark.custom.timeout` in `config-template/benchmarks/custom.properties`
+   (1800 s per run); the framework kills the runner with `kill -9`.
+
+Orchestrator code: `shared/bench_isolation.py` (kill escalation, watchdogs), `shared/bench_containers.py`
+(Docker lifecycle), `shared/bench_state.py` (persistent data). Tests: `python3 -m unittest discover -s tests`
+(fake vendors that hang, ignore SIGTERM, block SIGALRM, leave children behind; no real database needed).
+
+### Load once, reuse every run
+
+Loaded data survives between runs: Docker vendors mount their data directory from
+`~/.cache/ldbc-graph-bench/data/<suite>-<vendor>-<image id>` (override with `LDBC_BENCH_STATE`) and are
+stopped gracefully, not wiped; embedded vendors keep their database under the same root. Each vendor module
+already skips the import when the data is there. The original load time is remembered in a marker and
+shown in the summary with a note. Data is reloaded only on `--reset`, when the image changes (new image id
+= new directory) or when the dataset files change. ArcadeDB's Java benchmarks reuse their database through
+a sibling `<db>.loaded` marker (`--reset` forces a reload, `--discard` deletes it after the run, `-Ddb.path=`
+relocates it).
+
+### Weekly unattended run
+
+```bash
+python3 weekend.py --jvm-flags "-XX:+UseCompactObjectHeaders"   # everything, 3 reps for ArcadeDB Java
+python3 weekend.py --only py-m2,py-lsqb                          # only the multi-vendor suites
+python3 weekend.py --mode1-dist graphalytics-1.10.0-arcadedb-0.1-SNAPSHOT --java-home /path/to/jdk
+```
+It runs preflight (Docker >= 24 GB, disk, datasets, JAR, stray containers), the ArcadeDB Java benchmarks,
+both multi-vendor suites and optionally Mode 1, under the limits above, and writes `weekly-results/<timestamp>/weekly.md`
+and `weekly.json`. A failed step never stops the next one. The first run after a new image or dataset
+reloads; later runs reuse the data.
 
 ### One vendor at a time — no parallel containers
 
-**NEVER start multiple Docker containers simultaneously.** Run vendors sequentially:
+**NEVER start multiple Docker containers simultaneously.** The orchestrator runs vendors sequentially and does this for you; the manual procedure is:
 
 1. Start the vendor's container(s)
 2. Wait for readiness
@@ -149,6 +210,7 @@ Each vendor benchmark MUST follow this lifecycle:
 | ArcadeDB (Docker) | `arcadedb` | `/tmp/arcadedb-docker-data`, `/tmp/arcadedb-docker-log` |
 | ArcadeDB (Embedded) | none | `/tmp/arcadedb_benchmark` |
 | Kuzu | none | `/tmp/kuzu_benchmark`, `/tmp/ldbc_vertices.csv`, `/tmp/ldbc_edges.csv` |
+| LadybugDB | none | `/tmp/ladybug_benchmark`, `/tmp/ldbc_vertices.csv`, `/tmp/ldbc_edges.csv` |
 | DuckPGQ | none | `/tmp/duckpgq_benchmark.db` |
 | Memgraph | `memgraph` | none |
 | Neo4j | `neo4j-gds` | none |

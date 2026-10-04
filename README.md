@@ -23,7 +23,7 @@ This repository contains three benchmark modes:
 
 ## Prerequisites
 
-- Java 21 or later (required for `jdk.incubator.vector` SIMD support)
+- Java 21 or later (required for `jdk.incubator.vector` SIMD support). The published benchmark numbers use **Eclipse Temurin 25 with `-XX:+UseCompactObjectHeaders`** (GraalVM is not used)
 - Maven 3.x
 - Python 3.10+ (for Mode 2 and Mode 3 multi-vendor comparisons; see `pyproject.toml` for per-vendor install extras)
 
@@ -65,6 +65,21 @@ datasets/
     datagen-7_5-fb-WCC/
     ...
 ```
+
+---
+
+## Weekly unattended run
+
+```bash
+python3 weekend.py --jvm-flags "-XX:+UseCompactObjectHeaders"
+```
+
+Runs every suite and vendor in sequence (ArcadeDB embedded Java benchmarks, the Graphalytics and LSQB
+multi-vendor suites, optionally Mode 1 with `--mode1-dist`) and writes a Markdown/JSON report to
+`weekly-results/<timestamp>/`. Each vendor runs in its own process group with a total-time and a no-output
+limit; a hung vendor gets SIGTERM, then SIGKILL, and the run continues. Loaded databases are kept under
+`~/.cache/ldbc-graph-bench` and reused, so only the first run (or `--reset`, a new image, a changed dataset)
+pays for the loads. See `CLAUDE.md` for the details and `python3 -m unittest discover -s tests` for the tests.
 
 ---
 
@@ -130,7 +145,7 @@ for rid, r in sorted(runs.items(), key=lambda x: x[1]['timestamp']):
 
 Located in `ldbc-native/`. Loads the graph once and runs all algorithms sequentially on the same in-memory structure. This provides a fair apples-to-apples comparison since all systems use the same approach.
 
-**Systems tested:** ArcadeDB, Kuzu, DuckPGQ, Memgraph, Neo4j, ArangoDB, FalkorDB, HugeGraph
+**Systems tested:** ArcadeDB, Kuzu, LadybugDB, DuckPGQ, Memgraph, Neo4j, ArangoDB, FalkorDB, HugeGraph
 
 ### ArcadeDB (Java)
 
@@ -194,26 +209,15 @@ curl -X POST "http://localhost:6688/api/v1/admin/workers/group/\$/${WORKER}"
 
 Dataset: **datagen-7_5-fb** (633,432 vertices, 34,185,747 edges, undirected, weighted)
 
-*Benchmarks run on a MacBook Pro 16" (2019), Intel Core i9-9880H 8-core @ 2.3GHz, 32GB RAM, macOS.*
+*All benchmarks in this section were run on a MacBook Pro 16" (2026), Apple M5 Pro, 48GB RAM, 1TB SSD, macOS (ArcadeDB on Eclipse Temurin 25 with `-XX:+UseCompactObjectHeaders`, 12 GB heap for every JVM system, Docker Desktop with 32 GB). Measured 2026-10-03.*
 
 #### Official LDBC Graphalytics Results (ArcadeDB)
 
-Using the LDBC Graphalytics framework (graph reloaded per algorithm):
-
-| Algorithm | processing_time | load_time | makespan |
-|-----------|----------------|-----------|----------|
-| **PR** | 16.12s | 95.04s | 48.80s |
-| **WCC** | 8.36s | 95.04s | 37.67s |
-| **BFS** | 22.81s | 95.04s | 57.52s |
-| **CDLP** | 30.38s | 95.04s | 56.81s |
-| **LCC** | 43.75s | 95.04s | 73.76s |
-| **SSSP** | 28.72s | 115.50s | 144.84s |
-
-All 6 algorithms passed with validation.
+The official-framework (Mode 1) numbers, per ArcadeDB release, are in the next section.
 
 #### ArcadeDB release-over-release (26.8.1 → 26.10.1-SNAPSHOT)
 
-Same machine for every column (MacBook M5, `-Xms12g -Xmx12g`), same datasets, one JVM at a time, measured 2026-10-02. This tracks ArcadeDB itself across versions; the multi-vendor tables below were measured earlier (ArcadeDB 26.4.1) and have not been re-run. The 26.10.1 column is the `26.10.1-SNAPSHOT` built from ArcadeDB `main` @ `02ac27327d` (not in a release yet). Raw numbers: [`results-26.10.1-SNAPSHOT-vs-26.8.1.md`](results-26.10.1-SNAPSHOT-vs-26.8.1.md).
+Same machine for every column (MacBook M5, `-Xms12g -Xmx12g`, OpenJDK 21), same datasets, one JVM at a time, measured 2026-10-02 (later runs use Temurin 25 only). This tracks ArcadeDB itself across versions; the multi-vendor tables below were re-measured on 2026-10-03 on the same machine with ArcadeDB `26.10.1-SNAPSHOT` and the newest release of every other system (raw detail, Java 21 vs 25 and decision log: [`results-m5-multivendor-2026-10-03.md`](results-m5-multivendor-2026-10-03.md)). The 26.10.1 column is the `26.10.1-SNAPSHOT` built from ArcadeDB `main` @ `02ac27327d` (not in a release yet). Raw numbers: [`results-26.10.1-SNAPSHOT-vs-26.8.1.md`](results-26.10.1-SNAPSHOT-vs-26.8.1.md).
 
 **Mode 1 (official framework, datagen-7_5-fb), processing_time in seconds, all runs validated:**
 
@@ -247,58 +251,46 @@ OLTP numbers vary about 2x between runs on this machine (e.g. the same OLTP buil
 
 *Keep this section updated: after every benchmark run on a new ArcadeDB version, add the new column here and in the results file.*
 
-#### Native Comparison (load once, run all algorithms)
+#### Systems and versions (both suites)
 
-| System | Version | Edition | License | Mode | Overhead |
-|--------|---------|---------|---------|------|----------|
-| **ArcadeDB** (embedded) | 26.4.1 | Open Source | Apache 2.0 | Embedded (in-process, Java 21) | None |
-| **ArcadeDB** (Docker) | 26.4.1 | Open Source | Apache 2.0 | Server (Docker, HTTP API) | Network + Docker |
-| **Neo4j** | 2026 | Community | GPL 3.0 | Server (Docker, Bolt protocol) | Network + Docker |
-| **Kuzu** | 0.11.3 | Open Source | MIT | Embedded (in-process, C++ via Python) | None |
-| **DuckPGQ** | DuckDB 1.5.0 | Open Source | MIT | Embedded (in-process, C++ via Python) | None |
-| **Memgraph** | 3.8.1 | Community | BSL 1.1 | Server (Docker, Bolt protocol) | Network + Docker |
-| **ArangoDB** | 3.11.14 | Community | Apache 2.0 | Server (Docker, HTTP API) | Network + Docker |
-| **FalkorDB** | 4.16.6 | Open Source | Source Available | Server (Docker, Redis protocol) | Network + Docker |
-| **HugeGraph** | Vermeer latest | Open Source | Apache 2.0 | Server (Docker, HTTP API) | Network + Docker |
+| System | Version | Edition | License | Mode | Overhead | Used in |
+|--------|---------|---------|---------|------|----------|---------|
+| **ArcadeDB** (embedded) | 26.10.1-SNAPSHOT | Open Source | Apache 2.0 | Embedded (in-process, Temurin 25) | None | Graphalytics, LSQB |
+| **ArcadeDB** (Docker) | 26.10.1-SNAPSHOT | Open Source | Apache 2.0 | Server (Docker, HTTP API) | Network + Docker | Graphalytics, LSQB |
+| **Neo4j** | 2026.09.0 | Community | GPL 3.0 | Server (Docker, Bolt protocol, GDS) | Network + Docker | Graphalytics, LSQB |
+| **Kuzu** | 0.11.3 (archived project) | Open Source | MIT | Embedded (in-process, C++ via Python) | None | Graphalytics, LSQB |
+| **LadybugDB** (Kuzu fork) | 0.21.2 | Open Source | MIT | Embedded (in-process, C++ via Python) | None | Graphalytics, LSQB |
+| **DuckPGQ** | DuckDB 1.5.0 | Open Source | MIT | Embedded (in-process, C++ via Python) | None | Graphalytics |
+| **DuckDB** | 1.5.6 | Open Source | MIT | Embedded (in-process, C++ via Python) | None | LSQB |
+| **PostgreSQL** | 18 | Open Source | PostgreSQL | Server (Docker) | Network + Docker | LSQB |
+| **Memgraph** | 3.13.1 (MAGE) | Community | BSL 1.1 | Server (Docker, Bolt protocol) | Network + Docker | Graphalytics, LSQB |
+| **ArangoDB** | 3.11.14 \* | Community | Apache 2.0 | Server (Docker, HTTP API) | Network + Docker | Graphalytics |
+| **FalkorDB** | 6.0.1 (Redis 8.10.2) | Open Source | Source Available | Server (Docker, Redis protocol) | Network + Docker | Graphalytics, LSQB |
+| **HugeGraph** | Vermeer latest | Open Source | Apache 2.0 | Server (Docker, HTTP API) | Network + Docker | Graphalytics |
 
-ArcadeDB is tested in two modes: **embedded** (in-process Java, zero overhead) and **Docker** (same HTTP/network overhead as the other Docker-based systems). Kuzu and DuckPGQ run embedded. Neo4j, Memgraph, ArangoDB, FalkorDB, and HugeGraph run as Docker containers.
+All systems are the newest available release as of 2026-10-03. Exceptions: DuckPGQ is pinned to DuckDB 1.5.0 because the `duckpgq` extension is not published for newer DuckDB releases; ArangoDB is pinned to 3.11.14 (see the \* note below); Kuzu 0.11.3 is the last release of an archived project and is kept for reference next to its active fork LadybugDB. ArcadeDB is tested **embedded** (in-process Java, zero overhead) and in **Docker** (same HTTP/network overhead as the other Docker systems).
 
 #### All Systems Comparison
 
-| Algorithm | ArcadeDB | ArcadeDB Docker | Neo4j 2026 | Kuzu | DuckPGQ | Memgraph | ArangoDB | FalkorDB | HugeGraph |
-|-----------|----------|----------------|------------|------|---------|----------|----------|----------|-----------|
-| **PageRank** | **0.48s** | 0.83s | 11.15s | 4.30s | 6.14s | 16.90s | 157.01s | 1.67s | 4.01s |
-| **WCC** | 0.30s | **0.22s** | 0.75s | 0.43s | 13.93s | crash | 78.03s | 0.85s | 6.71s |
-| **BFS** | 0.13s | **0.07s** | 1.91s | 0.86s | 2,754s | 11.72s | 511.55s | 0.20s | 0.54s |
-| **LCC** | **27.41s** | 34.98s | 45.78s | N/A | 38.59s | N/A | N/A | N/A | 272.04s |
-| **SSSP** | 3.53s | **0.97s** | N/A | N/A | N/A | N/A | 301.93s | N/A | N/A |
-| **CDLP** | 3.67s | **3.35s** | 6.43s | N/A | N/A | N/A | 407.41s | 5.38s | 62.70s |
+Seconds, `datagen-7_5-fb`, one process at a time, 5-minute limit per operation. ArcadeDB embedded (Temurin 25, compact object headers) is the median of 3 runs.
 
-*Memgraph crashes with segfault (exit 139) during edge loading at ~18-20M of 34M edges.*
-
-ArcadeDB is the fastest on every comparable algorithm and the only system that successfully runs all 6 LDBC Graphalytics algorithms. Even when running as a Docker container (same conditions as Neo4j, Memgraph, FalkorDB, and HugeGraph), ArcadeDB leads on every algorithm.
-
-**ArcadeDB Embedded vs other systems:**
-- **vs Neo4j 2026 GDS**: PageRank 23x faster, WCC 2.5x faster, BFS 15x faster, LCC 1.7x faster, CDLP 1.8x faster
-- **vs Kuzu**: PageRank 9x faster, WCC 1.4x faster, BFS 6.6x faster
-- **vs DuckPGQ**: PageRank 13x faster, WCC 46x faster, BFS 21,185x faster, LCC 1.4x faster
-- **vs Memgraph**: PageRank 35x faster, BFS 90x faster (WCC/LCC/SSSP/CDLP: crash or unavailable)
-- **vs ArangoDB**: PageRank 327x faster, WCC 260x faster, BFS 3,935x faster, SSSP 86x faster, CDLP 111x faster
-- **vs FalkorDB**: PageRank 3.5x faster, WCC 2.8x faster, BFS 1.5x faster, CDLP 1.5x faster (LCC/SSSP: not available)
-- **vs HugeGraph**: PageRank 8.4x faster, WCC 22x faster, BFS 4.2x faster, LCC 9.9x faster, CDLP 17x faster (SSSP: not available)
-
-**ArcadeDB Docker vs other Docker systems (apples-to-apples):**
-- **vs Neo4j 2026 GDS**: PageRank 13.4x faster, WCC 3.4x faster, BFS 27x faster, LCC 1.3x faster, CDLP 1.9x faster
-- **vs FalkorDB**: PageRank 2x faster, WCC 3.9x faster, BFS 2.9x faster, CDLP 1.6x faster (LCC/SSSP: not available in FalkorDB)
-- **vs HugeGraph**: PageRank 4.8x faster, WCC 30x faster, BFS 7.7x faster, LCC 7.8x faster, CDLP 18.7x faster
+| Algorithm | ArcadeDB | ArcadeDB Docker | Neo4j | Kuzu | LadybugDB | DuckPGQ | Memgraph | ArangoDB \* | FalkorDB | HugeGraph |
+|-----------|----------|----------------|-------|------|-----------|---------|----------|------------------|----------|-----------|
+| **Load** | 50.4 | **35.5** | 538 | 3.35 | 5.94 | 0.45 | 170.5 | 356.8 | timeout | 14.2 |
+| **PageRank** | **0.17** | 0.44 | 3.44 | 0.97 | N/A | 2.44 | 3.09 | 51.01 | – | 1.21 |
+| **WCC** | **0.07** | 0.20 | 0.18 | 0.10 | N/A | 6.63 | 34.15 | 25.80 | – | 1.60 |
+| **BFS** | **0.09** | 0.18 | 0.55 | 0.24 | 3.28 | timeout | 1.95 | timeout | – | 0.15 |
+| **LCC** | **2.07** | 2.42 | 15.14 | N/A | N/A | 17.92 | timeout | N/A | – | 109.27 |
+| **SSSP** | 0.80 | **0.34** | N/A | N/A | N/A | N/A | N/A | 36.92 | – | N/A |
+| **CDLP** | **0.99** | 1.16 | N/A | N/A | N/A | N/A | N/A | 128.43 | – | 22.26 |
 
 Notes:
-- Memgraph 3.8.1 crashes with segfault (exit 139) during edge loading at ~18-20M edges. WCC previously failed with OOM at 7.6GB.
-- ArangoDB 3.11 uses Pregel for PageRank/WCC/SSSP/CDLP and AQL traversal for BFS. Pregel was removed in ArangoDB 3.12.
-- Kuzu and DuckPGQ lack native implementations for most algorithms beyond PageRank, WCC, and BFS.
-- FalkorDB (RedisGraph fork) has no built-in LCC or full SSSP algorithm. Its `algo.SSpaths` is pair-oriented, not a full single-source Dijkstra.
-- HugeGraph/Vermeer's SSSP is unweighted (hop-count only), so weighted SSSP is not available. Uses the Vermeer Go-based OLAP engine.
-- ArcadeDB Docker results measured warm (JIT-compiled) to match how production servers run. All Docker systems run on Docker Desktop for macOS with 16 CPUs and 24GB RAM.
+- **FalkorDB** did not finish loading the 34M edges within 15 minutes on two attempts (the 5-minute limit applies), so no algorithm results. Its LSQB load (17.9M edges) took 692 s.
+- **Memgraph** now loads the graph (earlier versions segfaulted or timed out), but its LCC query hung for over 45 minutes and was killed (recorded as timeout; the client's `SIGALRM` timeout cannot interrupt a blocking C call).
+- \* **ArangoDB** is run on 3.11.14, not the latest release, because the driver runs PageRank, WCC, SSSP and CDLP through Pregel, which ArangoDB 3.12 and later no longer provide (only BFS works there). On 3.11.14 BFS hit the 60 s client read timeout and LCC is rejected by AQL.
+- **LadybugDB**: only BFS runs. `INSTALL algo` succeeds but the downloaded `algo` extension (0.21.0) for macOS arm64 fails to load (`Library not loaded: @rpath/libnetworkit.dylib`), so PageRank, WCC and LCC are unavailable. Not worked around; to be retried when a fixed extension ships.
+- **Kuzu/DuckPGQ** lack native implementations of most algorithms beyond PageRank, WCC and BFS. DuckPGQ BFS was interrupted at the time limit. HugeGraph/Vermeer SSSP is unweighted only and not run. Neo4j has no weighted SSSP or CDLP in this setup.
+- Neo4j and ArcadeDB use a 12 GB heap; Docker Desktop has 32 GB. ArcadeDB Docker loads through the embedded loader first, then serves queries over HTTP (GAV built before the timed algorithms).
 - None of the competing systems have official LDBC Graphalytics platform drivers. Only ArcadeDB has an official LDBC Graphalytics platform implementation.
 
 ## Mode 3: LSQB (Labelled Subgraph Query Benchmark)
@@ -376,46 +368,38 @@ python3 lsqb_benchmark.py kuzu duckdb  # Run specific systems only
 
 Dataset: **LDBC SNB SF1** (3,947,829 vertices, 17,882,623 edges)
 
-*Benchmarks run on a MacBook Pro 16" (2026), Apple M5 Pro, 48GB RAM, 1TB SSD, macOS.*
+*Benchmarks run on a MacBook Pro 16" (2026), Apple M5 Pro, 48GB RAM, 1TB SSD, macOS. Measured 2026-10-03, one system at a time, 12 GB heap for JVM systems, Docker Desktop with 32 GB.*
 
-| System | Version | Mode | Language |
-|--------|---------|------|----------|
-| **ArcadeDB Embedded** | 26.4.1 | Embedded (Java 21) | Cypher |
-| **ArcadeDB Docker** | 26.4.1 | Docker (HTTP API) | Cypher |
-| **DuckDB** | 1.4.4 | Embedded (C++ via Python) | SQL |
-| **Kuzu** | 0.11.3 | Embedded (C++ via Python) | Cypher |
-| **Neo4j** | 2025 Community | Docker | Cypher |
-| **PostgreSQL** | 17 | Docker | SQL |
-| **Memgraph** | latest | Docker | Cypher |
-| **Dgraph** | v25.3.0 | Docker (HTTP API) | DQL |
-| **FalkorDB** | v4.16.8 | Docker | Cypher |
-| **SurrealDB** | v2.6.4 | Docker (HTTP API) | SurrealQL |
+Systems and versions: see the "Systems and versions" table in the Graphalytics results above (the only place versions are listed).
 
-| Query | Expected Count | ArcadeDB Embedded | ArcadeDB Docker | DuckDB | Kuzu | Neo4j | PostgreSQL | Memgraph | Dgraph | FalkorDB | SurrealDB | Winner |
-|-------|---------------|----------|-----------------|--------|------|-------|------------|----------|--------|----------|-----------|--------|
-| **Load** | — | 119.24s | 197.96s | — | — | — | — | — | — | 654.80s | — | — |
-| **Q1** | 221,636,419 | 0.23s | 0.25s | **0.15s** | 5.83s | 8.25s | 6.56s | 60.45s | 2.52s | error | timeout | DuckDB |
-| **Q2** | 1,085,627 | 0.18s | 0.19s | **0.02s** | 0.14s | 2.06s | 0.34s | timeout | N/A | error | timeout | DuckDB |
-| **Q3** | 753,570 | 0.10s | 0.13s | **0.05s** | 2.44s | 14.31s | 2.12s | timeout | N/A | 147.49s | N/A | DuckDB |
-| **Q4** | 14,836,038 | 0.03s | **0.03s** | 0.08s | N/A | 7.82s | 6.86s | 4.50s | 8.13s | 7.19s | timeout | ArcadeDB |
-| **Q5** | 13,824,510 | 0.29s | 0.23s | **0.04s** | N/A | 6.72s | 0.69s | 3.86s | N/A | error | timeout | DuckDB |
-| **Q6** | 1,668,134,320 | **0.11s** | 0.11s | 2.18s | 1.41s | 52.06s | 17.72s | 148.14s | N/A | error | N/A | ArcadeDB |
-| **Q7** | 26,190,133 | 0.09s | **0.02s** | 0.08s | N/A | 10.45s | 11.22s | 5.59s | 5.97s | 10.67s | timeout | ArcadeDB |
-| **Q8** | 6,907,213 | 0.19s | 0.19s | **0.07s** | N/A | 12.91s | 1.31s | 3.37s | N/A | 6.22s | N/A | DuckDB |
-| **Q9** | 1,596,153,418 | 1.18s | **1.06s** | 7.77s | 6.15s | 59.09s | 22.25s | timeout | N/A | error | N/A | ArcadeDB |
+Seconds. ArcadeDB Embedded (Temurin 25, compact object headers) is shown with the Graph Analytical View (OLAP) and without it (OLTP); the embedded numbers are the mean of two runs on the same loaded database. The embedded load times are from the original JDK 21 load, since the Temurin runs reused that database. The two JVM engines, ArcadeDB Docker and Neo4j, are measured warm: one untimed run, then the median of 3 (a query whose first run exceeds 30 s is reported from that single run). The other systems run each query once.
 
-All 9 queries produce correct results matching the [official LSQB expected output](https://github.com/ldbc/lsqb/blob/main/expected-output/expected-output.csv). Kuzu skips Q4/Q5/Q7/Q8 (no `:Message` supertype support). Memgraph times out on Q2/Q3/Q9 (600s limit). Dgraph answers 3 of 9 queries using DQL value-variable propagation and `math()` (see [Dgraph section](#dgraph) below). FalkorDB returns wrong counts on 4 queries and times out on 1 (see [FalkorDB section](#falkordb) below). SurrealDB has queries written for Q1/Q2/Q4/Q5/Q7 but all timeout at 120s due to O(n*m) nested subquery execution without index acceleration (see [SurrealDB section](#surrealdb)). ArcadeDB Docker runs under the same conditions as Neo4j, PostgreSQL, Memgraph, Dgraph, FalkorDB, and SurrealDB (Docker Desktop for macOS).
+| Query | Expected Count | ArcadeDB Embedded OLAP | ArcadeDB Embedded OLTP | ArcadeDB Docker | DuckDB | Kuzu | LadybugDB | Neo4j | PostgreSQL | Memgraph | FalkorDB | Winner |
+|-------|---------------|----------|----------|-----------------|--------|------|-----------|-------|------------|----------|----------|--------|
+| **Load** | — | 132.1 | 127.4 | 107.8 | **0.47** | 2.44 | 2.55 | 252.0 | 8.78 | 215.5 | 692.1 | DuckDB |
+| **Q1** | 221,636,419 | 0.32 | 4.21 | 0.19 | **0.12** | 4.41 | 0.31 | 8.35 | 6.05 | 60.84 | 42.45 | DuckDB |
+| **Q2** | 1,085,627 | 0.20 | 5.19 | 0.19 | **0.01** | 0.12 | 0.20 | 1.69 | 0.32 | timeout | 69.18 | DuckDB |
+| **Q3** | 753,570 | 0.12 | 3.32 | 0.09 | **0.03** | 2.35 | 12.34 | 15.98 | 2.01 | timeout | 4.36 | DuckDB |
+| **Q4** | 14,836,038 | 0.10 | 1.13 | **0.06** | 0.07 | N/A | N/A | 8.20 | 6.03 | 4.24 | 4.13 | ArcadeDB |
+| **Q5** | 13,824,510 | 0.24 | 11.86 | 0.26 | **0.04** | N/A | N/A | 6.73 | 0.64 | 3.36 | 4.38 | DuckDB |
+| **Q6** | 1,668,134,320 | **0.13** | 11.51 | 0.14 | 1.74 | 1.38 | 0.69 | 41.93 | 15.09 | 127.05 | 44.57 | ArcadeDB |
+| **Q7** | 26,190,133 | **0.05** | 1.06 | 0.05 | 0.09 | N/A | N/A | 12.39 | 9.96 | 4.84 | 51.05 | ArcadeDB |
+| **Q8** | 6,907,213 | 0.13 | 7.57 | 0.13 | **0.07** | N/A | N/A | 14.37 | 1.64 | 3.21 | 5.83 | DuckDB |
+| **Q9** | 1,596,153,418 | 1.73 | 1.02 | 2.47 | 5.68 | 6.47 | **0.07** | 240.76 | 20.09 | timeout | 190.24 | LadybugDB |
+
+All counts reported by every system match the [official LSQB expected output](https://github.com/ldbc/lsqb/blob/main/expected-output/expected-output.csv). Kuzu and LadybugDB skip Q4/Q5/Q7/Q8 (the driver has no `:Message` supertype support yet). Memgraph times out (5 min) on Q2, Q3 and Q9. Dgraph and SurrealDB are excluded by default and were not re-measured in this run; see their sections below for the older numbers.
 
 **Analysis:**
 
-- **ArcadeDB is the fastest on 4 out of 9 queries** (Q4, Q6, Q7, Q9), DuckDB on the other 5.
-- **Q4 and Q7** — star-shaped joins centered on Message (Tag, Creator, Likes, Replies). With the GAV's CSR acceleration, ArcadeDB completes these in 10–30ms, **3–8x faster than DuckDB**, and **261–1045x faster than Neo4j**. The benchmark uses `GraphTraversalProviderRegistry.awaitAll()` to ensure the GAV is fully registered with the query optimizer before timing queries.
-- **Q6 and Q9** — multi-hop path traversals (Person-KNOWS-Person-KNOWS-Person) where graph adjacency lists outperform relational self-joins. These are the two heaviest queries with billion-scale result counts. ArcadeDB is **7–20x faster than DuckDB**, **55–473x faster than Neo4j**, and **21–161x faster than PostgreSQL**. Q6 in particular showcases the edge-scan algebraic optimization: ArcadeDB computes the 1.67-billion-row count in just 110ms — **20x faster than DuckDB**.
-- **DuckDB wins on remaining queries** — Q1 (long chain), Q2 (diamond), Q3 (triangle), Q5 (fork), Q8 (anti-pattern) are join-intensive patterns where DuckDB's columnar vectorized execution excels. However, the gap has narrowed significantly: Q8 is now only 2.7x slower than DuckDB (down from 7.7x), thanks to the edge-scan anti-join optimization.
-- **ArcadeDB Docker vs other Docker systems** — even with HTTP + network + Docker VM overhead, ArcadeDB Docker is **10–1045x faster than Neo4j**, **2–24x faster than PostgreSQL**, and **5–559x faster than Memgraph** on the queries Memgraph completes.
-- **Neo4j and Memgraph** are significantly slower across the board. Memgraph times out on 3 of 9 queries. Neo4j completes all queries but is 9–1045x slower than ArcadeDB on every query.
-- **PostgreSQL** is a solid middle ground for a traditional RDBMS — faster than Neo4j/Memgraph but significantly slower than both ArcadeDB and DuckDB.
-- **FalkorDB** returns wrong counts on 4 of 9 queries (Q1, Q5, Q6, Q9) and times out on Q2, revealing bugs in its Cypher query optimizer for complex pattern matching. On the 4 queries with correct results (Q3, Q4, Q7, Q8), it is 89x–2950x slower than the fastest system. Loading is also very slow at 655s.
+- **DuckDB is the fastest on 5 of 9 queries** (Q1, Q2, Q3, Q5, Q8) with the fastest load by far (0.47 s). ArcadeDB is fastest on **Q6** (0.13 s embedded vs 0.69 s for LadybugDB and 1.74 s for DuckDB), **Q7** (0.05 s vs 0.09 s for DuckDB) and, narrowly, **Q4** (0.06 s Docker, warm, vs 0.07 s for DuckDB; embedded is 0.10 s).
+- **Q9** is the surprise: LadybugDB answers in 0.07 s, far ahead of ArcadeDB (1.73 s with the GAV, 1.02 s without it) and DuckDB (5.68 s). Q9 is the anti-pattern variant of the two-hop Person-KNOWS query, so LadybugDB's plan for it is much better than Kuzu's (6.47 s) despite sharing the codebase.
+- **ArcadeDB OLAP vs OLTP:** the GAV makes the star and chain queries 11-58x faster (Q4 1.13 -> 0.10 s, Q5 11.86 -> 0.24 s, Q7 1.06 -> 0.05 s, Q8 7.57 -> 0.13 s), but Q9 is faster without it (1.02 s vs 1.73 s).
+- **ArcadeDB Docker** (warm) is on par with embedded (within 1.5x on every query, even slightly faster on Q1, Q3 and Q4; Q9 is 2.47 s vs 1.73 s) and 9-300x faster than Neo4j on every query. A single cold run of the same server is 5-14x slower on every query, so JIT warm-up matters for server numbers.
+- **Neo4j** completes all queries but is 70-3400x slower than the fastest system on every query, with Q9 at 241 s, close to the 5-minute limit.
+- **PostgreSQL** is a solid middle ground: faster than Neo4j/Memgraph/FalkorDB on most queries, and the best non-ArcadeDB Docker system on Q2, Q3 and Q5.
+- **FalkorDB** now returns correct counts on all 9 queries (an older release returned wrong counts on four), but it is 69-6900x slower than the fastest system and has the slowest load (692 s).
+- **Memgraph** completes 6 of 9 queries; Q2, Q3 and Q9 time out.
+- **LadybugDB vs Kuzu:** on the five queries both run, the fork is faster on Q1 (0.31 vs 4.41 s), Q6 (0.69 vs 1.38 s) and Q9 (0.07 vs 6.47 s), slower on Q3 (12.34 vs 2.35 s) and Q2 (0.20 vs 0.12 s).
 
 ---
 
