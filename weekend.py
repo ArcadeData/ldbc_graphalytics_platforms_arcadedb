@@ -322,6 +322,9 @@ def main():
     ap.add_argument("--java-idle", type=int, default=900)
     ap.add_argument("--allow-battery", action="store_true",
                     help="run even on battery power (timings are throttled and not comparable)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="run preflight and compile, then print every command and limit of the plan without starting "
+                         "any benchmark (the report is still written)")
     ap.add_argument("--min-docker-gb", type=int, default=24)
     ap.add_argument("--min-disk-gb", type=int, default=30)
     args = ap.parse_args()
@@ -342,6 +345,17 @@ def main():
               "jar_mtime": time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(JAR))) if os.path.exists(JAR) else "missing",
               "step_seconds": {}}
     log(f"Weekly run {stamp}: steps {', '.join(steps)}; results in {out_dir}")
+
+    if args.dry_run:
+
+        def plan_only(cmd, **kw):
+            log(f"  [dry-run] would run: {' '.join(str(c) for c in cmd)}")
+            log(f"  [dry-run]   cwd={kw.get('cwd') or ROOT} total_timeout={kw.get('total_timeout')}s "
+                f"idle_timeout={kw.get('idle_timeout')}s log={kw.get('log_file')}")
+            return bench_isolation.Outcome()
+
+        bench_isolation.run_child = plan_only
+        report["dry_run"] = True
 
     dispatch = {
         "java-m2": lambda: step_java(args, report, out_dir, "m2"),

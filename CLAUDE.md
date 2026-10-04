@@ -176,6 +176,7 @@ python3 weekend.py --jvm-flags "-XX:+UseCompactObjectHeaders"   # everything, 3 
 python3 weekend.py --only py-m2,py-lsqb                          # only the multi-vendor suites
 python3 weekend.py --mode1-dist graphalytics-1.10.0-arcadedb-0.1-SNAPSHOT --java-home /path/to/jdk
 ```
+`python3 weekend.py --dry-run` runs preflight and the Java compile, then prints every command, working directory and limit of the plan without starting a benchmark.
 It runs preflight (Docker >= 24 GB, disk, datasets, JAR, stray containers), the ArcadeDB Java benchmarks,
 both multi-vendor suites and optionally Mode 1, under the limits above, and writes `weekly-results/<timestamp>/weekly.md`
 and `weekly.json`. A failed step never stops the next one. The first run after a new image or dataset
