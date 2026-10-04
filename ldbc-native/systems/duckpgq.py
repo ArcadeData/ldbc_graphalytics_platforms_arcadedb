@@ -6,13 +6,28 @@ import os
 from ._common import VERTEX_FILE, EDGE_FILE, bench_common
 
 
+def _dump_all(conn):
+    """Full per-vertex outputs of the exact calls the benchmark times (see bench_common.dump_*)."""
+    if not bench_common.dump_enabled():
+        return
+    bench_common.dump_safely("duckpgq", "PR", lambda: bench_common.dump_rows(
+        "duckpgq", "PR", conn.execute("SELECT id, pagerank FROM pagerank(ldbc, nodes, edges)").fetchall()))
+    bench_common.dump_safely("duckpgq", "WCC", lambda: bench_common.dump_rows(
+        "duckpgq", "WCC", conn.execute("SELECT id, componentId FROM weakly_connected_component(ldbc, nodes, edges)").fetchall()))
+    bench_common.dump_safely("duckpgq", "LCC", lambda: bench_common.dump_rows(
+        "duckpgq", "LCC", conn.execute(
+            "SELECT id, local_clustering_coefficient FROM local_clustering_coefficient(ldbc, nodes, edges)").fetchall()))
+    # BFS is not exported: the driver caps it at LIMIT 50000 (invalid by construction) and the uncapped
+    # shortest-path query takes tens of minutes in DuckPGQ.
+
+
 def run_benchmark():
     import duckdb
     print("\n" + "=" * 70)
     print("DuckPGQ BENCHMARK")
     print("=" * 70)
 
-    db_path = "/tmp/duckpgq_benchmark.db"
+    db_path = bench_common.embedded_db_path("graphalytics", "duckpgq", "db.duckdb")
     if os.path.exists(db_path):
         os.remove(db_path)
 
@@ -61,6 +76,12 @@ def run_benchmark():
     print(f"  Vertices: {r[0]}")
     r = conn.execute("SELECT count(*) FROM edges").fetchone()
     print(f"  Edges: {r[0]}")
+
+    if bench_common.dump_only():
+        _dump_all(conn)
+        conn.close()
+        os.remove(db_path)
+        return results
 
     # --- PageRank ---
     print("\n[DuckPGQ] Running PageRank...")
@@ -125,6 +146,7 @@ def run_benchmark():
     if isinstance(elapsed, (int, float)):
         print(f"  BFS time: {elapsed:.2f}s")
 
+    _dump_all(conn)
     conn.close()
     os.remove(db_path)
     return results

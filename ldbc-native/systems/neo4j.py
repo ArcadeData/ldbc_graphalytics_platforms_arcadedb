@@ -9,7 +9,14 @@ NEO4J_CONTAINER = "neo4j-gds"
 
 
 def _start_neo4j():
-    """Start Neo4j Docker container with GDS plugin."""
+    """Start Neo4j Docker container with GDS plugin (unless the orchestrator already did)."""
+    import bench_containers
+    if not bench_containers.container_running(NEO4J_CONTAINER):
+        _start_neo4j_container()
+    _wait_for_neo4j()
+
+
+def _start_neo4j_container():
     _sp.run(["docker", "rm", "-f", NEO4J_CONTAINER], capture_output=True)
     _sp.run([
         "docker", "run", "-d", "--name", NEO4J_CONTAINER,
@@ -18,10 +25,13 @@ def _start_neo4j():
         "-e", 'NEO4J_PLUGINS=["graph-data-science"]',
         "-e", "NEO4J_server_memory_heap_initial__size=12g",
         "-e", "NEO4J_server_memory_heap_max__size=12g",
-        "neo4j:2026-community"
+        "neo4j:2026.09.0-community"
     ], check=True)
+
+
+def _wait_for_neo4j():
     print("  Waiting for Neo4j to start...")
-    for i in range(60):
+    for i in range(400):  # a large persisted store can take many minutes to recover
         try:
             from neo4j import GraphDatabase
             d = GraphDatabase.driver("bolt://localhost:7688", auth=("neo4j", "benchmark123"))
@@ -32,6 +42,37 @@ def _start_neo4j():
         except Exception:
             time.sleep(3)
     raise RuntimeError("Neo4j failed to start")
+
+
+def _dump_all(driver):
+    """Full per-vertex outputs of the exact calls the benchmark times (see bench_common.dump_*)."""
+    if not bench_common.dump_enabled():
+        return
+    def rows(q, **params):
+        with driver.session() as session:
+            for r in session.run(q, **params):
+                yield r
+    bench_common.dump_safely("neo4j", "PR", lambda: bench_common.dump_rows("neo4j", "PR", (
+        (r["id"], float(r["score"])) for r in rows("""
+            CALL gds.pageRank.stream('bench', {dampingFactor: 0.85, maxIterations: 10})
+            YIELD nodeId, score RETURN gds.util.asNode(nodeId).id AS id, score"""))))
+    bench_common.dump_safely("neo4j", "WCC", lambda: bench_common.dump_rows("neo4j", "WCC", (
+        (r["id"], r["componentId"]) for r in rows("""
+            CALL gds.wcc.stream('bench') YIELD nodeId, componentId
+            RETURN gds.util.asNode(nodeId).id AS id, componentId"""))))
+    bench_common.dump_safely("neo4j", "LCC", lambda: bench_common.dump_rows("neo4j", "LCC", (
+        (r["id"], float(r["coeff"])) for r in rows("""
+            CALL gds.localClusteringCoefficient.stream('bench')
+            YIELD nodeId, localClusteringCoefficient
+            RETURN gds.util.asNode(nodeId).id AS id, localClusteringCoefficient AS coeff"""))))
+    def bfs():
+        with driver.session() as session:
+            src = session.run("MATCH (n:Node {id: 6}) RETURN id(n) AS nid").single()["nid"]
+        # gds.bfs.stream returns the visited node ids only (no distances): reachability check
+        bench_common.dump_rows("neo4j", "BFSREACH", ((r["id"], 1) for r in rows("""
+            CALL gds.bfs.stream('bench', {sourceNode: $src}) YIELD nodeIds
+            UNWIND nodeIds AS nid RETURN gds.util.asNode(nid).id AS id""", src=src)))
+    bench_common.dump_safely("neo4j", "BFSREACH", bfs)
 
 
 def run_benchmark():
@@ -134,6 +175,12 @@ def run_benchmark():
                 {EDGE: {orientation: 'UNDIRECTED', properties: 'weight'}})
         """)
 
+    if bench_common.dump_only():
+        _dump_all(driver)
+        driver.close()
+        bench_common.cleanup_docker(NEO4J_CONTAINER)
+        return results
+
     # --- PageRank ---
     print("\n[Neo4j] Running PageRank...")
     def _run_pagerank():
@@ -210,6 +257,8 @@ def run_benchmark():
     results["lcc"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  LCC time: {elapsed:.2f}s")
+
+    _dump_all(driver)  # before the projection is dropped
 
     # Cleanup
     with driver.session() as session:

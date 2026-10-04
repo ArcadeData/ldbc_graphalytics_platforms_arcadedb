@@ -7,6 +7,45 @@ import shutil
 from ._common import VERTEX_FILE, EDGE_FILE, bench_common
 
 
+def _dump_all(cmd):
+    """Full per-vertex outputs of the exact procedure calls the benchmark times (see bench_common.dump_*)."""
+    if not bench_common.dump_enabled():
+        return
+    def rows(q, *cols):
+        r = cmd(q, language="opencypher", timeout=900)
+        if r.status_code != 200:
+            raise RuntimeError(r.text[:200])
+        for rec in r.json()["result"]:
+            yield tuple(rec[c] for c in cols)
+    def all_ids():
+        return [r[0] for r in rows("MATCH (v:Vertex) RETURN v.VID AS id", "id")]
+    bench_common.dump_safely("arcadedb", "PR", lambda: bench_common.dump_rows("arcadedb", "PR", (
+        (i, float(s)) for i, s in rows(
+            "CALL algo.pagerank({dampingFactor: 0.85, maxIterations: 10, tolerance: 0.0, direction: 'BOTH'}) "
+            "YIELD node, score RETURN node.VID AS id, score", "id", "score"))))
+    bench_common.dump_safely("arcadedb", "WCC", lambda: bench_common.dump_rows("arcadedb", "WCC", rows(
+        "CALL algo.wcc() YIELD node, componentId RETURN node.VID AS id, componentId", "id", "componentId")))
+    bench_common.dump_safely("arcadedb", "LCC", lambda: bench_common.dump_rows("arcadedb", "LCC", (
+        (i, float(c)) for i, c in rows(
+            "CALL algo.localClusteringCoefficient() YIELD node, localClusteringCoefficient "
+            "RETURN node.VID AS id, localClusteringCoefficient AS lcc", "id", "lcc"))))
+    def bfs():
+        reached = {i: d for i, d in rows(
+            "MATCH (s:Vertex {VID: 6}) CALL algo.bfs(s) YIELD node, depth RETURN node.VID AS id, depth", "id", "depth")}
+        bench_common.dump_bfs("arcadedb", reached, all_ids(), 6)
+    bench_common.dump_safely("arcadedb", "BFS", bfs)
+    def sssp():
+        dist = {i: float(c) for i, c in rows(
+            "MATCH (s:Vertex {VID: 6}) CALL algo.dijkstra.singleSource(s, 'EDGE', 'WEIGHT', 'BOTH') "
+            "YIELD node, cost RETURN node.VID AS id, cost", "id", "cost")}
+        dist[6] = 0.0
+        bench_common.dump_rows("arcadedb", "SSSP", ((i, dist.get(i, "infinity")) for i in all_ids()))
+    bench_common.dump_safely("arcadedb", "SSSP", sssp)
+    bench_common.dump_safely("arcadedb", "CDLP", lambda: bench_common.dump_rows("arcadedb", "CDLP", rows(
+        "CALL algo.labelPropagation({maxIterations: 10}) YIELD node, communityId "
+        "RETURN node.VID AS id, communityId", "id", "communityId")))
+
+
 def run_benchmark():
     """
     ArcadeDB benchmark via Docker (HTTP API) — same network overhead as
@@ -26,7 +65,10 @@ def run_benchmark():
     print("=" * 70)
 
     results = {}
-    base = "http://localhost:2480/api/v1"
+    # Host ports are configurable so that the benchmark can run next to another ArcadeDB on the default ports
+    http_port = os.environ.get("ARCADEDB_BENCH_HTTP_PORT", "2480")
+    binary_port = os.environ.get("ARCADEDB_BENCH_BINARY_PORT", "2424")
+    base = f"http://localhost:{http_port}/api/v1"
     auth = ("root", "benchmark")
     db = "bench"
 
@@ -46,13 +88,15 @@ def run_benchmark():
     # --- Phase 1: Load data via embedded Java (fast GraphBatchImporter) ---
     # The database is created by the Java loader and then mounted into Docker.
     # This separates "load" (embedded, ~160s) from "compute" (Docker, HTTP API).
-    db_path = "/tmp/arcadedb-docker-data/bench"
+    data_root = bench_common.embedded_db_path("graphalytics", "arcadedb", "databases")
+    log_root = bench_common.embedded_db_path("graphalytics", "arcadedb", "log")
+    db_path = os.path.join(data_root, "bench")
     needs_load = not os.path.isdir(db_path) or bench_common.RESET
 
     if needs_load:
         if os.path.isdir(db_path):
             shutil.rmtree(db_path)
-        os.makedirs("/tmp/arcadedb-docker-data", exist_ok=True)
+        os.makedirs(data_root, exist_ok=True)
 
         print("\n[ArcadeDB] Loading data via embedded Java (GraphBatchImporter)...")
         start = time.perf_counter()
@@ -127,6 +171,8 @@ public class ArcadeDBEmbeddedLoader {
 }
 """)
 
+        import bench_java
+        bench_java.assert_not_graalvm("java")  # Temurin 25 only
         # Compile
         _sp.run([
             "javac", "--add-modules", "jdk.incubator.vector",
@@ -136,7 +182,7 @@ public class ArcadeDBEmbeddedLoader {
         # Run
         proc = _sp.run([
             "java", "--add-modules", "jdk.incubator.vector",
-            "-Xms12g", "-Xmx12g",
+            "-Xms12g", "-Xmx12g", *os.environ.get("ARCADEDB_JVM_FLAGS", "").split(),
             "-cp", f".:{ldbc_jar}",
             "ArcadeDBEmbeddedLoader", db_path, VERTEX_FILE, EDGE_FILE
         ], cwd=bench_dir, capture_output=True, text=True)
@@ -156,12 +202,12 @@ public class ArcadeDBEmbeddedLoader {
     _sp.run(["docker", "rm", "-f", "arcadedb"], capture_output=True)
     _sp.run([
         "docker", "run", "-d", "--name", "arcadedb",
-        "-p", "2480:2480", "-p", "2424:2424",
+        "-p", f"{http_port}:2480", "-p", f"{binary_port}:2424",
         "-e", "ARCADEDB_OPTS_MEMORY=-Xms12g -Xmx12g",
         "-e", "JAVA_OPTS=--add-modules jdk.incubator.vector -Darcadedb.server.rootPassword=benchmark",
-        "-v", "/tmp/arcadedb-docker-data:/home/arcadedb/databases",
-        "-v", "/tmp/arcadedb-docker-log:/home/arcadedb/log",
-        "arcadedata/arcadedb:26.4.1-SNAPSHOT"
+        "-v", f"{data_root}:/home/arcadedb/databases",
+        "-v", f"{log_root}:/home/arcadedb/log",
+        os.environ.get("ARCADEDB_IMAGE", "arcadedata/arcadedb:26.10.1-SNAPSHOT")
     ], check=True)
 
     # Wait for server + GAV auto-restore (CSR build takes ~60-90s)
@@ -226,8 +272,11 @@ public class ArcadeDBEmbeddedLoader {
     # The algorithm runs server-side; we only measure compute time + minimal transfer.
 
     # --- PageRank ---
+    # Graphalytics PageRank: undirected (BOTH), exactly 10 iterations, no early stop. The procedure's
+    # defaults (direction OUT, 20 iterations, tolerance 1e-4) compute a different, directed PageRank.
     run_algo("pagerank",
-             "CALL algo.pagerank() YIELD score RETURN count(*) AS cnt")
+             "CALL algo.pagerank({dampingFactor: 0.85, maxIterations: 10, tolerance: 0.0, direction: 'BOTH'}) "
+             "YIELD score RETURN count(*) AS cnt")
 
     # --- WCC ---
     run_algo("wcc",
@@ -243,13 +292,16 @@ public class ArcadeDBEmbeddedLoader {
              timeout=300)
 
     # --- SSSP (Dijkstra single-source) ---
+    # The procedure defaults to direction OUT; the undirected Graphalytics SSSP needs BOTH.
     run_algo("sssp",
-             "MATCH (s:Vertex {VID: 6}) CALL algo.dijkstra.singleSource(s, 'EDGE', 'WEIGHT') YIELD distance RETURN count(*) AS cnt")
+             "MATCH (s:Vertex {VID: 6}) CALL algo.dijkstra.singleSource(s, 'EDGE', 'WEIGHT', 'BOTH') "
+             "YIELD cost RETURN count(*) AS cnt")
 
     # --- CDLP (Label Propagation) ---
     run_algo("cdlp",
              "CALL algo.labelPropagation({maxIterations: 10}) YIELD communityId RETURN count(*) AS cnt")
 
+    _dump_all(cmd)
     bench_common.cleanup_docker("arcadedb")
     return results
 

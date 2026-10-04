@@ -4,6 +4,7 @@ Each sub-module exposes a run_benchmark() function for its respective DBMS.
 """
 
 from .kuzu import run_benchmark as _kuzu
+from .ladybug import run_benchmark as _ladybug
 from .duckpgq import run_benchmark as _duckpgq
 from .memgraph import run_benchmark as _memgraph
 from .neo4j import run_benchmark as _neo4j
@@ -17,10 +18,11 @@ from .dgraph import run_benchmark as _dgraph
 AVAILABLE_SYSTEMS = {
     "arcadedb": ("ArcadeDB-Docker", _arcadedb),
     "kuzu": ("Kuzu", _kuzu),
+    "ladybug": ("LadybugDB", _ladybug),
     "duckpgq": ("DuckPGQ", _duckpgq),
     "memgraph": ("Memgraph", _memgraph),
     "neo4j": ("Neo4j", _neo4j),
-    "arangodb": ("ArangoDB", _arangodb),
+    "arangodb": ("ArangoDB", _arangodb),  # pinned to 3.11.14: the Pregel-based algorithms need it (3.12+ has no Pregel)
     "falkordb": ("FalkorDB", _falkordb),
     "hugegraph": ("HugeGraph", _hugegraph),
     "surrealdb": ("SurrealDB", _surrealdb),

@@ -10,8 +10,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'shared')
 import bench_common
 from bench_common import fmt, GRAPHS_DIR
 
-VERTEX_FILE = os.path.join(GRAPHS_DIR, "datagen-7_5-fb", "datagen-7_5-fb.v")
-EDGE_FILE = os.path.join(GRAPHS_DIR, "datagen-7_5-fb", "datagen-7_5-fb.e")
+# Dataset under datasets/<name>/<name>.{v,e}; every system loads these files. Override with
+# GRAPHALYTICS_DATASET (for example graph500-22-w, see README); the default is datagen-7_5-fb.
+DATASET = bench_common.GRAPHALYTICS_DATASET
+VERTEX_FILE = os.path.join(GRAPHS_DIR, DATASET, f"{DATASET}.v")
+EDGE_FILE = os.path.join(GRAPHS_DIR, DATASET, f"{DATASET}.e")
 SOURCE_VERTEX = 6
 PR_DAMPING = 0.85
 PR_ITERATIONS = 10

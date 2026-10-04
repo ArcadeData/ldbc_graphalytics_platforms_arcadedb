@@ -36,45 +36,24 @@ from systems._common import LSQB_METRICS
 import systems._common as _common
 
 
-if __name__ == "__main__":
-    import argparse as _ap
-
-    # Custom arg parsing to handle --sf before delegating to bench_common
-    parser = _ap.ArgumentParser(description="LSQB multi-vendor benchmark")
+def _add_args(parser):
     parser.add_argument("--sf", default="1",
                         help="LDBC SNB scale factor (default: 1)")
-    parser.add_argument("--reset", action="store_true",
-                        help="Delete all data and reload from scratch")
-    parser.add_argument("systems", nargs="*",
-                        help=f"Systems to benchmark (default: all). "
-                             f"Choices: {', '.join(AVAILABLE_SYSTEMS.keys())}")
-    args = parser.parse_args()
 
+
+def _apply_args(args):
     _common.SF = args.sf
-    bench_common.RESET = args.reset
 
-    if args.systems:
-        systems_to_run = args.systems
-    else:
-        systems_to_run = [k for k in AVAILABLE_SYSTEMS if k not in DEFAULT_EXCLUDE]
 
-    all_results = {}
-    for key in systems_to_run:
-        key = key.lower()
-        if key not in AVAILABLE_SYSTEMS:
-            print(f"Unknown system: {key}. "
-                  f"Available: {', '.join(AVAILABLE_SYSTEMS.keys())}")
-            continue
-        name, func = AVAILABLE_SYSTEMS[key]
-        try:
-            r = func()
-            if isinstance(r, dict) and "error" not in r:
-                all_results[name] = r
-        except Exception as e:
-            print(f"\n{name} failed: {e}")
-            import traceback; traceback.print_exc()
-
-    if all_results:
-        bench_common.print_summary(
-            f"LSQB SF{_common.SF} (subgraph pattern matching)",
-            LSQB_METRICS, all_results)
+if __name__ == "__main__":
+    bench_common.run_benchmarks(
+        description="LSQB multi-vendor benchmark",
+        available_systems=AVAILABLE_SYSTEMS,
+        summary_title=lambda: f"LSQB SF{_common.SF} (subgraph pattern matching)",
+        metrics=LSQB_METRICS,
+        default_exclude=DEFAULT_EXCLUDE,
+        suite="lsqb",
+        dataset_paths=lambda: [_common.data_dir_projected(), _common.data_dir_merged()],
+        extra_args=_add_args,
+        post_args=_apply_args,
+    )

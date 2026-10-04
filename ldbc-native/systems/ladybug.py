@@ -1,4 +1,4 @@
-"""Kuzu benchmark for LDBC Graphalytics."""
+"""LadybugDB benchmark for LDBC Graphalytics."""
 
 import time
 import os
@@ -7,35 +7,13 @@ import shutil
 from ._common import VERTEX_FILE, EDGE_FILE, bench_common
 
 
-def _dump_all(conn):
-    """Full per-vertex outputs of the exact calls the benchmark times (see bench_common.dump_*)."""
-    if not bench_common.dump_enabled():
-        return
-    def rows(q):
-        r = conn.execute(q)
-        while r.has_next():
-            yield r.get_next()
-    def ids():
-        return [row[0] for row in rows("MATCH (n:Node) RETURN n.id")]
-    bench_common.dump_safely("kuzu", "PR", lambda: bench_common.dump_rows(
-        "kuzu", "PR", ((r[0], float(r[1])) for r in rows("CALL page_rank('pg') RETURN node.id, rank"))))
-    bench_common.dump_safely("kuzu", "WCC", lambda: bench_common.dump_rows(
-        "kuzu", "WCC", ((r[0], r[1]) for r in rows("CALL weakly_connected_components('pg') RETURN node.id, group_id"))))
-    bench_common.dump_safely("kuzu", "LCC", lambda: bench_common.dump_rows(
-        "kuzu", "LCC", ((r[0], float(r[1])) for r in rows("CALL local_clustering_coefficient('pg') RETURN node.id, coefficient"))))
-    bench_common.dump_safely("kuzu", "BFS", lambda: bench_common.dump_bfs(
-        "kuzu", {r[0]: r[1] for r in rows(
-            "MATCH (a:Node {id: 6})-[e:Edge* ALL SHORTEST 1..30]->(b:Node) RETURN b.id, length(e)")},
-        ids(), 6))
-
-
 def run_benchmark():
-    import kuzu
+    import ladybug as kuzu
     print("\n" + "=" * 70)
-    print("KUZU BENCHMARK")
+    print("LADYBUGDB BENCHMARK")
     print("=" * 70)
 
-    db_path = bench_common.embedded_db_path("graphalytics", "kuzu", "db")
+    db_path = bench_common.embedded_db_path("graphalytics", "ladybug", "db")
     results = {}
 
     if bench_common.RESET:
@@ -53,7 +31,7 @@ def run_benchmark():
             r = conn.execute("MATCH ()-[e:Edge]->() RETURN count(e) AS cnt")
             if r.has_next() and r.get_next()[0] > 0:
                 needs_load = False
-                print("\n[Kuzu] Data already loaded, skipping import")
+                print("\n[LadybugDB] Data already loaded, skipping import")
         except Exception:
             needs_load = True
 
@@ -63,7 +41,7 @@ def run_benchmark():
         elif os.path.exists(db_path):
             os.remove(db_path)
 
-        print("\n[Kuzu] Loading data...")
+        print("\n[LadybugDB] Loading data...")
         start = time.perf_counter()
         db = kuzu.Database(db_path)
         conn = kuzu.Connection(db)
@@ -109,7 +87,7 @@ def run_benchmark():
         print(f"  Project graph failed: {e}")
 
     # --- PageRank ---
-    print("\n[Kuzu] Running PageRank...")
+    print("\n[LadybugDB] Running PageRank...")
     def _run_pagerank():
         r = conn.execute("""
             CALL page_rank('pg') RETURN node.id, rank
@@ -128,7 +106,7 @@ def run_benchmark():
         print(f"  PageRank time: {elapsed:.2f}s")
 
     # --- WCC (Weakly Connected Components) ---
-    print("\n[Kuzu] Running WCC...")
+    print("\n[LadybugDB] Running WCC...")
     def _run_wcc():
         r = conn.execute("""
             CALL weakly_connected_components('pg')
@@ -148,7 +126,7 @@ def run_benchmark():
         print(f"  WCC time: {elapsed:.2f}s")
 
     # --- LCC (Local Clustering Coefficient) ---
-    print("\n[Kuzu] Running LCC...")
+    print("\n[LadybugDB] Running LCC...")
     def _run_lcc():
         r = conn.execute("""
             CALL local_clustering_coefficient('pg')
@@ -168,7 +146,7 @@ def run_benchmark():
         print(f"  LCC time: {elapsed:.2f}s")
 
     # --- BFS (shortest path from source) ---
-    print("\n[Kuzu] Running BFS/Shortest Path from vertex 6...")
+    print("\n[LadybugDB] Running BFS/Shortest Path from vertex 6...")
     def _run_bfs():
         r = conn.execute("""
             MATCH (a:Node {id: 6})-[e:Edge* ALL SHORTEST 1..30]->(b:Node)
@@ -184,8 +162,6 @@ def run_benchmark():
     results["bfs"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  BFS time: {elapsed:.2f}s")
-
-    _dump_all(conn)
 
     # Cleanup
     del conn

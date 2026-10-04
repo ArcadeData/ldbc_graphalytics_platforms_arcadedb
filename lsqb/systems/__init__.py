@@ -6,6 +6,7 @@ for that specific DBMS.
 """
 
 from . import kuzu
+from . import ladybug
 from . import duckdb
 from . import neo4j
 from . import arcadedb
@@ -18,6 +19,7 @@ from . import _common
 
 AVAILABLE_SYSTEMS = {
     "kuzu": ("Kuzu", kuzu.run_benchmark),
+    "ladybug": ("LadybugDB", ladybug.run_benchmark),
     "duckdb": ("DuckDB", duckdb.run_benchmark),
     "neo4j": ("Neo4j", neo4j.run_benchmark),
     "memgraph": ("Memgraph", memgraph.run_benchmark),

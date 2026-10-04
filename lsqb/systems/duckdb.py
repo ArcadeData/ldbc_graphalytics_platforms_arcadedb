@@ -14,7 +14,7 @@ def run_benchmark():
     print("=" * 70)
 
     results = {}
-    db_path = "/tmp/duckdb_lsqb.db"
+    db_path = bench_common.embedded_db_path("lsqb", "duckdb", "db.duckdb")
     data_dir = data_dir_merged()
     # Files are flat in the data directory (no subdirs).
 

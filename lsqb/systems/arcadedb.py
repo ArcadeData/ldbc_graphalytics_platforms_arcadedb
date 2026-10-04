@@ -243,16 +243,14 @@ def run_benchmark():
         print(f"\n[ArcadeDB] Running {qid.upper()}...")
         start = time.perf_counter()
         try:
-            r = cypher(query.strip())
-            elapsed = time.perf_counter() - start
-            if r.status_code == 200:
-                data = r.json()
-                count = data["result"][0]["count"]
-                results[qid] = elapsed
-                print(f"  {qid.upper()} time: {elapsed:.2f}s  (count={count})")
-            else:
-                print(f"  {qid.upper()} failed ({elapsed:.2f}s): {r.text[:300]}")
-                results[qid] = "N/A"
+            def _once(query=query):
+                r = cypher(query.strip())
+                if r.status_code != 200:
+                    raise RuntimeError(r.text[:300])
+                return r.json()["result"][0]["count"]
+            elapsed, count = bench_common.measure_repeated(_once)
+            results[qid] = elapsed
+            print(f"  {qid.upper()} time: {elapsed:.2f}s  (count={count})")
         except Exception as e:
             elapsed = time.perf_counter() - start
             print(f"  {qid.upper()} failed ({elapsed:.2f}s): {e}")

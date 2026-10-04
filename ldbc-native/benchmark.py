@@ -14,6 +14,12 @@ Usage:
   python3 benchmark.py surrealdb            # Run only SurrealDB
   python3 benchmark.py dgraph               # Run only Dgraph
   python3 benchmark.py --reset memgraph    # Reset and run only Memgraph
+
+Every vendor runs in its own process group with hard limits: --vendor-timeout
+(total, default 3600 s), --idle-timeout (no output, default 600 s). A vendor
+that exceeds a limit gets SIGTERM, then SIGKILL after --kill-grace seconds, its
+containers are removed, and the suite continues with the next vendor. Loaded
+data is kept between runs (see shared/bench_state.py); --reset wipes it.
 """
 
 import os
@@ -23,12 +29,16 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'shared'))
 
 import bench_common
 from systems import AVAILABLE_SYSTEMS, GRAPHALYTICS_METRICS, DEFAULT_EXCLUDE
+from systems._common import VERTEX_FILE, EDGE_FILE
 
 if __name__ == "__main__":
     bench_common.run_benchmarks(
         description="LDBC Graphalytics multi-vendor benchmark",
         available_systems=AVAILABLE_SYSTEMS,
-        summary_title="datagen-7_5-fb (633K vertices, 34M edges)",
+        summary_title=lambda: f"{bench_common.GRAPHALYTICS_DATASET}",
         metrics=GRAPHALYTICS_METRICS,
         default_exclude=DEFAULT_EXCLUDE,
+        suite=bench_common.graphalytics_suite(),
+        dataset_paths=lambda: [VERTEX_FILE, EDGE_FILE],
+        hugegraph_datasets=os.path.abspath(bench_common.GRAPHS_DIR),
     )

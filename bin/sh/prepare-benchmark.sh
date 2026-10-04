@@ -22,10 +22,14 @@ if [ ! -f "$config/platform.properties" ]; then
 fi
 
 # Set JVM memory options
-export java_opts="-Xms16g -Xmx16g --add-modules jdk.incubator.vector"
+# Executor heap and extra JVM flags can be overridden from the environment, for example
+#   GRAPHALYTICS_HEAP_OPTS="-Xms4g -Xmx4g" EXTRA_JVM="-XX:+UseCompactObjectHeaders"
+# The benchmark runner (the JVM that executes the algorithms) defaults to 3x the executor heap,
+# so a 4g executor gives the runner 12g. Defaults are unchanged when nothing is set.
+export java_opts="${GRAPHALYTICS_HEAP_OPTS:--Xms16g -Xmx16g} ${EXTRA_JVM} --add-modules jdk.incubator.vector"
 
 # Ensure runner subprocesses also get the incubator module
-export JDK_JAVA_OPTIONS="--add-modules jdk.incubator.vector"
+export JDK_JAVA_OPTIONS="--add-modules jdk.incubator.vector ${EXTRA_JVM}"
 
 # Set library jar
 export LIBRARY_JAR=`ls lib/graphalytics-*default*.jar`

@@ -26,7 +26,7 @@ def run_benchmark():
     except Exception as e:
         print(f"  Cannot connect to Neo4j: {e}")
         print("  Start with: docker run -d --name neo4j-lsqb -p 7474:7474 -p 7688:7687 "
-              "-e NEO4J_AUTH=neo4j/benchmark123 neo4j:2026-community")
+              "-e NEO4J_AUTH=neo4j/benchmark123 neo4j:2026.09.0-community")
         return {"error": str(e)}
 
     needs_load = True
@@ -146,10 +146,10 @@ def run_benchmark():
         print(f"\n[Neo4j] Running {qid.upper()}...")
         start = time.perf_counter()
         try:
-            with driver.session() as session:
-                r = session.run(query, timeout=bench_common.QUERY_TIMEOUT).single()
-                count = r["count"]
-            elapsed = time.perf_counter() - start
+            def _once(query=query):
+                with driver.session() as session:
+                    return session.run(query, timeout=bench_common.QUERY_TIMEOUT).single()["count"]
+            elapsed, count = bench_common.measure_repeated(_once)
             results[qid] = elapsed
             print(f"  {qid.upper()} time: {elapsed:.2f}s  (count={count})")
         except Exception as e:

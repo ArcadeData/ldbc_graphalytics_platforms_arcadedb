@@ -25,3 +25,6 @@ graphalytics-1.3.0-arcadedb-0.1-SNAPSHOT-bin.tar.gz
 .idea/
 
 notes.txt
+weekly-results/
+runs-mode1/
+src/*.egg-info/

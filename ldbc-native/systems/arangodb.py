@@ -5,6 +5,48 @@ import time
 from ._common import VERTEX_FILE, EDGE_FILE, bench_common
 
 
+def _dump_all(db, run_pregel):
+    """Full per-vertex outputs (Pregel stores its results in a field of each vertex document)."""
+    if not bench_common.dump_enabled():
+        return
+    def pregel(vendor_algo, algo, field, **kw):
+        params = dict(kw.pop("algo_params", {}) or {})
+        params["resultField"] = field
+        job_id = db.pregel.create_job(graph='bench', algorithm=algo, store=True, algorithm_params=params, **kw)
+        import time as t
+        while True:
+            job = db.pregel.job(job_id)
+            if job['state'] in ('done', 'canceled', 'fatal error'):
+                break
+            t.sleep(1)
+        if job['state'] != 'done':
+            raise RuntimeError(f"{vendor_algo} export failed: {job['state']}")
+        t.sleep(2)
+        return db.aql.execute(f"FOR v IN nodes RETURN [v.vid, v.`{field}`]", ttl=600, batch_size=100000)
+    bench_common.dump_safely("arangodb", "PR", lambda: bench_common.dump_rows("arangodb", "PR", (
+        (r[0], float(r[1])) for r in pregel("PR", "pagerank", "pr", max_gss=10, algo_params={'threshold': 0.0}))))
+    bench_common.dump_safely("arangodb", "WCC", lambda: bench_common.dump_rows("arangodb", "WCC", (
+        (r[0], r[1]) for r in pregel("WCC", "connectedcomponents", "wcc"))))
+    bench_common.dump_safely("arangodb", "CDLP", lambda: bench_common.dump_rows("arangodb", "CDLP", (
+        (r[0], r[1]) for r in pregel("CDLP", "labelpropagation", "cdlp", max_gss=10))))
+    def sssp():
+        rows = list(pregel("SSSP", "sssp", "dist", algo_params={'source': 'nodes/6'}))
+        bench_common.dump_rows("arangodb", "SSSP", ((r[0], "infinity" if r[1] is None else float(r[1])) for r in rows))
+    bench_common.dump_safely("arangodb", "SSSP", sssp)
+    def bfs():
+        from arango import ArangoClient
+        long_db = ArangoClient(hosts='http://localhost:8529', request_timeout=1800).db(
+            '_system', username='root', password='benchmark')   # the benchmark client times out after 60 s
+        cur = long_db.aql.execute("""
+            FOR v, e, p IN 0..100 ANY 'nodes/6' GRAPH 'bench'
+                OPTIONS {bfs: true, uniqueVertices: 'global'}
+                RETURN [v.vid, LENGTH(p.edges)]
+        """, ttl=1800, batch_size=100000)
+        reached = {r[0]: r[1] for r in cur}
+        bench_common.dump_bfs("arangodb", reached, [r for r in long_db.aql.execute("FOR v IN nodes RETURN v.vid", ttl=600, batch_size=100000)], 6)
+    bench_common.dump_safely("arangodb", "BFS", bfs)
+
+
 def run_benchmark():
     from arango import ArangoClient
     print("\n" + "=" * 70)
@@ -119,6 +161,11 @@ def run_benchmark():
                 return job
             t.sleep(0.5)
 
+    if bench_common.dump_only():
+        _dump_all(db, run_pregel)
+        bench_common.cleanup_docker("arangodb")
+        return results
+
     # --- PageRank ---
     print("\n[ArangoDB] Running PageRank...")
     def _run_pagerank():
@@ -227,12 +274,9 @@ def run_benchmark():
     if isinstance(elapsed, (int, float)):
         print(f"  BFS time: {elapsed:.2f}s")
 
-    # Cleanup
-    try:
-        db.delete_graph('bench', drop_collections=True)
-    except Exception:
-        pass
+    _dump_all(db, run_pregel)
 
+    # The loaded graph is kept (persisted data directory, reused by the next run; --reset wipes it).
     bench_common.cleanup_docker("arangodb")
     return results
 

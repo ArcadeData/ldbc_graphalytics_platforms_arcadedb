@@ -1,4 +1,4 @@
-"""Kuzu LSQB benchmark module."""
+"""LadybugDB LSQB benchmark module."""
 
 import time
 import os
@@ -9,13 +9,13 @@ from ._common import data_dir_projected, bench_common
 
 
 def run_benchmark():
-    import kuzu
+    import ladybug as kuzu
     print("\n" + "=" * 70)
-    print("KUZU LSQB BENCHMARK")
+    print("LADYBUGDB LSQB BENCHMARK")
     print("=" * 70)
 
     results = {}
-    db_path = bench_common.embedded_db_path("lsqb", "kuzu", "db")
+    db_path = bench_common.embedded_db_path("lsqb", "ladybug", "db")
     data_dir = data_dir_projected()
     # Files are flat in the data directory (no subdirs).
 
@@ -33,7 +33,7 @@ def run_benchmark():
             row = r.get_next()
             if row and row[0] > 0:
                 needs_load = False
-                print(f"\n[Kuzu] Data already loaded ({row[0]} persons), skipping import")
+                print(f"\n[LadybugDB] Data already loaded ({row[0]} persons), skipping import")
         except Exception:
             # DB exists but is corrupt or incomplete — will be rebuilt
             try:
@@ -47,7 +47,7 @@ def run_benchmark():
         db = kuzu.Database(db_path)
         conn = kuzu.Connection(db)
 
-        print("\n[Kuzu] Loading LSQB data...")
+        print("\n[LadybugDB] Loading LSQB data...")
         start = time.perf_counter()
 
         # Projected-fk CSVs: entity files have 1 column (id), edge files have 2 columns.
@@ -110,9 +110,9 @@ def run_benchmark():
         db = kuzu.Database(db_path)
         conn = kuzu.Connection(db)
 
-    # Kuzu uses separate relationship types, so we need adapted queries.
+    # LadybugDB uses separate relationship types, so we need adapted queries.
     # Queries involving :Message or undirected KNOWS need adjustment.
-    kuzu_queries = {
+    ladybug_queries = {
         "q1": """
 MATCH (:Country)<-[:IS_PART_OF]-(:City)<-[:IS_LOCATED_IN]-(:Person)<-[:HAS_MEMBER]-(:Forum)-[:CONTAINER_OF]->(:Post)<-[:REPLY_OF]-(:Comment)-[:HAS_TAG_C]->(:Tag)-[:HAS_TYPE]->(:TagClass)
 RETURN count(*) AS count
@@ -142,19 +142,19 @@ WHERE NOT EXISTS { MATCH (person1)-[:KNOWS]-(person3) }
 RETURN count(*) AS count
 """,
     }
-    # Q4, Q5, Q7, Q8 require :Message (Post + Comment union) — skip for Kuzu
+    # Q4, Q5, Q7, Q8 require :Message (Post + Comment union) — skip for LadybugDB
 
     # Set 300s query timeout
     conn.set_query_timeout(bench_common.QUERY_TIMEOUT * 1000)
 
     for qid in [f"q{i}" for i in range(1, 10)]:
-        query = kuzu_queries.get(qid)
+        query = ladybug_queries.get(qid)
         if query is None:
-            print(f"\n[Kuzu] {qid.upper()}: skipped (requires :Message union type)")
+            print(f"\n[LadybugDB] {qid.upper()}: skipped (requires :Message union type)")
             results[qid] = "N/A"
             continue
 
-        print(f"\n[Kuzu] Running {qid.upper()}...")
+        print(f"\n[LadybugDB] Running {qid.upper()}...")
         start = time.perf_counter()
         try:
             r = conn.execute(query)

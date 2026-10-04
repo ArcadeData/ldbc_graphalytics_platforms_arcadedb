@@ -24,7 +24,7 @@ public class ArcadeDBEmbeddedBenchmark {
   static final String GRAPHS_DIR    = "../datasets/datagen-7_5-fb";
   static final String VERTEX_FILE   = GRAPHS_DIR + "/datagen-7_5-fb.v";
   static final String EDGE_FILE     = GRAPHS_DIR + "/datagen-7_5-fb.e";
-  static final String DB_PATH       = "/tmp/arcadedb_benchmark";
+  static final String DB_PATH       = System.getProperty("db.path", "/tmp/arcadedb_benchmark");
   static final String VERTEX_TYPE   = "Vertex";
   static final String EDGE_TYPE     = "EDGE";
   static final String ID_PROP       = "VID";
@@ -36,14 +36,51 @@ public class ArcadeDBEmbeddedBenchmark {
     System.out.println("ArcadeDB BENCHMARK");
     System.out.println("======================================================================");
 
+    boolean reset = false;
+    boolean discard = false;
+    for (String arg : args) {
+      if (arg.equals("--reset")) reset = true;
+      if (arg.equals("--discard")) discard = true;
+    }
+
+    // A completed load leaves a sibling marker holding the load time in ms. Reuse the database only
+    // when the marker exists: a load that was killed half way never wrote it.
+    java.io.File marker = new java.io.File(DB_PATH + ".loaded");
+    boolean reuse = !reset && marker.exists() && new java.io.File(DB_PATH).isDirectory();
+
+    Database db;
+    GraphAnalyticalView gav;
+    long loadTime;
+    int edgeCount;
+
+    if (reuse) {
+      System.out.println("\n[ArcadeDB] Reusing loaded database at " + DB_PATH + " (use --reset to reload)");
+      db = new DatabaseFactory(DB_PATH).open();
+      gav = com.arcadedb.graph.olap.GraphAnalyticalViewRegistry.get(db, "benchmark");
+      if (gav == null) {
+        gav = GraphAnalyticalView.builder(db)
+            .withName("benchmark")
+            .withVertexTypes(VERTEX_TYPE)
+            .withEdgeTypes(EDGE_TYPE)
+            .withEdgeProperties(WEIGHT_PROP)
+            .build();
+      }
+      boolean ready = com.arcadedb.graph.GraphTraversalProviderRegistry.awaitAll(db, 120, java.util.concurrent.TimeUnit.SECONDS);
+      if (!ready)
+        System.err.println("WARNING: GAV did not become ready within 120s");
+      edgeCount = (int) db.countType(EDGE_TYPE, false);
+      loadTime = Long.parseLong(new String(java.nio.file.Files.readAllBytes(marker.toPath())).trim());
+      System.out.println("  Load time of the original load: " + loadTime / 1000.0 + "s (data reused)");
+    } else {
     // Clean up previous run
     deleteDirectory(new java.io.File(DB_PATH));
+    marker.delete();
 
     // --- LOAD ---
     System.out.println("\n[ArcadeDB] Loading data...");
     long loadStart = System.currentTimeMillis();
 
-    Database db = new DatabaseFactory(DB_PATH).create();
+    db = new DatabaseFactory(DB_PATH).create();
     db.begin();
 
     // Create schema
@@ -82,7 +119,7 @@ public class ArcadeDBEmbeddedBenchmark {
         .withWAL(false)
         .build();
 
-    int edgeCount = 0;
+    edgeCount = 0;
     try (BufferedReader br = new BufferedReader(new FileReader(EDGE_FILE), 1 << 20)) {
       String line;
       while ((line = br.readLine()) != null) {
@@ -104,7 +141,7 @@ public class ArcadeDBEmbeddedBenchmark {
     // Build GAV
     System.out.println("\n[ArcadeDB] Building Graph Analytical View...");
     long gavStart = System.currentTimeMillis();
-    GraphAnalyticalView gav = GraphAnalyticalView.builder(db)
+    gav = GraphAnalyticalView.builder(db)
         .withName("benchmark")
         .withVertexTypes(VERTEX_TYPE)
         .withEdgeTypes(EDGE_TYPE)
@@ -113,8 +150,10 @@ public class ArcadeDBEmbeddedBenchmark {
     long gavTime = System.currentTimeMillis() - gavStart;
     System.out.println("  GAV build: " + gavTime / 1000.0 + "s");
 
-    long loadTime = System.currentTimeMillis() - loadStart;
+    loadTime = System.currentTimeMillis() - loadStart;
     System.out.println("  Total load time: " + loadTime / 1000.0 + "s");
+    java.nio.file.Files.write(marker.toPath(), Long.toString(loadTime).getBytes());
+    } // end of load block
 
     int n = gav.getNodeMapping().size();
     System.out.println("  GAV nodes: " + n);
@@ -140,7 +179,9 @@ public class ArcadeDBEmbeddedBenchmark {
     // PageRank
     System.out.println("\n[ArcadeDB] Running PageRank (damping=0.85, iter=10)...");
     long start = System.currentTimeMillis();
-    double[] pr = GraphAlgorithms.pageRank(gav, 0.85, 10, EDGE_TYPE);
+    // BOTH = undirected, as the Graphalytics reference expects (the 4-argument overload without a
+    // direction is directed, OUT).
+    double[] pr = GraphAlgorithms.pageRank(gav, 0.85, 10, Vertex.DIRECTION.BOTH, EDGE_TYPE);
     double prTime = (System.currentTimeMillis() - start) / 1000.0;
     results.put("PR", prTime);
     // Print top 3
@@ -201,6 +242,31 @@ public class ArcadeDBEmbeddedBenchmark {
     results.put("CDLP", cdlpTime);
     System.out.println("  CDLP time: " + cdlpTime + "s");
 
+    // --- Optional full-output dump (-Ddump.dir=<dir>) to validate against the LDBC reference outputs ---
+    final String dumpDir = System.getProperty("dump.dir");
+    if (dumpDir != null) {
+      new java.io.File(dumpDir).mkdirs();
+      final long[] vids = new long[n];
+      db.begin();
+      try {
+        var vit = db.iterateType(VERTEX_TYPE, false);
+        while (vit.hasNext()) {
+          Vertex v = vit.next().asVertex();
+          int gid = gav.getNodeMapping().getGlobalId(v.getIdentity());
+          if (gid >= 0 && gid < n)
+            vids[gid] = ((Number) v.get(ID_PROP)).longValue();
+        }
+      } finally {
+        db.rollback();
+      }
+      dumpDoubles(dumpDir, "PR", vids, pr);
+      dumpInts(dumpDir, "WCC", vids, wcc, false);
+      dumpDoubles(dumpDir, "LCC", vids, lcc);
+      dumpDoubles(dumpDir, "SSSP", vids, sssp);
+      dumpInts(dumpDir, "BFS", vids, bfs, true);
+      dumpInts(dumpDir, "CDLP", vids, cdlp, false);
+    }
+
     // --- SUMMARY ---
     System.out.println("\n======================================================================");
     System.out.println("SUMMARY  -  datagen-7_5-fb (" + n + " vertices, " + edgeCount + " edges)");
@@ -212,7 +278,30 @@ public class ArcadeDBEmbeddedBenchmark {
 
     // Cleanup
     db.close();
-    deleteDirectory(new java.io.File(DB_PATH));
+    if (discard) deleteDirectory(new java.io.File(DB_PATH));
+  }
+
+  static void dumpDoubles(String dir, String algo, long[] vids, double[] vals) throws Exception {
+    try (java.io.PrintWriter w = new java.io.PrintWriter(new java.io.BufferedWriter(
+        new java.io.FileWriter(dir + "/arcadedb-embedded-" + algo + ".out"), 1 << 20))) {
+      for (int i = 0; i < vids.length; i++)
+        w.println(vids[i] + " " + (Double.isInfinite(vals[i]) ? "infinity" : Double.toString(vals[i])));
+    }
+    System.out.println("  [dump] " + algo);
+  }
+
+  /** bfsStyle: negative = unreachable (written as the LDBC sentinel). Otherwise the value is a node label. */
+  static void dumpInts(String dir, String algo, long[] vids, int[] vals, boolean bfsStyle) throws Exception {
+    try (java.io.PrintWriter w = new java.io.PrintWriter(new java.io.BufferedWriter(
+        new java.io.FileWriter(dir + "/arcadedb-embedded-" + algo + ".out"), 1 << 20))) {
+      for (int i = 0; i < vids.length; i++) {
+        if (bfsStyle)
+          w.println(vids[i] + " " + (vals[i] < 0 ? "9223372036854775807" : Integer.toString(vals[i])));
+        else
+          w.println(vids[i] + " " + vids[vals[i]]);   // labels are dense ids: write the vertex id they stand for
+      }
+    }
+    System.out.println("  [dump] " + algo);
   }
 
   static int[] topK(double[] arr, int k) {

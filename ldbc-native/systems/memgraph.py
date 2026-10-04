@@ -5,6 +5,36 @@ import time
 from ._common import VERTEX_FILE, EDGE_FILE, bench_common
 
 
+def _dump_all(cursor):
+    """Full per-vertex outputs of the exact calls the benchmark times (see bench_common.dump_*)."""
+    if not bench_common.dump_enabled():
+        return
+    def rows(q):
+        cursor.execute(q)
+        return cursor.fetchall()
+    bench_common.dump_safely("memgraph", "PR", lambda: bench_common.dump_rows("memgraph", "PR", (
+        (r[0], float(r[1])) for r in rows("CALL pagerank.get() YIELD node, rank RETURN node.id AS id, rank"))))
+    bench_common.dump_safely("memgraph", "WCC", lambda: bench_common.dump_rows("memgraph", "WCC", (
+        (r[0], r[1]) for r in rows(
+            "CALL weakly_connected_components.get() YIELD node, component_id RETURN node.id AS id, component_id"))))
+    bench_common.dump_safely("memgraph", "CDLP", lambda: bench_common.dump_rows("memgraph", "CDLP", (
+        (r[0], r[1]) for r in rows(
+            "CALL community_detection.get() YIELD node, community_id RETURN node.id AS id, community_id"))))
+    def bfs():
+        reached = {r[0]: r[1] for r in rows("MATCH (a:Node {id: 6})-[e:EDGE *BFS]->(b:Node) RETURN b.id, size(e) AS dist")}
+        bench_common.dump_bfs("memgraph", reached, [r[0] for r in rows("MATCH (n:Node) RETURN n.id")], 6)
+    bench_common.dump_safely("memgraph", "BFS", bfs)
+    def sssp():
+        dist = {r[0]: float(r[1]) for r in rows(
+            "MATCH (a:Node {id: 6})-[e:EDGE *wShortest (e, n | e.weight)]->(b:Node) "
+            "RETURN b.id, reduce(w = 0.0, x IN e | w + x.weight) AS dist")}
+        dist[6] = 0.0
+        bench_common.dump_rows("memgraph", "SSSP", (
+            (r[0], dist.get(r[0], "infinity")) for r in rows("MATCH (n:Node) RETURN n.id")))
+    bench_common.dump_safely("memgraph", "SSSP", sssp)
+    # LCC (nxalg.clustering) is not exported: it did not finish within the time limit on this graph.
+
+
 def run_benchmark():
     import mgclient
     print("\n" + "=" * 70)
@@ -104,6 +134,12 @@ def run_benchmark():
         print(f"  Vertices: {cursor.fetchone()[0]}")
         cursor.execute("MATCH ()-[e]->() RETURN count(e)")
         print(f"  Edges: {cursor.fetchone()[0]}")
+
+    if bench_common.dump_only():
+        _dump_all(cursor)
+        conn.close()
+        bench_common.cleanup_docker("memgraph")
+        return results
 
     # --- BFS ---
     print("\n[Memgraph] Running BFS...")
@@ -205,6 +241,7 @@ def run_benchmark():
     if isinstance(elapsed, (int, float)):
         print(f"  CDLP time: {elapsed:.2f}s")
 
+    _dump_all(cursor)
     conn.close()
     bench_common.cleanup_docker("memgraph")
     return results

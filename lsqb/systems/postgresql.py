@@ -35,7 +35,7 @@ def run_benchmark():
         except Exception as e:
             print(f"  Cannot connect to PostgreSQL: {e}")
             print("  Start with: docker run -d --name postgres-lsqb -p 5433:5432 "
-                  "-e POSTGRES_PASSWORD=benchmark postgres:17")
+                  "-e POSTGRES_PASSWORD=benchmark postgres:18")
             return {"error": str(e)}
 
     con.autocommit = True

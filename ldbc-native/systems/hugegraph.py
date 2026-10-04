@@ -5,6 +5,34 @@ import time
 from ._common import VERTEX_FILE, EDGE_FILE, SOURCE_VERTEX, GRAPHS_DIR, bench_common
 
 
+def _dump_all(run_algo):
+    """Full per-vertex outputs: Vermeer writes "<id>,<value>" lines into a local file of its worker container."""
+    if not bench_common.dump_enabled():
+        return
+    import subprocess as sp
+    def vermeer_out(name, tag, params):
+        p = dict(params)
+        p.update({"output.type": "local", "output.parallel": "1", "output.file_path": f"/tmp/dump_{tag}"})
+        run_algo(name, tag, p)
+        txt = sp.run(["docker", "exec", "vermeer-worker", "cat", f"/tmp/dump_{tag}_0"],
+                     capture_output=True, text=True, check=True).stdout
+        for line in txt.splitlines():
+            vid, val = line.split(",", 1)
+            yield int(vid), val
+    bench_common.dump_safely("hugegraph", "PR", lambda: bench_common.dump_rows("hugegraph", "PR", (
+        (v, float(x)) for v, x in vermeer_out("pagerank", "pr", {"pagerank.damping": "0.85", "pagerank.diff_threshold": "0.00001"}))))
+    bench_common.dump_safely("hugegraph", "WCC", lambda: bench_common.dump_rows("hugegraph", "WCC", vermeer_out("wcc", "wcc", {})))
+    bench_common.dump_safely("hugegraph", "CDLP", lambda: bench_common.dump_rows("hugegraph", "CDLP", vermeer_out("lpa", "cdlp", {})))
+    bench_common.dump_safely("hugegraph", "LCC", lambda: bench_common.dump_rows("hugegraph", "LCC", (
+        (v, float(x)) for v, x in vermeer_out("clustering_coefficient", "lcc", {}))))
+    def bfs():
+        # Vermeer sssp is unweighted (hop count); -1 marks an unreachable vertex
+        bench_common.dump_rows("hugegraph", "BFS", (
+            (v, bench_common.BFS_UNREACHABLE if int(float(x)) < 0 else int(float(x)))
+            for v, x in vermeer_out("sssp", "bfs", {"sssp.source": str(SOURCE_VERTEX)})))
+    bench_common.dump_safely("hugegraph", "BFS", bfs)
+
+
 def run_benchmark():
     """
     HugeGraph benchmark using Vermeer (the HugeGraph-Computer Go engine).
@@ -166,6 +194,7 @@ def run_benchmark():
     if isinstance(elapsed, (int, float)):
         print(f"  CDLP time: {elapsed:.2f}s")
 
+    _dump_all(run_algo)
     bench_common.cleanup_docker("vermeer-master", "vermeer-worker")
     return results
 

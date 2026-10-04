@@ -25,7 +25,7 @@ import java.util.*;
 public class ArcadeDBEmbeddedLSQB {
 
   static final String DATA_DIR = System.getProperty("dataset.dir", "../datasets/social-network-sf1-merged-fk");
-  static final String DB_PATH  = "/tmp/arcadedb_lsqb";
+  static final String DB_PATH  = System.getProperty("db.path", "/tmp/arcadedb_lsqb");
 
   public static void main(String[] args) throws Exception {
     System.out.println("======================================================================");
@@ -42,11 +42,18 @@ public class ArcadeDBEmbeddedLSQB {
     Database db;
     long loadTime;
 
-    if (!reset && factory.exists()) {
+    // A completed load leaves a sibling marker with the load time in ms; a load killed half way never
+    // wrote it, so such a database is not reused.
+    java.io.File marker = new java.io.File(DB_PATH + ".loaded");
+    if (!reset && factory.exists() && marker.exists()) {
       System.out.println("\n[ArcadeDB] Reusing existing database at " + DB_PATH);
       db = factory.open();
       loadTime = 0;
+      try {
+        loadTime = Long.parseLong(new String(java.nio.file.Files.readAllBytes(marker.toPath())).trim());
+      } catch (Exception ignored) { }
     } else {
+      marker.delete();
       if (factory.exists()) deleteDirectory(new java.io.File(DB_PATH));
 
       // --- LOAD ---
@@ -142,6 +149,7 @@ public class ArcadeDBEmbeddedLSQB {
 
       loadTime = System.currentTimeMillis() - loadStart;
       System.out.println("  Load time: " + loadTime / 1000.0 + "s");
+      java.nio.file.Files.write(marker.toPath(), Long.toString(loadTime).getBytes());
 
       // Free memory from RID maps
       ridMaps = null;
