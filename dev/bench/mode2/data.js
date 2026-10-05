@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791106233235,
+  "lastUpdate": 1791194986918,
   "repoUrl": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb",
   "entries": {
     "ArcadeDB Mode 2 — Embedded (datagen-7_5-fb)": [
@@ -2393,6 +2393,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "CDLP",
             "value": 8.81,
+            "unit": "s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Luca Garulli",
+            "username": "lvca",
+            "email": "lvca@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "Luca Garulli",
+            "username": "lvca",
+            "email": "lvca@users.noreply.github.com"
+          },
+          "id": "190ea994c16c1d00a3afb9623dd441ca6b78d032",
+          "message": "Move the release-over-release history out of the README into ArcadeDB-release-progress.md\n\nThe README keeps the current multi-vendor comparison and links the history. The new file holds the\n26.8.1 to 26.10.1-SNAPSHOT tables unchanged plus the later merged fixes (WCC union-find #9133,\nrestored-view wait #9220/#9221) measured on AC power.",
+          "timestamp": "2026-10-04T20:03:55Z",
+          "url": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb/commit/190ea994c16c1d00a3afb9623dd441ca6b78d032"
+        },
+        "date": 1791194986652,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "LOAD",
+            "value": 132.13,
+            "unit": "s"
+          },
+          {
+            "name": "PR",
+            "value": 0.75,
+            "unit": "s"
+          },
+          {
+            "name": "WCC",
+            "value": 0.55,
+            "unit": "s"
+          },
+          {
+            "name": "BFS",
+            "value": 0.17,
+            "unit": "s"
+          },
+          {
+            "name": "LCC",
+            "value": 12.25,
+            "unit": "s"
+          },
+          {
+            "name": "SSSP",
+            "value": 2.51,
+            "unit": "s"
+          },
+          {
+            "name": "CDLP",
+            "value": 8.84,
             "unit": "s"
           }
         ]
