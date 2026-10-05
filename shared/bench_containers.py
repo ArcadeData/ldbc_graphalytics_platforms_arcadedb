@@ -94,6 +94,12 @@ def postgres_ready(port):
     return _exchange(port, bytes.fromhex("0000000804d2162f"), 1) in (b"S", b"N")
 
 
+def redis_ready(port):
+    """PING: a Redis (FalkorDB) that is still loading its snapshot answers -LOADING instead of +PONG, and the driver's
+    GRAPH.CONFIG commands would silently fail (default 10000 row result sets, 1 s query timeout)."""
+    return _exchange(port, b"PING\r\n", 16).startswith(b"+PONG")
+
+
 def wait_probe(probe, port, timeout):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -153,6 +159,9 @@ def ensure_running(suite, key, spec, log=print):
 
 def stop(spec, log=print):
     """Graceful stop (so the engine flushes/snapshots), then remove the container."""
+    bench_common_save = getattr(__import__("bench_common"), "save_container_log", None)
+    if bench_common_save:
+        bench_common_save(spec.name)
     if container_running(spec.name):
         _docker("stop", "-t", str(spec.stop_timeout), spec.name, timeout=spec.stop_timeout + 60)
     _docker("rm", "-f", spec.name)
@@ -183,7 +192,7 @@ def _specs():
     arango_image = os.environ.get("ARANGODB_IMAGE", "arangodb/arangodb:3.11.14")
     falkor_image = os.environ.get("FALKORDB_IMAGE", "falkordb/falkordb:latest")
     pg_image = os.environ.get("POSTGRES_IMAGE", "postgres:18")
-    arcade_image = os.environ.get("ARCADEDB_IMAGE", "arcadedata/arcadedb:26.10.1-SNAPSHOT")
+    arcade_image = os.environ.get("ARCADEDB_IMAGE", "arcadedata/arcadedb:26.10.1")
     return {
         ("graphalytics", "neo4j"): Spec(
             "neo4j-gds", neo4j_image, ["7688:7687", "7476:7474"],
@@ -200,7 +209,7 @@ def _specs():
         ("graphalytics", "falkordb"): Spec(
             "falkordb", falkor_image, ["6379:6379"], {},
             [("data", "/var/lib/falkordb/data")], ready_port=6379, settle=5,
-            stop_timeout=1800),  # the snapshot of the 97M edge graph is written on shutdown; a kill loses it
+            stop_timeout=1800, ready_timeout=1800, ready_probe=redis_ready),  # the snapshot of the 97M edge graph is written on shutdown; a kill loses it
         ("lsqb", "neo4j"): Spec(
             "neo4j-lsqb", neo4j_image, ["7688:7687", "7474:7474"], NEO4J_ENV,
             [("data", "/data")], ready_port=7688, settle=15),
@@ -214,7 +223,8 @@ def _specs():
             ready_probe=postgres_ready),
         ("lsqb", "falkordb"): Spec(
             "falkordb-lsqb", falkor_image, ["6379:6379"], {},
-            [("data", "/var/lib/falkordb/data")], ready_port=6379, settle=5),
+            [("data", "/var/lib/falkordb/data")], ready_port=6379, settle=5,
+            ready_timeout=1800, ready_probe=redis_ready),
         ("lsqb", "arcadedb"): Spec(
             "arcadedb-lsqb", arcade_image, ["2480:2480"],
             {"JAVA_OPTS": "-Darcadedb.server.rootPassword=benchmark "

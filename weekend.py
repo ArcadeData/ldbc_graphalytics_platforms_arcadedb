@@ -41,6 +41,7 @@ sys.path.insert(0, os.path.join(ROOT, "shared"))
 import bench_common  # noqa: E402
 import bench_containers  # noqa: E402
 import bench_java  # noqa: E402
+import bench_memory  # noqa: E402
 import bench_isolation  # noqa: E402
 import bench_state  # noqa: E402
 
@@ -144,8 +145,13 @@ def run_java(args, name, main_class, cwd, props, extra, out_dir):
     cmd += args.jvm_flags.split() + [f"-D{k}={v}" for k, v in props.items()]
     cmd += ["-cp", f"{bench_state.state_path('build')}{os.pathsep}{JAR}", main_class, *extra]
     log_file = os.path.join(out_dir, f"{name}.log")
+    sampler = bench_memory.MemorySampler()
     outcome = bench_isolation.run_child(cmd, cwd=cwd, total_timeout=args.java_timeout,
-                                        idle_timeout=args.java_idle, log_file=log_file, log=log)
+                                        idle_timeout=args.java_idle, log_file=log_file, log=log,
+                                        on_start=sampler.attach)
+    sampler.stop()
+    rss = [s[1] for s in sampler.samples if s[1]]
+    outcome.peak_rss_mb = max(rss) if rss else None     # whole JVM process (heap + off-heap), not the live set
     text = open(log_file, errors="replace").read() if os.path.exists(log_file) else ""
     return outcome, text
 
@@ -165,7 +171,7 @@ def step_java(args, report, out_dir, suite):
                           {"db.path": bench_state.state_path("data", "lsqb-arcadedb-java-oltp", "db")}, LSQB_KEYS)}
     for vname, (cls, cwd, props, keys) in variants.items():
         os.makedirs(os.path.dirname(props["db.path"]), exist_ok=True)
-        runs, statuses, logs = [], [], []
+        runs, statuses, logs, rss_peaks, live_heaps = [], [], [], [], []
         extra_flags = ["--no-gav"] if vname == "lsqb-oltp" else []
         if vname == "m2":
             props["dump.dir"] = os.path.join(out_dir, "outputs-java")
@@ -181,6 +187,11 @@ def step_java(args, report, out_dir, suite):
                 table = parse_table(text, keys)
             statuses.append(repr(outcome))
             logs.append(text)
+            if getattr(outcome, "peak_rss_mb", None):
+                rss_peaks.append(outcome.peak_rss_mb)
+            m = re.search(r"\[memory\] live heap after GC: ([\d.]+) MB", text)
+            if m:
+                live_heaps.append(float(m.group(1)))
             if table:
                 runs.append(table)
         med = {}
@@ -188,7 +199,9 @@ def step_java(args, report, out_dir, suite):
             vals = [r[k] for r in runs if k in r]
             if vals:
                 med[k] = round(statistics.median(vals), 3)
-        results[vname] = {"median": med, "runs": runs, "outcomes": statuses}
+        results[vname] = {"median": med, "runs": runs, "outcomes": statuses,
+                          "memory": {"peak_rss_mb": round(statistics.median(rss_peaks), 1) if rss_peaks else None,
+                                     "live_heap_mb": round(statistics.median(live_heaps), 1) if live_heaps else None}}
         # Correctness: Graphalytics outputs against the LDBC reference outputs, LSQB counts against the
         # official expected counts. Timings are only reported next to this verdict.
         try:
@@ -212,14 +225,8 @@ def step_python(args, report, out_dir, suite):
            "--vendor-timeout", str(args.vendor_timeout), "--idle-timeout", str(args.idle_timeout)]
     if args.reset:
         cmd.append("--reset")
-    # JVM engines (ArcadeDB Docker, Neo4j) are measured warm on LSQB: 1 untimed run, then the
-    # median of 3 (queries slower than 30 s are reported from a single run).
-    os.environ.setdefault("LSQB_WARMUP", "1")
-    os.environ.setdefault("LSQB_REPS", "3")
-    # Graphalytics: the cold first call is always recorded (`<metric>_cold`); the headline is the median of 3 timed
-    # warm calls after 1 untimed warm-up for the drivers that use run_timed_warm (ArcadeDB Docker, Neo4j)
-    os.environ.setdefault("GRAPHALYTICS_WARMUP", "1")
-    os.environ.setdefault("GRAPHALYTICS_REPS", "3")
+    # Every number is a warm number: the first call of each algorithm/query is an untimed warm-up and the reported value
+    # is the median of 3 timed runs (shared/bench_common.py: run_timed_warm, measure_repeated), nothing to configure.
     if suite == "m2":
         cmd += ["neo4j", "memgraph", "arangodb", "falkordb", "hugegraph",
                 "arcadedb", "kuzu", "ladybug", "duckpgq"]
@@ -274,6 +281,12 @@ def md_report(report):
                     cells.append(cell)
                 L.append(f"| {v} | " + " | ".join(cells) + " |")
             L.append("")
+            mem = {v: d.get("memory") or {} for v, d in report[key].items()}
+            if any(m.get("peak_rss_mb") for m in mem.values()):
+                L += ["Memory of the embedded JVM (median of runs; `-Xms12g -Xmx12g`, so the process size is dominated by the heap "
+                      "the JVM chose to grow into): " + "; ".join(
+                          f"{v}: process peak {m.get('peak_rss_mb') or 0:.0f} MB, live heap after GC {m.get('live_heap_mb') or 0:.0f} MB"
+                          for v, m in mem.items()), ""]
     for key, title, keys in (("py-m2", "Graphalytics, all vendors (s)", ["load", "pagerank", "wcc", "lcc", "bfs", "sssp", "cdlp"]),
                              ("py-lsqb", "LSQB, all vendors (s)", ["load"] + [f"q{i}" for i in range(1, 10)])):
         data = (report.get(key) or {}).get("results")
@@ -296,6 +309,17 @@ def md_report(report):
                 cells.append(cell)
             L.append(f"| {v['name']} | {v['status']} | " + " | ".join(cells) + " |")
         L.append("")
+        mem_rows = [(v["name"], (v.get("result") or {}).get("_memory")) for v in data["vendors"].values()]
+        mem_rows = [(n, m) for n, m in mem_rows if m]
+        if mem_rows:
+            L += [f"### Memory during the timed operations ({'Graphalytics' if key == 'py-m2' else 'LSQB'}), GiB", "",
+                  "| vendor | basis | resident before the first operation | peak during the timed operations |", "|---|---|---|---|"]
+            for n, m in mem_rows:
+                peak = m.get("peak_mb", m.get("peak_overall_mb"))
+                before = m.get("resident_before_mb")
+                L.append(f"| {n} | {m['basis']} | " + (f"{before / 1024:.1f}" if before is not None else "n/a") + " | "
+                         + (f"{peak / 1024:.1f}" if peak is not None else "n/a") + " |")
+            L.append("")
     if "mode1" in report and report["mode1"].get("summary"):
         L += ["## Mode 1 (official framework), processing time (s)", ""]
         for mode, d in report["mode1"]["summary"].items():

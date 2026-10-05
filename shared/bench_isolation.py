@@ -88,7 +88,7 @@ def kill_process_group(proc, grace=10.0, log=print):
 
 
 def run_child(cmd, env=None, total_timeout=3600, idle_timeout=600, grace=10.0,
-              result_file=None, result_grace=20.0, log_file=None, log=print, cwd=None):
+              result_file=None, result_grace=20.0, log_file=None, log=print, cwd=None, on_start=None):
     """Run `cmd` in its own process group and enforce the limits.
 
     Child output is streamed to our stdout (and optionally appended to
@@ -100,6 +100,11 @@ def run_child(cmd, env=None, total_timeout=3600, idle_timeout=600, grace=10.0,
                             start_new_session=True, bufsize=0)
     state = {"last": time.monotonic()}
     logf = open(log_file, "ab") if log_file else None
+    if on_start:
+        try:
+            on_start(proc)
+        except Exception:  # noqa: BLE001 - sampling must never break a benchmark
+            pass
 
     def pump():
         try:

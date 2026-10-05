@@ -18,6 +18,18 @@ def state_root():
     return os.environ.get("LDBC_BENCH_STATE") or os.path.expanduser("~/.cache/ldbc-graph-bench")
 
 
+def memory_free_percent():
+    """System-wide free memory percentage from `memory_pressure` (macOS), None when unavailable."""
+    import re
+    import subprocess
+    try:
+        out = subprocess.run(["memory_pressure"], capture_output=True, text=True, timeout=20).stdout
+        m = re.search(r"free percentage:\s*(\d+)%", out)
+        return int(m.group(1)) if m else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def state_path(*parts, create=False):
     p = os.path.join(state_root(), *parts)
     if create:

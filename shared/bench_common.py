@@ -18,6 +18,7 @@ import time
 import bench_containers
 import bench_isolation
 import bench_state
+import bench_memory
 
 GRAPHS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'datasets')
 
@@ -67,41 +68,34 @@ def _disarm():
             pass
 
 
-# ------------------------------------------------------------ warm-up and repetitions (Graphalytics)
-
-# JVM servers (ArcadeDB Docker, Neo4j) pay JIT compilation and first-touch work on the first call of the
-# first algorithm. GRAPHALYTICS_WARMUP untimed runs and GRAPHALYTICS_REPS timed runs follow the cold first call;
-# the headline is the median of the timed warm runs and the cold first call is recorded next to it.
-# The defaults (0 and 1) keep the historical single cold run as the headline.
+# ------------------------------------------------------------ warm measurements
+#
+# Every published number is a WARM number, the way a production server runs. The first call of every algorithm or
+# query is the warm-up: it is executed, never reported, and pays JIT compilation, page-cache and first-touch costs.
+# The reported value is the median of GRAPHALYTICS_REPS (default 3) / LSQB_REPS (default 3) timed runs that follow
+# it (plus GRAPHALYTICS_WARMUP / LSQB_WARMUP extra untimed runs, default 0). An operation whose warm-up call takes
+# longer than WARM_SLOW seconds gets a single timed run instead of three (it would only multiply the run time).
 GRAPHALYTICS_WARMUP = int(os.environ.get("GRAPHALYTICS_WARMUP", "0"))
-GRAPHALYTICS_REPS = max(1, int(os.environ.get("GRAPHALYTICS_REPS", "1")))
-WARM_SLOW = 60.0   # a cold call above this is not repeated (it would only multiply the run time)
+GRAPHALYTICS_REPS = max(1, int(os.environ.get("GRAPHALYTICS_REPS", "3")))
+WARM_SLOW = 60.0
 
 
-def run_timed_warm(name, func, timeout=QUERY_TIMEOUT, record=None):
-    """run_timed with the optional warm-up / repetition protocol. Returns (headline seconds, result).
-
-    The cold first call is stored as record["<name>_cold"] (when `record` is given) and printed.
-    """
+def run_timed_warm(name, func, timeout=QUERY_TIMEOUT):
+    """run_timed with the warm protocol above. Returns (warm median seconds, result), or 'timeout' / 'N/A'."""
     import statistics
-    elapsed, result = run_timed(name, func, timeout=timeout)
-    if not isinstance(elapsed, (int, float)):
-        return elapsed, result
-    if record is not None:
-        record[f"{_metric_key(name)}_cold"] = elapsed
-    if (GRAPHALYTICS_WARMUP == 0 and GRAPHALYTICS_REPS == 1) or elapsed > WARM_SLOW:
-        return elapsed, result
-    print(f"  {name} cold first call: {elapsed:.3f}s", flush=True)
+    first, result = run_timed(name, func, timeout=timeout)       # warm-up call: not reported
+    if not isinstance(first, (int, float)):
+        return first, result
     for _ in range(GRAPHALYTICS_WARMUP):
         run_timed(name, func, timeout=timeout)
     times = []
-    for _ in range(GRAPHALYTICS_REPS):
+    for _ in range(1 if first > WARM_SLOW else GRAPHALYTICS_REPS):
         t, result = run_timed(name, func, timeout=timeout)
         if not isinstance(t, (int, float)):
             return t, result
         times.append(t)
     headline = statistics.median(times)
-    print(f"  {name} warm median of {len(times)}: {headline:.3f}s", flush=True)
+    print(f"  {name}: median of {len(times)} timed run(s) after the warm-up call: {headline:.3f}s", flush=True)
     _PARTIAL["done"][_metric_key(name)] = headline
     _flush_partial(_PARTIAL)
     return headline, result
@@ -122,7 +116,13 @@ def _flush_partial(partial):
             pass
 
 
-_PARTIAL = {"done": {}, "inflight": None}
+_PARTIAL = {"done": {}, "inflight": None, "ops": {}}
+
+
+def _note_op(key, start, end):
+    """Wall-clock window of an operation (all its calls, warm-up included) for the memory sampler."""
+    w = _PARTIAL["ops"].get(key)
+    _PARTIAL["ops"][key] = [min(start, w[0]) if w else start, max(end, w[1]) if w else end]
 
 
 def run_timed(name, func, timeout=QUERY_TIMEOUT):
@@ -139,6 +139,7 @@ def run_timed(name, func, timeout=QUERY_TIMEOUT):
     global _ALARM_FIRED
     _ALARM_FIRED = False
     old = signal.signal(signal.SIGALRM, _alarm_handler)
+    wall_start = time.time()
     signal.alarm(timeout)
     start = time.perf_counter()
     try:
@@ -165,6 +166,7 @@ def run_timed(name, func, timeout=QUERY_TIMEOUT):
     finally:
         _disarm()
         signal.signal(signal.SIGALRM, old)
+        _note_op(key, wall_start, time.time())
         _PARTIAL["inflight"] = None
         _flush_partial(_PARTIAL)
 
@@ -218,31 +220,53 @@ def dump_safely(vendor, algo, fn):
         print(f"  [dump] {vendor} {algo}: export failed: {str(e)[:200]}")
 
 
-def measure_repeated(fn, slow=30.0):
-    """Time fn() with the optional warm-up/repetition protocol; returns (seconds, fn's result).
+LAST_CALL_SECONDS = 0.0   # duration of the most recent call made by measure_repeated (also when it raised)
 
-    LSQB_WARMUP (default 0) untimed runs followed by LSQB_REPS (default 1) timed runs, median
-    reported. The defaults keep the historical single cold run. JVM engines (ArcadeDB Docker,
-    Neo4j) need warm-up to be measured the way a production server runs; the weekly driver sets
-    LSQB_WARMUP=1 LSQB_REPS=3 for them. A query whose first run exceeds `slow` seconds is
-    reported from that single run (warm-up and repetitions would only multiply the time).
+
+def measure_repeated(fn, slow=30.0, name=None):
+    """Warm measurement of fn(): returns (median seconds of the timed runs, fn's result).
+
+    The first call is the warm-up (not reported); then LSQB_WARMUP extra untimed runs (default 0) and LSQB_REPS
+    timed runs (default 3). A query whose warm-up call took longer than `slow` seconds gets one timed run.
     """
     import statistics
+    global LAST_CALL_SECONDS
     warmup = int(os.environ.get("LSQB_WARMUP", "0"))
-    reps = max(1, int(os.environ.get("LSQB_REPS", "1")))
-    t0 = time.perf_counter()
-    out = fn()
-    first = time.perf_counter() - t0
-    if (warmup == 0 and reps == 1) or first > slow:
-        return first, out
-    times = [] if warmup > 0 else [first]
-    for _ in range(max(0, warmup - 1)):
-        fn()
-    while len(times) < reps:
+    reps = max(1, int(os.environ.get("LSQB_REPS", "3")))
+
+    def call():
+        global LAST_CALL_SECONDS
         t0 = time.perf_counter()
-        out = fn()
-        times.append(time.perf_counter() - t0)
+        w0 = time.time()
+        try:
+            return fn()
+        finally:
+            LAST_CALL_SECONDS = time.perf_counter() - t0
+            if name:
+                _note_op(_metric_key(name), w0, time.time())
+                _flush_partial(_PARTIAL)
+
+    out = call()
+    first = LAST_CALL_SECONDS
+    for _ in range(warmup):
+        out = call()
+    times = []
+    for _ in range(1 if first > slow else reps):
+        out = call()
+        times.append(LAST_CALL_SECONDS)
     return statistics.median(times), out
+
+
+def remove_db(path):
+    """Delete an embedded database that is a directory (older Kuzu) or a single file plus side files (newer
+    Kuzu/LadybugDB write `db`, `db.wal`, ...)."""
+    import glob
+    import shutil
+    if os.path.isdir(path):
+        shutil.rmtree(path, ignore_errors=True)
+    for f in glob.glob(path + "*"):
+        if os.path.isfile(f):
+            os.remove(f)
 
 
 def embedded_db_path(suite, key, name):
@@ -369,7 +393,7 @@ def validate_lsqb_counts(log_text, scale_factor="1"):
     if str(scale_factor) != "1":
         return None
     verdicts = {}
-    for m in re.finditer(r"Q(\d) time: [\d.]+s\s+\(count=(\d+)\)", log_text):
+    for m in re.finditer(r"Q(\d) time: [\d.]+s\s+\([^)]*?count=(\d+)\)", log_text):
         q = f"q{m.group(1)}"
         ok = int(m.group(2)) == LSQB_EXPECTED_SF1[q]
         verdicts[q] = {"verdict": "valid" if ok else "invalid", "algo": q.upper(),
@@ -422,12 +446,31 @@ def run_vendor_isolated(suite, key, name, script, passthrough, metrics, dataset_
     status = "ok"
     result = None
     outcome = None
+    # The CPU is throttled on battery: wait (up to 30 minutes) for AC power instead of measuring.
+    for _ in range(60):
+        if bench_state.power_source() != "battery":
+            break
+        print(f"  On battery power: waiting 30s for AC before starting {name} (plug the Mac in)")
+        time.sleep(30)
     on_battery = bench_state.power_source() == "battery"
     if on_battery:
         print(f"  WARNING: running on battery power; the CPU is throttled, so the timings of {name} are not reliable")
     prev = bench_state.read_marker(suite, key)
     had_good_load = bool(prev and prev.get("dataset") == dataset_sig
                          and prev.get("version") == version_tag and not reset)
+    # Measurements taken while the machine swaps are noise: wait (up to 10 minutes) until memory is available.
+    for _ in range(20):
+        free = bench_state.memory_free_percent()
+        if free is None or free >= 25:
+            break
+        print(f"  Memory pressure: only {free}% free, waiting 30s before starting {name} (is the Docker VM or "
+              f"another process holding memory?)")
+        time.sleep(30)
+    # drivers that start their own container (no spec) are listed here so the sampler still sees them
+    own_containers = {"arcadedb": ["arcadedb"]} if suite.startswith("graphalytics") else {}
+    containers = (["vermeer-master", "vermeer-worker"] if key == "hugegraph"
+                  else [spec.name] if spec is not None else own_containers.get(key, []))
+    sampler = bench_memory.MemorySampler(containers) if os.environ.get("BENCH_NO_MEMORY") != "1" else None
     try:
         if spec is not None:
             bench_containers.ensure_running(suite, key, spec)
@@ -436,7 +479,8 @@ def run_vendor_isolated(suite, key, name, script, passthrough, metrics, dataset_
         for attempt in (1, 2):
             outcome = bench_isolation.run_child(
                 cmd, env=env, total_timeout=total_timeout, idle_timeout=idle_timeout,
-                grace=kill_grace, result_file=result_file, log_file=log_file)
+                grace=kill_grace, result_file=result_file, log_file=log_file,
+                on_start=sampler.attach if sampler else None)
             result = bench_isolation.read_json(result_file)
             refused = (spec is not None and attempt == 1 and isinstance(result, dict)
                        and "connect" in str(result.get("error", "")).lower() and outcome.elapsed < 180)
@@ -467,6 +511,13 @@ def run_vendor_isolated(suite, key, name, script, passthrough, metrics, dataset_
         status = f"orchestration error: {type(e).__name__}: {e}"
         print(f"\n{name}: {status}")
     finally:
+        memory = None
+        if sampler:
+            sampler.stop()
+            try:
+                memory = sampler.summarize((bench_isolation.read_json(partial_file, {}) or {}).get("ops"))
+            except Exception:  # noqa: BLE001
+                memory = None
         try:
             if key == "hugegraph" and hugegraph_datasets:
                 bench_containers.hugegraph_stop()
@@ -500,6 +551,11 @@ def run_vendor_isolated(suite, key, name, script, passthrough, metrics, dataset_
             bad = [q for q, v in verdicts.items() if v["verdict"] == "invalid"]
             print(f"  Correctness check of {name}: {len(verdicts) - len(bad)} of {len(verdicts)} query counts match "
                   f"the official expected counts" + (f"; WRONG: {', '.join(bad)}" if bad else ""))
+    if memory and result is not None and "error" not in result:
+        result["_memory"] = memory
+        line = bench_memory.describe(name, memory)
+        if line:
+            print(line)
     if result is not None and "error" not in result:
         _apply_load_cache(suite, key, version_tag, dataset_sig, result)
         result["_status"] = status
@@ -644,9 +700,29 @@ def run_benchmarks(description, available_systems, summary_title, metrics,
         print(f"Could not write results file: {e}")
 
 
+def save_container_log(name):
+    """Keep the exit state and the last log lines of a container before it is removed (a vendor whose container died
+    mid-run, e.g. OOM-killed, is otherwise undiagnosable): ~/.cache/ldbc-graph-bench/container-logs/."""
+    try:
+        info = subprocess.run(["docker", "inspect", "--format",
+                               "status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} "
+                               "started={{.State.StartedAt}} finished={{.State.FinishedAt}}", name],
+                              capture_output=True, text=True, timeout=30)
+        if info.returncode != 0:
+            return
+        logs = subprocess.run(["docker", "logs", "--tail", "400", name], capture_output=True, text=True, timeout=60)
+        d = bench_state.state_path("container-logs", create=True)
+        with open(os.path.join(d, f"{name}-{time.strftime('%Y%m%d-%H%M%S')}.log"), "w") as f:
+            f.write(info.stdout + "\n" + logs.stdout + logs.stderr)
+        print(f"  Container {name}: {info.stdout.strip()} (log kept in {d})")
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def cleanup_docker(*container_names):
     """Kill and remove Docker containers."""
     for name in container_names:
+        save_container_log(name)
         subprocess.run(["docker", "rm", "-f", name],
                        capture_output=True, timeout=30)
     print(f"  Cleanup: removed Docker containers {', '.join(container_names)}")
