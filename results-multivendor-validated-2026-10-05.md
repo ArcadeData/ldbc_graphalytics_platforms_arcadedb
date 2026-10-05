@@ -12,14 +12,14 @@ ArcadeDB: `26.10.1` (measured on the identical pre-release snapshot JAR built 20
 - **Validated.** Every Graphalytics output is exported in full (no `LIMIT`) from the exact call that is timed and checked with `scripts/validate_outputs.py`
   against the official reference outputs; every LSQB count is checked against the official expected counts. Cells that fail are marked invalid and not ranked.
 - **Memory.** One sample per second while the timed operations run: the working set of the vendor's containers (`docker stats`) or the RSS of its process.
-  JVM systems run with a fixed 12 GB heap, so their process or container size mostly shows that heap; embedded ArcadeDB also reports its live heap after a full GC.
+  JVM systems run with a fixed 12 GB heap, so their process or container size mostly shows that heap; embedded ArcadeDB also reports its live heap after a full GC (Graphalytics 0.75 GiB, LSQB OLAP 0.67, OLTP 1.4); it was not measured for the other systems.
   Kuzu, DuckDB and LadybugDB size their buffer pools from the machine RAM.
 
 ## Graphalytics, `datagen-7_5-fb` (seconds, warm medians)
 
 | Vendor | Load | PageRank | WCC | BFS | LCC | SSSP | CDLP | Peak memory (GiB) |
 |---|---|---|---|---|---|---|---|---|
-| ArcadeDB embedded | 71.9 | 0.086 | 0.004 | 0.022 | 2.19 | 0.84 | 1.09 invalid | 6.4 process (live heap 0.75) |
+| ArcadeDB embedded | 71.9 | 0.086 | 0.004 | 0.022 | 2.19 | 0.84 | 1.09 invalid | 6.4 process |
 | ArcadeDB Docker | 43.9 | 0.156 | 0.022 | 0.032 | 2.65 | 1.56 | 1.08 invalid | 12.3 container |
 | Neo4j | 657 | 6.98 (two GDS runs, valid) | 0.111 | 0.480 | 15.4 | N/A | N/A | 13.3 container |
 | Kuzu | 28.8 | 1.16 | 0.434 | 0.328 | N/A | N/A | N/A | 0.87 process |
@@ -44,8 +44,8 @@ Why the invalid and N/A cells cannot be fixed from the driver:
 
 | Vendor | Load | Q1 | Q2 | Q3 | Q4 | Q5 | Q6 | Q7 | Q8 | Q9 | Peak memory (GiB) |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| ArcadeDB embedded OLAP (median of 3 JVM launches) | 119.5 | 0.09 | 0.15 | 0.07 | 0.04 | 0.19 | 0.13 | 0.05 | 0.12 | 1.78 | 6.7 process (live heap 0.67) |
-| ArcadeDB embedded OLTP | 159.2 | 2.83 | 4.54 | 3.44 | 1.24 | 13.59 | 12.77 | 1.13 | 8.60 | 0.90 | 10.1 process (live heap 1.4) |
+| ArcadeDB embedded OLAP (median of 3 JVM launches) | 119.5 | 0.09 | 0.15 | 0.07 | 0.04 | 0.19 | 0.13 | 0.05 | 0.12 | 1.78 | 6.7 process |
+| ArcadeDB embedded OLTP | 159.2 | 2.83 | 4.54 | 3.44 | 1.24 | 13.59 | 12.77 | 1.13 | 8.60 | 0.90 | 10.1 process |
 | ArcadeDB Server (Docker) | 101.7 | 0.14 | 0.19 | 0.08 | 0.05 | 0.27 | 0.18 | 0.06 | 0.13 | 2.32 | 12.4 container |
 | DuckDB | 0.46 | 0.11 | 0.01 | 0.04 | 0.06 | 0.04 | 1.84 | 0.07 | 0.07 | 6.03 | 0.9 process |
 | Kuzu | 2.44 | 4.61 | 0.15 | 2.30 | N/A | N/A | 1.38 | N/A | N/A | 6.39 | 5.1 process |

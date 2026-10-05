@@ -244,7 +244,7 @@ warmed. One system at a time, 5-minute limit per operation, AC power only, 12 GB
 
 **Memory** is sampled once per second while the timed operations run: the working set of the vendor's Docker containers (`docker stats`) or the
 resident memory (RSS) of the vendor's process for embedded engines. Read it with care: JVM systems (ArcadeDB, Neo4j) run with a fixed 12 GB heap, so their
-process or container size mostly shows that heap (embedded ArcadeDB also prints its live heap after a full GC, 0.75 GiB for Graphalytics); Kuzu, LadybugDB and DuckDB
+process or container size mostly shows that heap (the embedded ArcadeDB benchmark also prints its live heap after a full GC, 0.75 GiB for Graphalytics, 0.67 GiB for LSQB OLAP and 1.4 GiB for OLTP; this was not measured for Neo4j or the other systems, so it is not in the tables); Kuzu, LadybugDB and DuckDB
 size their buffer pools from the machine's RAM. The only exception to the warm protocol is Mode 1 (the official LDBC framework), which runs each algorithm once after its own load.
 
 #### All Systems Comparison
@@ -262,7 +262,7 @@ Seconds (warm medians), `datagen-7_5-fb`, last row peak memory in GiB. ArcadeDB 
 | **LCC** | **2.19** | 2.65 | 15.4 | N/A | N/A | 49.3 | N/A | N/A | N/A | 110 |
 | **SSSP** | **0.84** | 1.56 | N/A | N/A | N/A | N/A | 75.9 | 173 | N/A | N/A |
 | **CDLP** | 1.09 ✗ | 1.08 ✗ | N/A | N/A | N/A | N/A | timeout | 254 ✗ | 10.6 ✗ | 22.3 ✗ |
-| **Peak memory (GiB)** | 6.4 / 0.75 live heap | 12.3 | 13.3 | 0.87 | 1.0 | 8.3 | 25.1 | 23.2 | 8.4 | 3.2 |
+| **Peak memory (GiB)** | 6.4 | 12.3 | 13.3 | 0.87 | 1.0 | 8.3 | 25.1 | 23.2 | 8.4 | 3.2 |
 
 - **ArcadeDB** (embedded and Docker) is valid for PageRank, WCC, BFS, LCC and SSSP. Its CDLP fails validation: the engine's `algo.labelPropagation` breaks ties and seeds labels with dense node ids instead of vertex ids, so the labels differ from the reference (the official Mode 1 framework has its own vertex-id based CDLP and passes).
 - **Load** times are not like for like: ArcadeDB loads with its embedded Java loader (and, for Docker, serves over HTTP afterwards), the other server systems load through Python batches over the network. Systems whose algorithms follow the stored edge direction (Memgraph, FalkorDB, ArangoDB; HugeGraph for PageRank/BFS) load every edge in both directions, and that cost is part of their load time. FalkorDB loads with its bulk loader (`falkordb-bulk-insert`, 116 s for the 68.4M edge records; the per-query path took 53 minutes). The ArcadeDB Docker load is the time of its original load; later runs reuse the data.
