@@ -19,6 +19,49 @@ BFS_QUERY = ("MATCH (src:Node {id: 6}) CALL algo.BFS(src, 999, 'EDGE') YIELD nod
              "RETURN size(nodes) AS reached")
 
 
+def _save(rc):
+    """Synchronous snapshot: Redis only writes its dump on the configured save points, so without this a stopped
+    container comes back with an older, partial graph (observed: 62.8M of 68.4M edges) and the load is repeated."""
+    try:
+        rc.execute_command("SAVE")
+        print("  [FalkorDB] graph snapshot saved")
+    except Exception as e:
+        print(f"  [FalkorDB] SAVE failed: {e}")
+
+
+def _bulk_insert_command():
+    import shutil
+    import sys
+    exe = os.environ.get("FALKORDB_BULK_INSERT") or shutil.which("falkordb-bulk-insert") \
+        or os.path.join(os.path.dirname(sys.executable), "falkordb-bulk-insert")
+    return exe
+
+
+def _bulk_load(graph="bench"):
+    """Load with FalkorDB's bulk loader (GRAPH.BULK) instead of one write query per 5000 edges.
+
+    The per-query path costs two index lookups and one edge insertion per edge in the single write thread (about
+    25k edges/s here: 53 minutes for the 68M both-direction edge records). The bulk loader needs 116 s for the same
+    graph (84 s inside the server) and the outputs validate identically. It is the default; FALKORDB_BULK_LOAD=0 or a
+    missing `falkordb-bulk-insert` (pip install falkordb-bulk-loader) selects the per-query path. The bulk loader sends binary node and edge
+    tokens, resolves the endpoints through its own id map and builds the matrices directly.
+    Schemaless mode: the first node column is the id and also stored as property `id` (named by the header); the first
+    two edge columns are the endpoints and the other columns are properties. Both directions are written by awk.
+    """
+    import subprocess
+    import bench_state
+    work = bench_state.state_path("tmp", "falkordb-bulk", create=True)
+    nodes, edges = os.path.join(work, "Node.csv"), os.path.join(work, "EDGE.csv")
+    subprocess.run(["awk", "BEGIN{print \"id\"} {print $1}", VERTEX_FILE], stdout=open(nodes, "w"), check=True)
+    subprocess.run(["awk", "BEGIN{print \"src dst weight\"} {print $1\" \"$2\" \"$3; print $2\" \"$1\" \"$3}", EDGE_FILE],
+                   stdout=open(edges, "w"), check=True)
+    cmd = [_bulk_insert_command(), graph, "-o", " ", "-n", nodes, "-r", edges]
+    print("  " + " ".join(cmd), flush=True)
+    subprocess.run(cmd, check=True)
+    for f in (nodes, edges):
+        os.remove(f)
+
+
 def _file_lines(path):
     with open(path, "rb") as f:
         return sum(1 for _ in f)
@@ -85,6 +128,11 @@ def run_benchmark():
         print("  Query timeout disabled")
         # the default RESULTSET_SIZE of 10000 rows silently truncates every full per-vertex output
         rc.execute_command("GRAPH.CONFIG", "SET", "RESULTSET_SIZE", -1)
+        # No automatic background snapshots: with the default save points a BGSAVE forks the 20+ GB process during the
+        # load, the fork fails, Redis marks the save as failed and answers every write with MISCONF (this stopped the
+        # load of 2026-10-05 at 35M edges). The graph is written once with a synchronous SAVE after the load.
+        rc.config_set("save", "")
+        rc.config_set("stop-writes-on-bgsave-error", "no")
     except Exception:
         pass
 
@@ -107,7 +155,17 @@ def run_benchmark():
         except Exception:
             pass
 
-    if needs_load:
+    if needs_load and os.environ.get("FALKORDB_BULK_LOAD", "1") != "0" and os.path.exists(_bulk_insert_command()):
+        print("\n[FalkorDB] Loading data with the bulk loader...")
+        start = time.perf_counter()
+        _bulk_load()
+        g = fdb.select_graph('bench')
+        g.query("CREATE INDEX FOR (n:Node) ON (n.id)")
+        load_time = time.perf_counter() - start
+        results["load"] = load_time
+        print(f"  Load time: {load_time:.2f}s")
+        _save(redis.Redis(host='localhost', port=6379, socket_timeout=3600))
+    elif needs_load:
         print("\n[FalkorDB] Loading data...")
         start = time.perf_counter()
 
@@ -160,6 +218,7 @@ def run_benchmark():
         load_time = time.perf_counter() - start
         results["load"] = load_time
         print(f"  Load time: {load_time:.2f}s")
+        _save(redis.Redis(host='localhost', port=6379, socket_timeout=3600))
 
     r = g.ro_query("MATCH (n:Node) RETURN count(n) AS c")
     print(f"  Vertices: {r.result_set[0][0]}")
@@ -177,7 +236,7 @@ def run_benchmark():
         r = g.ro_query(PAGERANK_QUERY)
         print(f"  PageRank: {len(r.result_set)} rows")
         return r
-    elapsed, _ = bench_common.run_timed("PageRank", _run_pagerank)
+    elapsed, _ = bench_common.run_timed_warm("PageRank", _run_pagerank)
     results["pagerank"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  PageRank time: {elapsed:.2f}s")
@@ -188,7 +247,7 @@ def run_benchmark():
         r = g.ro_query(WCC_QUERY)
         print(f"  WCC: {len(r.result_set)} rows")
         return r
-    elapsed, _ = bench_common.run_timed("WCC", _run_wcc)
+    elapsed, _ = bench_common.run_timed_warm("WCC", _run_wcc)
     results["wcc"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  WCC time: {elapsed:.2f}s")
@@ -199,7 +258,7 @@ def run_benchmark():
         r = g.ro_query(BFS_QUERY)
         print(f"  Reached {r.result_set[0][0]} nodes")
         return r
-    elapsed, _ = bench_common.run_timed("BFS", _run_bfs)
+    elapsed, _ = bench_common.run_timed_warm("BFS", _run_bfs)
     results["bfs"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  BFS time: {elapsed:.2f}s")
@@ -216,7 +275,7 @@ def run_benchmark():
         r = g.ro_query(CDLP_QUERY)
         print(f"  CDLP: {len(r.result_set)} rows")
         return r
-    elapsed, _ = bench_common.run_timed("CDLP", _run_cdlp)
+    elapsed, _ = bench_common.run_timed_warm("CDLP", _run_cdlp)
     results["cdlp"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  CDLP time: {elapsed:.2f}s")

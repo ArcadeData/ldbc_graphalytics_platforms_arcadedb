@@ -248,7 +248,7 @@ def run_benchmark():
                 if r.status_code != 200:
                     raise RuntimeError(r.text[:300])
                 return r.json()["result"][0]["count"]
-            elapsed, count = bench_common.measure_repeated(_once)
+            elapsed, count = bench_common.measure_repeated(_once, name=qid)
             results[qid] = elapsed
             print(f"  {qid.upper()} time: {elapsed:.2f}s  (count={count})")
         except Exception as e:

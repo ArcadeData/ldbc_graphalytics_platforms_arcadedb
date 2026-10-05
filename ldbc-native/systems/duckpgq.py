@@ -117,7 +117,7 @@ def run_benchmark():
                 timer.cancel()
             print(f"  {label}: {len(r)} rows")
             return r
-        elapsed, rows = bench_common.run_timed(name, _run)
+        elapsed, rows = bench_common.run_timed_warm(name, _run)
         results[key] = elapsed
         if isinstance(elapsed, (int, float)):
             print(f"  {label} time: {elapsed:.2f}s")

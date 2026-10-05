@@ -43,6 +43,10 @@ def run_benchmark():
         rc = redis.Redis(host='localhost', port=6379)
         rc.execute_command("GRAPH.CONFIG", "SET", "TIMEOUT", 0)
         print("  Query timeout disabled")
+        # no automatic background snapshots (a failed BGSAVE fork makes Redis answer every write with MISCONF);
+        # the graph is written once with a synchronous SAVE after the load
+        rc.config_set("save", "")
+        rc.config_set("stop-writes-on-bgsave-error", "no")
     except Exception:
         pass
 
@@ -141,6 +145,11 @@ def run_benchmark():
         load_time = time.perf_counter() - start
         results["load"] = load_time
         print(f"  Load time: {load_time:.2f}s")
+        try:
+            redis.Redis(host='localhost', port=6379, socket_timeout=3600).execute_command("SAVE")
+            print("  [FalkorDB] graph snapshot saved")
+        except Exception as e:
+            print(f"  [FalkorDB] SAVE failed: {e}")
 
     # Run queries (300s timeout per query)
     for qid in [f"q{i}" for i in range(1, 10)]:
@@ -148,13 +157,13 @@ def run_benchmark():
         print(f"\n[FalkorDB] Running {qid.upper()}...")
         start = time.perf_counter()
         try:
-            r = g.ro_query(query)
-            count = r.result_set[0][0]
-            elapsed = time.perf_counter() - start
+            def _once(query=query):
+                return g.ro_query(query).result_set[0][0]
+            elapsed, count = bench_common.measure_repeated(_once, name=qid)
             results[qid] = elapsed
             print(f"  {qid.upper()} time: {elapsed:.2f}s  (count={count})")
         except Exception as e:
-            elapsed = time.perf_counter() - start
+            elapsed = bench_common.LAST_CALL_SECONDS
             print(f"  {qid.upper()} failed ({elapsed:.2f}s): {e}")
             results[qid] = "timeout" if elapsed >= bench_common.QUERY_TIMEOUT - 1 else "N/A"
 

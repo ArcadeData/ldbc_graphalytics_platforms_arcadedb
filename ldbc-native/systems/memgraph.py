@@ -198,7 +198,7 @@ def run_benchmark():
         cursor.execute(BFS_QUERY)
         rows = cursor.fetchall()
         return rows
-    elapsed, result = bench_common.run_timed("BFS", _run_bfs)
+    elapsed, result = bench_common.run_timed_warm("BFS", _run_bfs)
     results["bfs"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  BFS time: {elapsed:.2f}s (reached {len(result)} nodes)")
@@ -210,7 +210,7 @@ def run_benchmark():
         rows = cursor.fetchall()
         print(f"  PageRank: {len(rows)} rows")
         return rows
-    elapsed, result = bench_common.run_timed("PageRank", _run_pagerank)
+    elapsed, result = bench_common.run_timed_warm("PageRank", _run_pagerank)
     results["pagerank"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  PageRank time: {elapsed:.2f}s")
@@ -222,7 +222,7 @@ def run_benchmark():
         rows = cursor.fetchall()
         print(f"  WCC: {len(rows)} rows")
         return rows
-    elapsed, result = bench_common.run_timed("WCC", _run_wcc)
+    elapsed, result = bench_common.run_timed_warm("WCC", _run_wcc)
     results["wcc"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  WCC time: {elapsed:.2f}s")
@@ -238,7 +238,7 @@ def run_benchmark():
         cursor.execute(SSSP_QUERY)
         rows = cursor.fetchall()
         return rows
-    elapsed, result = bench_common.run_timed("SSSP", _run_sssp)
+    elapsed, result = bench_common.run_timed_warm("SSSP", _run_sssp)
     results["sssp"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  SSSP time: {elapsed:.2f}s (reached {len(result)} nodes)")
@@ -250,7 +250,7 @@ def run_benchmark():
         rows = cursor.fetchall()
         print(f"  CDLP: {len(rows)} rows")
         return rows
-    elapsed, result = bench_common.run_timed("CDLP", _run_cdlp)
+    elapsed, result = bench_common.run_timed_warm("CDLP", _run_cdlp)
     results["cdlp"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  CDLP time: {elapsed:.2f}s")

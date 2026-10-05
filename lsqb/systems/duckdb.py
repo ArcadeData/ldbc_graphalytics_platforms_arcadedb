@@ -109,7 +109,7 @@ def run_benchmark():
         def _run(q=query):
             r = con.execute(q).fetchone()
             return r[0]
-        elapsed, count = bench_common.run_timed(qid.upper(), _run)
+        elapsed, count = bench_common.run_timed_warm(qid.upper(), _run)
         results[qid] = elapsed
         if isinstance(elapsed, (int, float)):
             print(f"  {qid.upper()} time: {elapsed:.2f}s  (count={count})")

@@ -206,23 +206,33 @@ public class ArcadeDBEmbeddedLSQB {
       String qid = e.getKey();
       String query = e.getValue();
       System.out.println("\n[ArcadeDB] Running " + qid + "...");
-      long start = System.currentTimeMillis();
       try {
-        db.begin();
-        ResultSet rs = db.query("opencypher", query);
-        long count = -1;
-        if (rs.hasNext())
-          count = ((Number) rs.next().getProperty("count")).longValue();
-        rs.close();
-        db.rollback();
-        double elapsed = (System.currentTimeMillis() - start) / 1000.0;
+        // Warm measurement: the first call is the warm-up (executed, never reported); the reported value is the median
+        // of -Dwarm.reps (default 3) timed runs that follow it, or one timed run when the warm-up took over 30 s.
+        long t0 = System.nanoTime();
+        long count = runQuery(db, query);
+        double first = (System.nanoTime() - t0) / 1e9;
+        int reps = first > 30.0 ? 1 : Math.max(1, Integer.getInteger("warm.reps", 3));
+        double[] times = new double[reps];
+        for (int i = 0; i < reps; i++) {
+          t0 = System.nanoTime();
+          count = runQuery(db, query);
+          times[i] = (System.nanoTime() - t0) / 1e9;
+        }
+        java.util.Arrays.sort(times);
+        double elapsed = times[reps / 2];
         results.put(qid, elapsed);
-        System.out.println("  " + qid + " time: " + elapsed + "s  (count=" + count + ")");
+        System.out.println("  " + qid + " time: " + elapsed + "s  (median of " + reps + " after the warm-up call, count=" + count + ")");
       } catch (Exception ex) {
-        double elapsed = (System.currentTimeMillis() - start) / 1000.0;
-        System.out.println("  " + qid + " failed (" + elapsed + "s): " + ex.getMessage());
+        System.out.println("  " + qid + " failed: " + ex.getMessage());
       }
     }
+
+    // Live heap after a full GC (the graph analytical view, the loaded data and the result arrays): what the engine
+    // needs, as opposed to the process size, which is dominated by the fixed -Xms/-Xmx heap.
+    System.gc();
+    Runtime rt = Runtime.getRuntime();
+    System.out.printf("  [memory] live heap after GC: %.0f MB%n", (rt.totalMemory() - rt.freeMemory()) / 1048576.0);
 
     // --- SUMMARY ---
     System.out.println("\n======================================================================");
@@ -301,5 +311,17 @@ public class ArcadeDBEmbeddedLSQB {
         if (f.isDirectory()) deleteDirectory(f);
         else f.delete();
     dir.delete();
+  }
+
+  static long runQuery(Database db, String query) {
+    db.begin();
+    try (ResultSet rs = db.query("opencypher", query)) {
+      long count = -1;
+      if (rs.hasNext())
+        count = ((Number) rs.next().getProperty("count")).longValue();
+      return count;
+    } finally {
+      db.rollback();
+    }
   }
 }

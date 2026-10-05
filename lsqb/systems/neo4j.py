@@ -149,7 +149,7 @@ def run_benchmark():
             def _once(query=query):
                 with driver.session() as session:
                     return session.run(query, timeout=bench_common.QUERY_TIMEOUT).single()["count"]
-            elapsed, count = bench_common.measure_repeated(_once)
+            elapsed, count = bench_common.measure_repeated(_once, name=qid)
             results[qid] = elapsed
             print(f"  {qid.upper()} time: {elapsed:.2f}s  (count={count})")
         except Exception as e:

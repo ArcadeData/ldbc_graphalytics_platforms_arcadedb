@@ -16,6 +16,18 @@ SSSP_QUERY = """
 """
 
 
+def _release_pregel_job(db, job_id):
+    """A finished Pregel job keeps its in-memory graph copy until its ttl (10 minutes) expires. Repeated runs
+    (warm-up + timed runs) then pile up several GiB each and the container is OOM-killed (observed: 5 -> 34 GiB in
+    7 minutes at the 36 GiB limit), so every finished job is deleted explicitly."""
+    import time as t
+    try:
+        db.pregel.delete_job(job_id)
+    except Exception:  # noqa: BLE001
+        pass
+    t.sleep(2)
+
+
 def _long_db(timeout):
     from arango import ArangoClient
     return ArangoClient(hosts='http://localhost:8529', request_timeout=timeout).db(
@@ -36,6 +48,7 @@ def _dump_all(db, run_pregel):
             if job['state'] in ('done', 'canceled', 'fatal error'):
                 break
             t.sleep(1)
+        _release_pregel_job(db, job_id)
         if job['state'] != 'done':
             raise RuntimeError(f"{vendor_algo} export failed: {job['state']}")
         t.sleep(2)
@@ -183,6 +196,7 @@ def run_benchmark():
         while True:
             job = db.pregel.job(job_id)
             if job['state'] in ('done', 'canceled', 'fatal error'):
+                _release_pregel_job(db, job_id)
                 return job
             t.sleep(0.5)
 
@@ -198,7 +212,7 @@ def run_benchmark():
         if job['state'] == 'done':
             return job
         raise RuntimeError(f"PageRank failed: {job['state']}")
-    elapsed, _ = bench_common.run_timed("PageRank", _run_pagerank)
+    elapsed, _ = bench_common.run_timed_warm("PageRank", _run_pagerank)
     results["pagerank"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  PageRank time: {elapsed:.2f}s")
@@ -210,7 +224,7 @@ def run_benchmark():
         if job['state'] == 'done':
             return job
         raise RuntimeError(f"WCC failed: {job['state']}")
-    elapsed, _ = bench_common.run_timed("WCC", _run_wcc)
+    elapsed, _ = bench_common.run_timed_warm("WCC", _run_wcc)
     results["wcc"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  WCC time: {elapsed:.2f}s")
@@ -252,7 +266,7 @@ def run_benchmark():
         for row in rows[:3]:
             print(f"    Top LCC: node={row['id']}, coeff={row['lcc']:.6f}")
         return rows
-    elapsed, _ = bench_common.run_timed("LCC", _run_lcc)
+    elapsed, _ = bench_common.run_timed_warm("LCC", _run_lcc)
     results["lcc"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  LCC time: {elapsed:.2f}s")
@@ -263,7 +277,7 @@ def run_benchmark():
         rows = list(_long_db(300).aql.execute(SSSP_QUERY, ttl=300, batch_size=100000, max_runtime=300))
         print(f"  SSSP: {len(rows)} rows")
         return rows
-    elapsed, _ = bench_common.run_timed("SSSP", _run_sssp)
+    elapsed, _ = bench_common.run_timed_warm("SSSP", _run_sssp)
     results["sssp"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  SSSP time: {elapsed:.2f}s")
@@ -275,7 +289,7 @@ def run_benchmark():
         if job['state'] == 'done':
             return job
         raise RuntimeError(f"CDLP failed: {job['state']}")
-    elapsed, _ = bench_common.run_timed("CDLP", _run_cdlp)
+    elapsed, _ = bench_common.run_timed_warm("CDLP", _run_cdlp)
     results["cdlp"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  CDLP time: {elapsed:.2f}s")
@@ -295,7 +309,7 @@ def run_benchmark():
         total_reached = sum(r['count'] for r in rows)
         print(f"  BFS reached {total_reached} nodes")
         return rows
-    elapsed, _ = bench_common.run_timed("BFS", _run_bfs)
+    elapsed, _ = bench_common.run_timed_warm("BFS", _run_bfs)
     results["bfs"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  BFS time: {elapsed:.2f}s")

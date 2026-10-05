@@ -166,7 +166,7 @@ def run_benchmark():
     print("\n[HugeGraph] Running PageRank...")
     def _run_pagerank():
         return run_algo("pagerank", "pagerank", PAGERANK_PARAMS, graph="bench_u")
-    elapsed, _ = bench_common.run_timed("PageRank", _run_pagerank)
+    elapsed, _ = bench_common.run_timed_warm("PageRank", _run_pagerank)
     results["pagerank"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  PageRank time: {elapsed:.2f}s")
@@ -175,7 +175,7 @@ def run_benchmark():
     print("\n[HugeGraph] Running WCC...")
     def _run_wcc():
         return run_algo("wcc", "wcc", {})
-    elapsed, _ = bench_common.run_timed("WCC", _run_wcc)
+    elapsed, _ = bench_common.run_timed_warm("WCC", _run_wcc)
     results["wcc"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  WCC time: {elapsed:.2f}s")
@@ -184,7 +184,7 @@ def run_benchmark():
     print("\n[HugeGraph] Running BFS...")
     def _run_bfs():
         return run_algo("sssp", "bfs", {"sssp.source": str(SOURCE_VERTEX)}, graph="bench_u")
-    elapsed, _ = bench_common.run_timed("BFS", _run_bfs)
+    elapsed, _ = bench_common.run_timed_warm("BFS", _run_bfs)
     results["bfs"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  BFS time: {elapsed:.2f}s")
@@ -193,7 +193,7 @@ def run_benchmark():
     print("\n[HugeGraph] Running LCC...")
     def _run_lcc():
         return run_algo("clustering_coefficient", "lcc", {})
-    elapsed, _ = bench_common.run_timed("LCC", _run_lcc)
+    elapsed, _ = bench_common.run_timed_warm("LCC", _run_lcc)
     results["lcc"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  LCC time: {elapsed:.2f}s")
@@ -204,7 +204,7 @@ def run_benchmark():
     print("\n[HugeGraph] Running SSSP...")
     def _run_sssp():
         raise NotImplementedError("Vermeer sssp is unweighted only")
-    elapsed, _ = bench_common.run_timed("SSSP", _run_sssp)
+    elapsed, _ = bench_common.run_timed_warm("SSSP", _run_sssp)
     results["sssp"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  SSSP time: {elapsed:.2f}s")
@@ -213,7 +213,7 @@ def run_benchmark():
     print("\n[HugeGraph] Running CDLP...")
     def _run_cdlp():
         return run_algo("lpa", "cdlp", {})
-    elapsed, _ = bench_common.run_timed("CDLP", _run_cdlp)
+    elapsed, _ = bench_common.run_timed_warm("CDLP", _run_cdlp)
     results["cdlp"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  CDLP time: {elapsed:.2f}s")

@@ -25,13 +25,15 @@ def run_benchmark():
         return {"error": "Dataset not found"}
 
     needs_load = True
-    if not bench_common.RESET and os.path.isdir(db_path):
+    if not bench_common.RESET and os.path.exists(db_path):
         try:
             db = kuzu.Database(db_path)
             conn = kuzu.Connection(db)
             r = conn.execute("MATCH (p:Person) RETURN count(p) AS c")
             row = r.get_next()
-            if row and row[0] > 0:
+            r2 = conn.execute("MATCH ()-[x:REPLY_OF_C]->() RETURN count(x) AS c")  # absent in databases from before Q4/Q5/Q7/Q8
+            row2 = r2.get_next()
+            if row and row[0] > 0 and row2 and row2[0] > 0:
                 needs_load = False
                 print(f"\n[LadybugDB] Data already loaded ({row[0]} persons), skipping import")
         except Exception:
@@ -42,8 +44,8 @@ def run_benchmark():
                 pass
 
     if needs_load:
-        if os.path.isdir(db_path):
-            shutil.rmtree(db_path)
+        if os.path.exists(db_path):
+            bench_common.remove_db(db_path)
         db = kuzu.Database(db_path)
         conn = kuzu.Connection(db)
 
@@ -69,6 +71,7 @@ def run_benchmark():
         conn.execute("CREATE REL TABLE HAS_MEMBER(FROM Forum TO Person)")
         conn.execute("CREATE REL TABLE CONTAINER_OF(FROM Forum TO Post)")
         conn.execute("CREATE REL TABLE REPLY_OF(FROM Comment TO Post)")
+        conn.execute("CREATE REL TABLE REPLY_OF_C(FROM Comment TO Comment)")
         conn.execute("CREATE REL TABLE HAS_TAG_C(FROM Comment TO Tag)")
         conn.execute("CREATE REL TABLE HAS_TAG_P(FROM Post TO Tag)")
         conn.execute("CREATE REL TABLE HAS_TYPE(FROM Tag TO TagClass)")
@@ -92,6 +95,7 @@ def run_benchmark():
                         ("HAS_MEMBER", "Forum_hasMember_Person.csv"),
                         ("CONTAINER_OF", "Forum_containerOf_Post.csv"),
                         ("REPLY_OF", "Comment_replyOf_Post.csv"),
+                        ("REPLY_OF_C", "Comment_replyOf_Comment.csv"),
                         ("HAS_TAG_C", "Comment_hasTag_Tag.csv"),
                         ("HAS_TAG_P", "Post_hasTag_Tag.csv"),
                         ("HAS_TYPE", "Tag_hasType_TagClass.csv"),
@@ -142,7 +146,28 @@ WHERE NOT EXISTS { MATCH (person1)-[:KNOWS]-(person3) }
 RETURN count(*) AS count
 """,
     }
-    # Q4, Q5, Q7, Q8 require :Message (Post + Comment union) — skip for LadybugDB
+    # Q4, Q5, Q7, Q8 range over :Message (Post + Comment), which LadybugDB models as two node tables with separate
+    # relationship tables (_P / _C, REPLY_OF for replies to a post, REPLY_OF_C for replies to a comment). Each query is
+    # therefore run once per Message kind and the counts are added (all four are plain counts, so the sum is exact);
+    # the reported time is the time of both parts.
+    msg = {"P": ("Post", "HAS_TAG_P", "HAS_CREATOR_P", "LIKES_P", "REPLY_OF"),
+           "C": ("Comment", "HAS_TAG_C", "HAS_CREATOR_C", "LIKES_C", "REPLY_OF_C")}
+    ladybug_queries["q4"] = [f"""
+MATCH (:Tag)<-[:{tag}]-(m:{label})-[:{creator}]->(:Person), (m)<-[:{likes}]-(:Person), (m)<-[:{reply}]-(:Comment)
+RETURN count(*) AS count""" for label, tag, creator, likes, reply in msg.values()]
+    ladybug_queries["q5"] = [f"""
+MATCH (tag1:Tag)<-[:{tag}]-(m:{label})<-[:{reply}]-(c:Comment)-[:HAS_TAG_C]->(tag2:Tag)
+WHERE tag1 <> tag2
+RETURN count(*) AS count""" for label, tag, creator, likes, reply in msg.values()]
+    ladybug_queries["q7"] = [f"""
+MATCH (:Tag)<-[:{tag}]-(m:{label})-[:{creator}]->(:Person)
+OPTIONAL MATCH (m)<-[:{likes}]-(:Person)
+OPTIONAL MATCH (m)<-[:{reply}]-(:Comment)
+RETURN count(*) AS count""" for label, tag, creator, likes, reply in msg.values()]
+    ladybug_queries["q8"] = [f"""
+MATCH (tag1:Tag)<-[:{tag}]-(m:{label})<-[:{reply}]-(c:Comment)-[:HAS_TAG_C]->(tag2:Tag)
+WHERE tag1 <> tag2 AND NOT EXISTS {{ MATCH (c)-[:HAS_TAG_C]->(tag1) }}
+RETURN count(*) AS count""" for label, tag, creator, likes, reply in msg.values()]
 
     # Set 300s query timeout
     conn.set_query_timeout(bench_common.QUERY_TIMEOUT * 1000)
@@ -157,14 +182,14 @@ RETURN count(*) AS count
         print(f"\n[LadybugDB] Running {qid.upper()}...")
         start = time.perf_counter()
         try:
-            r = conn.execute(query)
-            row = r.get_next()
-            count = row[0]
-            elapsed = time.perf_counter() - start
+            def _once(query=query):
+                parts = query if isinstance(query, list) else [query]
+                return sum(conn.execute(q).get_next()[0] for q in parts)
+            elapsed, count = bench_common.measure_repeated(_once, name=qid)
             results[qid] = elapsed
             print(f"  {qid.upper()} time: {elapsed:.2f}s  (count={count})")
         except Exception as e:
-            elapsed = time.perf_counter() - start
+            elapsed = bench_common.LAST_CALL_SECONDS
             print(f"  {qid.upper()} failed ({elapsed:.2f}s): {e}")
             results[qid] = "timeout" if elapsed >= bench_common.QUERY_TIMEOUT - 1 else "N/A"
 

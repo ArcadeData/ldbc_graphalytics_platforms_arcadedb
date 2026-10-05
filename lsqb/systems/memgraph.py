@@ -120,14 +120,14 @@ def run_benchmark():
         print(f"\n[Memgraph] Running {qid.upper()}...")
         start = time.perf_counter()
         try:
-            with driver.session() as session:
-                r = session.run(query).single()
-                count = r["count"]
-            elapsed = time.perf_counter() - start
+            def _once(query=query):
+                with driver.session() as session:
+                    return session.run(query).single()["count"]
+            elapsed, count = bench_common.measure_repeated(_once, name=qid)
             results[qid] = elapsed
             print(f"  {qid.upper()} time: {elapsed:.2f}s  (count={count})")
         except Exception as e:
-            elapsed = time.perf_counter() - start
+            elapsed = bench_common.LAST_CALL_SECONDS
             print(f"  {qid.upper()} failed ({elapsed:.2f}s): {e}")
             results[qid] = "timeout" if elapsed >= bench_common.QUERY_TIMEOUT - 1 else "N/A"
 

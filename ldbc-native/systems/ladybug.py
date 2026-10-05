@@ -117,7 +117,7 @@ def run_benchmark():
                 print(f"    Top PR: node={row[0]}, rank={row[1]:.6f}")
             count += 1
         return count
-    elapsed, _ = bench_common.run_timed("PageRank", _run_pagerank)
+    elapsed, _ = bench_common.run_timed_warm("PageRank", _run_pagerank)
     results["pagerank"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  PageRank time: {elapsed:.2f}s")
@@ -137,7 +137,7 @@ def run_benchmark():
                 print(f"    Component: group={row[0]}, size={row[1]}")
             count += 1
         return count
-    elapsed, _ = bench_common.run_timed("WCC", _run_wcc)
+    elapsed, _ = bench_common.run_timed_warm("WCC", _run_wcc)
     results["wcc"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  WCC time: {elapsed:.2f}s")
@@ -157,7 +157,7 @@ def run_benchmark():
                 print(f"    Top LCC: node={row[0]}, coeff={row[1]:.6f}")
             count += 1
         return count
-    elapsed, _ = bench_common.run_timed("LCC", _run_lcc)
+    elapsed, _ = bench_common.run_timed_warm("LCC", _run_lcc)
     results["lcc"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  LCC time: {elapsed:.2f}s")
@@ -172,7 +172,7 @@ def run_benchmark():
             count += 1
         print(f"  Reached {count} nodes")
         return count
-    elapsed, _ = bench_common.run_timed("BFS", _run_bfs)
+    elapsed, _ = bench_common.run_timed_warm("BFS", _run_bfs)
     results["bfs"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  BFS time: {elapsed:.2f}s")

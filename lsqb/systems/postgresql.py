@@ -162,13 +162,14 @@ def run_benchmark():
         print(f"\n[PostgreSQL] Running {qid.upper()}...")
         start = time.perf_counter()
         try:
-            cur.execute(query)
-            count = cur.fetchone()[0]
-            elapsed = time.perf_counter() - start
+            def _once(query=query):
+                cur.execute(query)
+                return cur.fetchone()[0]
+            elapsed, count = bench_common.measure_repeated(_once, name=qid)
             results[qid] = elapsed
             print(f"  {qid.upper()} time: {elapsed:.2f}s  (count={count})")
         except Exception as e:
-            elapsed = time.perf_counter() - start
+            elapsed = bench_common.LAST_CALL_SECONDS
             print(f"  {qid.upper()} failed ({elapsed:.2f}s): {e}")
             con.rollback()
             results[qid] = "timeout" if elapsed >= bench_common.QUERY_TIMEOUT - 1 else "N/A"

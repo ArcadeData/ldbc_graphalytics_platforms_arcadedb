@@ -44,6 +44,39 @@ def _wait_for_neo4j():
     raise RuntimeError("Neo4j failed to start")
 
 
+# Graphalytics PageRank: every vertex starts at 1/N and the update is r' = (1-d)/N + d*P*r, 10 iterations. GDS starts
+# every vertex at 1-d, does not normalise, and counts the initialisation as the first iteration (maxIterations=10
+# returns the state after 9 updates, verified to 1e-14 against a simulation), so its scores G differ from the
+# reference by 0.85 * A^10 * 1 (A = d*P). The update is linear, so G(t) - G(t-1) = 0.15 * A^t * 1 and the reference
+# (scaled by N) is  G10 + (0.85/0.15) * (G10 - G9)  =  (20*S11 - 17*S10) / 3  with S10, S11 the GDS scores for
+# maxIterations 10 and 11. Checked on this graph: max relative error 3e-14 against the reference outputs.
+PAGERANK_QUERY = ("CALL gds.pageRank.stream('bench', {{dampingFactor: 0.85, maxIterations: {it}, tolerance: 0.0}}) "
+                  "YIELD nodeId, score RETURN gds.util.asNode(nodeId).id AS id, score")
+
+
+PAGERANK_STATS_QUERY = ("CALL gds.pageRank.stats('bench', {{dampingFactor: 0.85, maxIterations: {it}, tolerance: 0.0}}) "
+                        "YIELD ranIterations RETURN ranIterations")
+
+
+def _pagerank_compute(driver):
+    """The two GDS PageRank executions the correction needs (10 and 11 iterations), compute only: `stats` mode runs
+    the algorithm without shipping the 633K scores to the client (shipping them is what the validated export does)."""
+    ran = []
+    with driver.session() as session:
+        for it in (10, 11):
+            ran.append(session.run(PAGERANK_STATS_QUERY.format(it=it)).single()["ranIterations"])
+    return ran
+
+
+def _graphalytics_pagerank(driver):
+    """{vertex id: rank} equal to the Graphalytics reference PageRank (two GDS runs plus a linear correction)."""
+    with driver.session() as session:
+        s10 = {r["id"]: r["score"] for r in session.run(PAGERANK_QUERY.format(it=10))}
+        s11 = {r["id"]: r["score"] for r in session.run(PAGERANK_QUERY.format(it=11))}
+    n = len(s10)
+    return {i: (20.0 * s11[i] - 17.0 * s10[i]) / 3.0 / n for i in s10}
+
+
 def _dump_all(driver):
     """Full per-vertex outputs of the exact calls the benchmark times (see bench_common.dump_*)."""
     if not bench_common.dump_enabled():
@@ -52,10 +85,8 @@ def _dump_all(driver):
         with driver.session() as session:
             for r in session.run(q, **params):
                 yield r
-    bench_common.dump_safely("neo4j", "PR", lambda: bench_common.dump_rows("neo4j", "PR", (
-        (r["id"], float(r["score"])) for r in rows("""
-            CALL gds.pageRank.stream('bench', {dampingFactor: 0.85, maxIterations: 10})
-            YIELD nodeId, score RETURN gds.util.asNode(nodeId).id AS id, score"""))))
+    bench_common.dump_safely("neo4j", "PR", lambda: bench_common.dump_rows(
+        "neo4j", "PR", _graphalytics_pagerank(driver).items()))
     bench_common.dump_safely("neo4j", "WCC", lambda: bench_common.dump_rows("neo4j", "WCC", (
         (r["id"], r["componentId"]) for r in rows("""
             CALL gds.wcc.stream('bench') YIELD nodeId, componentId
@@ -184,18 +215,10 @@ def run_benchmark():
     # --- PageRank ---
     print("\n[Neo4j] Running PageRank...")
     def _run_pagerank():
-        with driver.session() as session:
-            r = session.run("""
-                CALL gds.pageRank.stream('bench', {dampingFactor: 0.85, maxIterations: 10})
-                YIELD nodeId, score
-                RETURN gds.util.asNode(nodeId).id AS id, score
-                ORDER BY score DESC LIMIT 10
-            """)
-            rows = list(r)
-            for row in rows[:3]:
-                print(f"    Top PR: node={row['id']}, rank={row['score']:.6f}")
-        return rows
-    elapsed, _ = bench_common.run_timed_warm("PageRank", _run_pagerank, record=results)
+        ran = _pagerank_compute(driver)
+        print(f"  PageRank: GDS ran {ran[0]} and {ran[1]} iterations (the validated export streams both score sets)")
+        return ran
+    elapsed, _ = bench_common.run_timed_warm("PageRank", _run_pagerank)
     results["pagerank"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  PageRank time: {elapsed:.2f}s")
@@ -214,7 +237,7 @@ def run_benchmark():
             for row in rows[:3]:
                 print(f"    Component: id={row['componentId']}, size={row['size']}")
         return rows
-    elapsed, _ = bench_common.run_timed_warm("WCC", _run_wcc, record=results)
+    elapsed, _ = bench_common.run_timed_warm("WCC", _run_wcc)
     results["wcc"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  WCC time: {elapsed:.2f}s")
@@ -234,7 +257,7 @@ def run_benchmark():
             row = r.single()
             print(f"  Reached: {row['reached']} nodes")
         return row
-    elapsed, _ = bench_common.run_timed_warm("BFS", _run_bfs, record=results)
+    elapsed, _ = bench_common.run_timed_warm("BFS", _run_bfs)
     results["bfs"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  BFS time: {elapsed:.2f}s")
@@ -253,7 +276,7 @@ def run_benchmark():
             for row in rows[:3]:
                 print(f"    Top LCC: node={row['id']}, coeff={row['coeff']:.6f}")
         return rows
-    elapsed, _ = bench_common.run_timed_warm("LCC", _run_lcc, record=results)
+    elapsed, _ = bench_common.run_timed_warm("LCC", _run_lcc)
     results["lcc"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  LCC time: {elapsed:.2f}s")

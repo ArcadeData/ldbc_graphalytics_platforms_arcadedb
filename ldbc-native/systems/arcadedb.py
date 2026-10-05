@@ -207,7 +207,7 @@ public class ArcadeDBEmbeddedLoader {
         "-e", "JAVA_OPTS=--add-modules jdk.incubator.vector -Darcadedb.server.rootPassword=benchmark",
         "-v", f"{data_root}:/home/arcadedb/databases",
         "-v", f"{log_root}:/home/arcadedb/log",
-        os.environ.get("ARCADEDB_IMAGE", "arcadedata/arcadedb:26.10.1-SNAPSHOT")
+        os.environ.get("ARCADEDB_IMAGE", "arcadedata/arcadedb:26.10.1")
     ], check=True)
 
     # Wait for server + GAV auto-restore (CSR build takes ~60-90s)
@@ -263,7 +263,7 @@ public class ArcadeDBEmbeddedLoader {
             if r.status_code != 200:
                 raise RuntimeError(r.text[:200])
             return r
-        elapsed, _ = bench_common.run_timed_warm(name, _run, timeout=timeout, record=results)
+        elapsed, _ = bench_common.run_timed_warm(name, _run, timeout=timeout)
         results[name] = elapsed
         if isinstance(elapsed, (int, float)):
             print(f"  {name} time: {elapsed:.2f}s")
