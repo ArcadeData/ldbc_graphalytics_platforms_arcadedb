@@ -1,9 +1,24 @@
 """DuckPGQ benchmark for LDBC Graphalytics."""
 
-import time
 import os
+import threading
+import time
 
 from ._common import VERTEX_FILE, EDGE_FILE, bench_common
+
+
+# The Graphalytics datasets store every undirected edge once; DuckPGQ follows the stored direction. PageRank and
+# BFS therefore run on `ldbc2`, a property graph over `edges2` (every edge in both directions). WCC and LCC are
+# direction-agnostic and keep using `ldbc`.
+PAGERANK_QUERY = "SELECT id, pagerank FROM pagerank(ldbc2, nodes, edges2)"
+WCC_QUERY = "SELECT id, componentId FROM weakly_connected_component(ldbc, nodes, edges)"
+LCC_QUERY = "SELECT id, local_clustering_coefficient FROM local_clustering_coefficient(ldbc, nodes, edges)"
+BFS_QUERY = """
+    FROM GRAPH_TABLE(ldbc2
+        MATCH p = ANY SHORTEST (a:nodes WHERE a.id = 6)-[e:edges2]->{1,30}(b:nodes)
+        COLUMNS (b.id AS dst, path_length(p) AS dist)
+    )
+"""
 
 
 def _dump_all(conn):
@@ -11,14 +26,13 @@ def _dump_all(conn):
     if not bench_common.dump_enabled():
         return
     bench_common.dump_safely("duckpgq", "PR", lambda: bench_common.dump_rows(
-        "duckpgq", "PR", conn.execute("SELECT id, pagerank FROM pagerank(ldbc, nodes, edges)").fetchall()))
+        "duckpgq", "PR", conn.execute(PAGERANK_QUERY).fetchall()))
     bench_common.dump_safely("duckpgq", "WCC", lambda: bench_common.dump_rows(
-        "duckpgq", "WCC", conn.execute("SELECT id, componentId FROM weakly_connected_component(ldbc, nodes, edges)").fetchall()))
+        "duckpgq", "WCC", conn.execute(WCC_QUERY).fetchall()))
     bench_common.dump_safely("duckpgq", "LCC", lambda: bench_common.dump_rows(
-        "duckpgq", "LCC", conn.execute(
-            "SELECT id, local_clustering_coefficient FROM local_clustering_coefficient(ldbc, nodes, edges)").fetchall()))
-    # BFS is not exported: the driver caps it at LIMIT 50000 (invalid by construction) and the uncapped
-    # shortest-path query takes tens of minutes in DuckPGQ.
+        "duckpgq", "LCC", conn.execute(LCC_QUERY).fetchall()))
+    # BFS is exported by the timed run itself when it finishes: the uncapped shortest-path query can exceed
+    # the time limit in DuckPGQ, and it is not run again for the export.
 
 
 def run_benchmark():
@@ -68,6 +82,14 @@ def run_benchmark():
                           DESTINATION KEY (dst) REFERENCES nodes (id))
     """)
 
+    conn.execute("CREATE TABLE edges2 AS SELECT src, dst, weight FROM edges UNION ALL SELECT dst, src, weight FROM edges")
+    conn.execute("""
+        -CREATE PROPERTY GRAPH ldbc2
+        VERTEX TABLES (nodes)
+        EDGE TABLES (edges2 SOURCE KEY (src) REFERENCES nodes (id)
+                           DESTINATION KEY (dst) REFERENCES nodes (id))
+    """)
+
     load_time = time.perf_counter() - start
     results["load"] = load_time
     print(f"  Load time: {load_time:.2f}s")
@@ -83,70 +105,35 @@ def run_benchmark():
         os.remove(db_path)
         return results
 
-    # --- PageRank ---
-    print("\n[DuckPGQ] Running PageRank...")
-    def _run_pagerank():
-        r = conn.execute("""
-            SELECT * FROM pagerank(ldbc, nodes, edges)
-            ORDER BY pagerank DESC LIMIT 10
-        """).fetchall()
-        for row in r[:3]:
-            print(f"    Top PR: node={row[0]}, rank={row[1]:.6f}")
-        return r
-    elapsed, _ = bench_common.run_timed("PageRank", _run_pagerank)
-    results["pagerank"] = elapsed
-    if isinstance(elapsed, (int, float)):
-        print(f"  PageRank time: {elapsed:.2f}s")
+    def timed(name, label, query, key, keep=False):
+        print(f"\n[DuckPGQ] Running {label}...")
+        def _run():
+            # SIGALRM cannot interrupt a query that runs inside DuckDB, so the limit is enforced with interrupt()
+            timer = threading.Timer(bench_common.QUERY_TIMEOUT, conn.interrupt)
+            timer.start()
+            try:
+                r = conn.execute(query).fetchall()
+            finally:
+                timer.cancel()
+            print(f"  {label}: {len(r)} rows")
+            return r
+        elapsed, rows = bench_common.run_timed(name, _run)
+        results[key] = elapsed
+        if isinstance(elapsed, (int, float)):
+            print(f"  {label} time: {elapsed:.2f}s")
+        return rows if keep else None
 
-    # --- WCC ---
-    print("\n[DuckPGQ] Running WCC...")
-    def _run_wcc():
-        r = conn.execute("""
-            SELECT componentId, count(*) AS size
-            FROM weakly_connected_component(ldbc, nodes, edges)
-            GROUP BY componentId
-            ORDER BY size DESC LIMIT 10
-        """).fetchall()
-        for row in r[:3]:
-            print(f"    Component: id={row[0]}, size={row[1]}")
-        return r
-    elapsed, _ = bench_common.run_timed("WCC", _run_wcc)
-    results["wcc"] = elapsed
-    if isinstance(elapsed, (int, float)):
-        print(f"  WCC time: {elapsed:.2f}s")
+    # Every timed call is the exact query that _dump_all exports and the validator checks: full output, no LIMIT.
+    timed("PageRank", "PageRank", PAGERANK_QUERY, "pagerank")
+    timed("WCC", "WCC", WCC_QUERY, "wcc")
+    timed("LCC", "LCC", LCC_QUERY, "lcc")
+    _dump_all(conn)  # PR, WCC, LCC outputs are exported before the BFS, which can hit the time limit
+    bfs_rows = timed("BFS", "BFS (undirected shortest paths from vertex 6)", BFS_QUERY, "bfs", keep=True)
+    if bfs_rows:
+        bench_common.dump_safely("duckpgq", "BFS", lambda: bench_common.dump_bfs(
+            "duckpgq", {r[0]: r[1] for r in bfs_rows},
+            [row[0] for row in conn.execute("SELECT id FROM nodes").fetchall()], 6))
 
-    # --- LCC ---
-    print("\n[DuckPGQ] Running LCC...")
-    def _run_lcc():
-        r = conn.execute("""
-            SELECT * FROM local_clustering_coefficient(ldbc, nodes, edges)
-            ORDER BY local_clustering_coefficient DESC LIMIT 10
-        """).fetchall()
-        for row in r[:3]:
-            print(f"    Top LCC: node={row[0]}, coeff={row[1]:.6f}")
-        return r
-    elapsed, _ = bench_common.run_timed("LCC", _run_lcc)
-    results["lcc"] = elapsed
-    if isinstance(elapsed, (int, float)):
-        print(f"  LCC time: {elapsed:.2f}s")
-
-    # --- BFS / Shortest Path ---
-    print("\n[DuckPGQ] Running Shortest Path from vertex 6...")
-    def _run_bfs():
-        r = conn.execute("""
-            FROM GRAPH_TABLE(ldbc
-                MATCH p = ANY SHORTEST (a:nodes WHERE a.id = 6)-[e:edges]->{1,30}(b:nodes)
-                COLUMNS (b.id AS dst, path_length(p) AS dist)
-            ) LIMIT 50000
-        """).fetchall()
-        print(f"  Reached {len(r)} nodes")
-        return r
-    elapsed, _ = bench_common.run_timed("BFS", _run_bfs)
-    results["bfs"] = elapsed
-    if isinstance(elapsed, (int, float)):
-        print(f"  BFS time: {elapsed:.2f}s")
-
-    _dump_all(conn)
     conn.close()
     os.remove(db_path)
     return results

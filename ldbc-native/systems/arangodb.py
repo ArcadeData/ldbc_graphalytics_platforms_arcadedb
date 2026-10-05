@@ -5,6 +5,23 @@ import time
 from ._common import VERTEX_FILE, EDGE_FILE, bench_common
 
 
+# Pregel counts the initialisation as the first superstep: the reference's 10 PageRank iterations are 11 supersteps
+# (verified: output equals the reference within 1e-4 for every vertex; 10 and 12 do not).
+PAGERANK_SUPERSTEPS = 11
+# Pregel's sssp is unweighted (hop count); the weighted single-source distances come from a weighted AQL traversal
+SSSP_QUERY = """
+    FOR v, e, p IN 0..100 OUTBOUND 'nodes/6' GRAPH 'bench'
+        OPTIONS {order: 'weighted', weightAttribute: 'weight', uniqueVertices: 'global'}
+        RETURN [v.vid, LAST(p.weights)]
+"""
+
+
+def _long_db(timeout):
+    from arango import ArangoClient
+    return ArangoClient(hosts='http://localhost:8529', request_timeout=timeout).db(
+        '_system', username='root', password='benchmark')   # the default client times out after 60 s
+
+
 def _dump_all(db, run_pregel):
     """Full per-vertex outputs (Pregel stores its results in a field of each vertex document)."""
     if not bench_common.dump_enabled():
@@ -24,21 +41,21 @@ def _dump_all(db, run_pregel):
         t.sleep(2)
         return db.aql.execute(f"FOR v IN nodes RETURN [v.vid, v.`{field}`]", ttl=600, batch_size=100000)
     bench_common.dump_safely("arangodb", "PR", lambda: bench_common.dump_rows("arangodb", "PR", (
-        (r[0], float(r[1])) for r in pregel("PR", "pagerank", "pr", max_gss=10, algo_params={'threshold': 0.0}))))
+        (r[0], float(r[1])) for r in pregel("PR", "pagerank", "pr", max_gss=PAGERANK_SUPERSTEPS, algo_params={'threshold': 0.0}))))
     bench_common.dump_safely("arangodb", "WCC", lambda: bench_common.dump_rows("arangodb", "WCC", (
         (r[0], r[1]) for r in pregel("WCC", "connectedcomponents", "wcc"))))
     bench_common.dump_safely("arangodb", "CDLP", lambda: bench_common.dump_rows("arangodb", "CDLP", (
         (r[0], r[1]) for r in pregel("CDLP", "labelpropagation", "cdlp", max_gss=10))))
     def sssp():
-        rows = list(pregel("SSSP", "sssp", "dist", algo_params={'source': 'nodes/6'}))
-        bench_common.dump_rows("arangodb", "SSSP", ((r[0], "infinity" if r[1] is None else float(r[1])) for r in rows))
+        rows = list(_long_db(1800).aql.execute(SSSP_QUERY, ttl=1800, batch_size=100000, max_runtime=1700))
+        bench_common.dump_rows("arangodb", "SSSP", ((r[0], float(r[1])) for r in rows))
     bench_common.dump_safely("arangodb", "SSSP", sssp)
     def bfs():
         from arango import ArangoClient
         long_db = ArangoClient(hosts='http://localhost:8529', request_timeout=1800).db(
             '_system', username='root', password='benchmark')   # the benchmark client times out after 60 s
         cur = long_db.aql.execute("""
-            FOR v, e, p IN 0..100 ANY 'nodes/6' GRAPH 'bench'
+            FOR v, e, p IN 0..100 OUTBOUND 'nodes/6' GRAPH 'bench'
                 OPTIONS {bfs: true, uniqueVertices: 'global'}
                 RETURN [v.vid, LENGTH(p.edges)]
         """, ttl=1800, batch_size=100000)
@@ -64,13 +81,16 @@ def run_benchmark():
         print("  Start with: docker run -d --name arangodb -p 8529:8529 -e ARANGO_ROOT_PASSWORD=benchmark arangodb/arangodb:3.11.12")
         return {"error": str(e)}
 
-    # Check if data already loaded
+    # The Graphalytics datasets store every undirected edge once, while Pregel follows the stored direction. The
+    # load therefore writes every edge in both directions; the `meta` document marks a database loaded that way.
     needs_load = True
     if not bench_common.RESET:
         try:
-            if db.has_collection('edges') and db.collection('edges').count() > 0:
+            if (db.has_collection('edges') and db.collection('edges').count() > 0
+                    and db.has_collection('meta') and db.collection('meta').has('both_directions')):
                 needs_load = False
-                print(f"\n[ArangoDB] Data already loaded ({db.collection('edges').count()} edges), skipping import")
+                print(f"\n[ArangoDB] Data already loaded ({db.collection('edges').count()} edges, both directions), "
+                      "skipping import")
         except Exception:
             pass
 
@@ -83,6 +103,8 @@ def run_benchmark():
             db.delete_collection('nodes')
         if db.has_collection('edges'):
             db.delete_collection('edges')
+        if db.has_collection('meta'):
+            db.delete_collection('meta')
         if db.has_graph('bench'):
             db.delete_graph('bench')
 
@@ -107,18 +129,21 @@ def run_benchmark():
         print("  Loading edges...")
         with open(EDGE_FILE) as f:
             batch = []
+            loaded = 0
             for line in f:
                 parts = line.strip().split()
-                batch.append({
-                    "_from": f"nodes/{parts[0]}",
-                    "_to": f"nodes/{parts[1]}",
-                    "weight": float(parts[2])
-                })
+                weight = float(parts[2])
+                batch.append({"_from": f"nodes/{parts[0]}", "_to": f"nodes/{parts[1]}", "weight": weight})
+                batch.append({"_from": f"nodes/{parts[1]}", "_to": f"nodes/{parts[0]}", "weight": weight})
                 if len(batch) >= batch_size:
                     edges_col.import_bulk(batch, on_duplicate='replace')
+                    loaded += len(batch)
                     batch = []
+                    if loaded % 2000000 < batch_size:
+                        print(f"    {loaded} edges loaded ({time.perf_counter() - start:.0f}s)", flush=True)
             if batch:
                 edges_col.import_bulk(batch, on_duplicate='replace')
+        db.create_collection('meta').insert({"_key": "both_directions"})
 
         # Create named graph for Pregel
         db.create_graph('bench', edge_definitions=[{
@@ -169,7 +194,7 @@ def run_benchmark():
     # --- PageRank ---
     print("\n[ArangoDB] Running PageRank...")
     def _run_pagerank():
-        job = run_pregel('pagerank', max_gss=10, algo_params={'threshold': 0.0})
+        job = run_pregel('pagerank', max_gss=PAGERANK_SUPERSTEPS, algo_params={'threshold': 0.0})
         if job['state'] == 'done':
             return job
         raise RuntimeError(f"PageRank failed: {job['state']}")
@@ -235,10 +260,9 @@ def run_benchmark():
     # --- SSSP (Pregel) ---
     print("\n[ArangoDB] Running SSSP from vertex 6...")
     def _run_sssp():
-        job = run_pregel('sssp', algo_params={'source': 'nodes/6'})
-        if job['state'] == 'done':
-            return job
-        raise RuntimeError(f"SSSP failed: {job['state']}")
+        rows = list(_long_db(300).aql.execute(SSSP_QUERY, ttl=300, batch_size=100000, max_runtime=300))
+        print(f"  SSSP: {len(rows)} rows")
+        return rows
     elapsed, _ = bench_common.run_timed("SSSP", _run_sssp)
     results["sssp"] = elapsed
     if isinstance(elapsed, (int, float)):
@@ -259,8 +283,10 @@ def run_benchmark():
     # --- BFS (via AQL traversal) ---
     print("\n[ArangoDB] Running BFS from vertex 6...")
     def _run_bfs():
-        cursor = db.aql.execute("""
-            FOR v, e, p IN 0..100 ANY 'nodes/6' GRAPH 'bench'
+        long_db = ArangoClient(hosts='http://localhost:8529', request_timeout=300).db(
+            '_system', username='root', password='benchmark')   # the default client times out after 60 s
+        cursor = long_db.aql.execute("""
+            FOR v, e, p IN 0..100 OUTBOUND 'nodes/6' GRAPH 'bench'
                 OPTIONS {bfs: true, uniqueVertices: 'global'}
                 COLLECT depth = LENGTH(p.edges) WITH COUNT INTO cnt
                 RETURN {depth: depth, count: cnt}

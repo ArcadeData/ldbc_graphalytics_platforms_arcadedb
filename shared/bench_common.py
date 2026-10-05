@@ -48,8 +48,23 @@ class QueryTimeout(Exception):
     pass
 
 
+_ALARM_FIRED = False
+
+
 def _alarm_handler(signum, frame):
+    global _ALARM_FIRED
+    _ALARM_FIRED = True
     raise QueryTimeout("timeout")
+
+
+def _disarm():
+    """Cancel the alarm; if it fires while the cancellation runs, the timeout is already accounted for."""
+    for _ in range(3):
+        try:
+            signal.alarm(0)
+            return
+        except QueryTimeout:
+            pass
 
 
 # ------------------------------------------------------------ partial results
@@ -81,27 +96,35 @@ def run_timed(name, func, timeout=QUERY_TIMEOUT):
     print(f"  Running {name}...")
     _PARTIAL["inflight"] = key
     _flush_partial(_PARTIAL)
+    global _ALARM_FIRED
+    _ALARM_FIRED = False
     old = signal.signal(signal.SIGALRM, _alarm_handler)
     signal.alarm(timeout)
     start = time.perf_counter()
     try:
-        result = func()
-        elapsed = time.perf_counter() - start
-        signal.alarm(0)
-        _PARTIAL["done"][key] = elapsed
-        return elapsed, result
+        try:
+            result = func()
+            elapsed = time.perf_counter() - start
+            _disarm()
+            _PARTIAL["done"][key] = elapsed
+            return elapsed, result
+        except QueryTimeout:
+            raise
+        except Exception as e:
+            _disarm()
+            if _ALARM_FIRED:  # a C client library can turn the interrupt into its own exception
+                raise QueryTimeout("timeout")
+            print(f"  {name} failed: {e}")
+            _PARTIAL["done"][key] = "N/A"
+            return "N/A", None
     except QueryTimeout:
+        _disarm()
         print(f"  {name}: TIMEOUT ({timeout}s)")
         _PARTIAL["done"][key] = "timeout"
         return "timeout", None
-    except Exception as e:
-        signal.alarm(0)
-        print(f"  {name} failed: {e}")
-        _PARTIAL["done"][key] = "N/A"
-        return "N/A", None
     finally:
+        _disarm()
         signal.signal(signal.SIGALRM, old)
-        signal.alarm(0)
         _PARTIAL["inflight"] = None
         _flush_partial(_PARTIAL)
 

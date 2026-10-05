@@ -3,8 +3,25 @@
 import time
 import os
 import shutil
+import subprocess
 
 from ._common import VERTEX_FILE, EDGE_FILE, bench_common
+
+
+# The Graphalytics datasets store every undirected edge once. Kuzu's algo extension and its recursive
+# patterns follow the stored direction, so the load adds a reversed copy of the edge table (EdgeRev) and the
+# algorithms run over both. PageRank: the reference does 10 iterations; Kuzu counts the initialisation as the
+# first one, so maxIterations is 11 (verified: output equals the reference to machine precision).
+PAGERANK_QUERY = ("CALL page_rank('pg', dampingFactor := 0.85, maxIterations := 11, tolerance := 0.0) "
+                  "RETURN node.id, rank")
+WCC_QUERY = "CALL weakly_connected_components('pg') RETURN node.id, group_id"
+LCC_QUERY = "CALL local_clustering_coefficient('pg') RETURN node.id, coefficient"
+BFS_QUERY = "MATCH (a:Node {id: 6})-[e:Edge* SHORTEST 1..30]-(b:Node) RETURN b.id, length(e)"
+
+
+def _reverse_edges(src, dst):
+    """Write `dst src weight` for every `src dst weight` line (the other direction of each edge)."""
+    subprocess.run(["awk", "-F", " ", "{print $2\" \"$1\" \"$3}", src], stdout=open(dst, "w"), check=True)
 
 
 def _dump_all(conn):
@@ -18,15 +35,13 @@ def _dump_all(conn):
     def ids():
         return [row[0] for row in rows("MATCH (n:Node) RETURN n.id")]
     bench_common.dump_safely("kuzu", "PR", lambda: bench_common.dump_rows(
-        "kuzu", "PR", ((r[0], float(r[1])) for r in rows("CALL page_rank('pg') RETURN node.id, rank"))))
+        "kuzu", "PR", ((r[0], float(r[1])) for r in rows(PAGERANK_QUERY))))
     bench_common.dump_safely("kuzu", "WCC", lambda: bench_common.dump_rows(
-        "kuzu", "WCC", ((r[0], r[1]) for r in rows("CALL weakly_connected_components('pg') RETURN node.id, group_id"))))
+        "kuzu", "WCC", ((r[0], r[1]) for r in rows(WCC_QUERY))))
     bench_common.dump_safely("kuzu", "LCC", lambda: bench_common.dump_rows(
-        "kuzu", "LCC", ((r[0], float(r[1])) for r in rows("CALL local_clustering_coefficient('pg') RETURN node.id, coefficient"))))
+        "kuzu", "LCC", ((r[0], float(r[1])) for r in rows(LCC_QUERY))))
     bench_common.dump_safely("kuzu", "BFS", lambda: bench_common.dump_bfs(
-        "kuzu", {r[0]: r[1] for r in rows(
-            "MATCH (a:Node {id: 6})-[e:Edge* ALL SHORTEST 1..30]->(b:Node) RETURN b.id, length(e)")},
-        ids(), 6))
+        "kuzu", {r[0]: r[1] for r in rows(BFS_QUERY)}, ids(), 6))
 
 
 def run_benchmark():
@@ -50,7 +65,7 @@ def run_benchmark():
         try:
             db = kuzu.Database(db_path)
             conn = kuzu.Connection(db)
-            r = conn.execute("MATCH ()-[e:Edge]->() RETURN count(e) AS cnt")
+            r = conn.execute("MATCH ()-[e:EdgeRev]->() RETURN count(e) AS cnt")
             if r.has_next() and r.get_next()[0] > 0:
                 needs_load = False
                 print("\n[Kuzu] Data already loaded, skipping import")
@@ -70,6 +85,7 @@ def run_benchmark():
 
         conn.execute("CREATE NODE TABLE Node(id INT64, PRIMARY KEY(id))")
         conn.execute("CREATE REL TABLE Edge(FROM Node TO Node, weight DOUBLE)")
+        conn.execute("CREATE REL TABLE EdgeRev(FROM Node TO Node, weight DOUBLE)")
 
         v_csv = "/tmp/ldbc_vertices.csv"
         e_csv = "/tmp/ldbc_edges.csv"
@@ -78,6 +94,10 @@ def run_benchmark():
 
         conn.execute(f"COPY Node FROM '{v_csv}' (HEADER=false)")
         conn.execute(f"COPY Edge FROM '{e_csv}' (HEADER=false, DELIM=' ')")
+        rev_csv = "/tmp/ldbc_edges_rev.csv"
+        _reverse_edges(EDGE_FILE, rev_csv)
+        conn.execute(f"COPY EdgeRev FROM '{rev_csv}' (HEADER=false, DELIM=' ')")
+        os.remove(rev_csv)
 
         load_time = time.perf_counter() - start
         results["load"] = load_time
@@ -103,92 +123,35 @@ def run_benchmark():
 
     # Create projected graph for algorithms
     try:
-        conn.execute("CALL project_graph('pg', ['Node'], ['Edge'])")
+        conn.execute("CALL project_graph('pg', ['Node'], ['Edge', 'EdgeRev'])")
         print("  Projected graph created")
     except Exception as e:
         print(f"  Project graph failed: {e}")
 
-    # --- PageRank ---
-    print("\n[Kuzu] Running PageRank...")
-    def _run_pagerank():
-        r = conn.execute("""
-            CALL page_rank('pg') RETURN node.id, rank
-            ORDER BY rank DESC LIMIT 10
-        """)
-        count = 0
-        while r.has_next():
-            row = r.get_next()
-            if count < 3:
-                print(f"    Top PR: node={row[0]}, rank={row[1]:.6f}")
-            count += 1
-        return count
-    elapsed, _ = bench_common.run_timed("PageRank", _run_pagerank)
-    results["pagerank"] = elapsed
-    if isinstance(elapsed, (int, float)):
-        print(f"  PageRank time: {elapsed:.2f}s")
+    def timed(name, label, query, key):
+        print(f"\n[Kuzu] Running {label}...")
+        def _run():
+            r = conn.execute(query)
+            count = 0
+            while r.has_next():
+                r.get_next()
+                count += 1
+            print(f"  {label}: {count} rows")
+            return count
+        elapsed, _ = bench_common.run_timed(name, _run)
+        results[key] = elapsed
+        if isinstance(elapsed, (int, float)):
+            print(f"  {label} time: {elapsed:.2f}s")
 
-    # --- WCC (Weakly Connected Components) ---
-    print("\n[Kuzu] Running WCC...")
-    def _run_wcc():
-        r = conn.execute("""
-            CALL weakly_connected_components('pg')
-            RETURN group_id, count(*) AS size
-            ORDER BY size DESC LIMIT 10
-        """)
-        count = 0
-        while r.has_next():
-            row = r.get_next()
-            if count < 3:
-                print(f"    Component: group={row[0]}, size={row[1]}")
-            count += 1
-        return count
-    elapsed, _ = bench_common.run_timed("WCC", _run_wcc)
-    results["wcc"] = elapsed
-    if isinstance(elapsed, (int, float)):
-        print(f"  WCC time: {elapsed:.2f}s")
-
-    # --- LCC (Local Clustering Coefficient) ---
-    print("\n[Kuzu] Running LCC...")
-    def _run_lcc():
-        r = conn.execute("""
-            CALL local_clustering_coefficient('pg')
-            RETURN node.id, coefficient
-            ORDER BY coefficient DESC LIMIT 10
-        """)
-        count = 0
-        while r.has_next():
-            row = r.get_next()
-            if count < 3:
-                print(f"    Top LCC: node={row[0]}, coeff={row[1]:.6f}")
-            count += 1
-        return count
-    elapsed, _ = bench_common.run_timed("LCC", _run_lcc)
-    results["lcc"] = elapsed
-    if isinstance(elapsed, (int, float)):
-        print(f"  LCC time: {elapsed:.2f}s")
-
-    # --- BFS (shortest path from source) ---
-    print("\n[Kuzu] Running BFS/Shortest Path from vertex 6...")
-    def _run_bfs():
-        r = conn.execute("""
-            MATCH (a:Node {id: 6})-[e:Edge* ALL SHORTEST 1..30]->(b:Node)
-            RETURN b.id, length(e) LIMIT 50000
-        """)
-        count = 0
-        while r.has_next():
-            r.get_next()
-            count += 1
-        print(f"  Reached {count} nodes")
-        return count
-    elapsed, _ = bench_common.run_timed("BFS", _run_bfs)
-    results["bfs"] = elapsed
-    if isinstance(elapsed, (int, float)):
-        print(f"  BFS time: {elapsed:.2f}s")
+    # Every timed call is the exact query that _dump_all exports and the validator checks: full output, no LIMIT.
+    timed("PageRank", "PageRank", PAGERANK_QUERY, "pagerank")
+    timed("WCC", "WCC", WCC_QUERY, "wcc")
+    timed("LCC", "LCC", LCC_QUERY, "lcc")
+    timed("BFS", "BFS (undirected shortest paths from vertex 6)", BFS_QUERY, "bfs")
 
     _dump_all(conn)
 
-    # Cleanup
+    # The database stays for the next run (load once); --reset deletes it.
     del conn
     del db
-    shutil.rmtree(db_path, ignore_errors=True)
     return results

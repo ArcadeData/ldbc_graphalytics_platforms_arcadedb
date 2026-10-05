@@ -236,34 +236,36 @@ All systems are the newest available release as of 2026-10-03. Exceptions: DuckP
 
 #### All Systems Comparison
 
-Seconds, `datagen-7_5-fb`, one process at a time, 5-minute limit per operation. ArcadeDB embedded and ArcadeDB Docker (Temurin 25, compact object headers) are the median of 3 runs, re-measured on AC power on 2026-10-04 with the validated algorithm semantics; the other systems were measured on 2026-10-03 and their outputs were validated afterwards.
+Seconds, `datagen-7_5-fb`, one process at a time, 5-minute limit per operation. ArcadeDB embedded and ArcadeDB Docker (Temurin 25, compact object headers) are the median of 3 runs, re-measured on AC power on 2026-10-04 with the validated algorithm semantics; the other systems were re-run with validated drivers on 2026-10-04 and 2026-10-05 (see the last note below), with every output checked against the reference.
 
 **Every result is checked against the official LDBC reference outputs** (`scripts/validate_outputs.py`; BFS and CDLP exact, WCC same partition, PageRank/LCC/SSSP within 1e-4). A value marked **✗** failed that check: the system computed something other than the Graphalytics algorithm, so its time is shown for completeness but is **not comparable** and is not ranked. Bold marks the fastest *valid* result per row.
 
 | Algorithm | ArcadeDB | ArcadeDB Docker | Neo4j | Kuzu | LadybugDB | DuckPGQ | Memgraph | ArangoDB \* | FalkorDB | HugeGraph |
 |-----------|----------|----------------|-------|------|-----------|---------|----------|------------------|----------|-----------|
-| **Load** | 71.9 | 43.9 | 538 | 3.35 | 5.94 | 0.45 | 170.5 | 356.8 | timeout | 14.2 |
-| **PageRank** | **0.21** | 71.6 † | 3.44 ✗ | 0.97 ✗ | N/A | 2.44 ✗ | 3.09 ✗ | 51.01 ✗ | – | 1.21 ✗ |
-| **WCC** | **0.09** | 0.26 | 0.18 | 0.10 | N/A | 6.63 | 34.15 | 25.80 ✗ | – | 1.60 |
-| **BFS** | **0.08** | 0.18 | 0.55 ‡ | 0.24 ✗ | 3.28 ✗ | timeout | 1.95 ✗ | timeout | – | 0.15 ✗ |
-| **LCC** | **2.25** | 2.68 | 15.14 | N/A | N/A | 17.92 | timeout | N/A | – | 109.27 |
-| **SSSP** | **0.96** | 1.35 | N/A | N/A | N/A | N/A | N/A | 36.92 ✗ | – | N/A |
-| **CDLP** | 1.03 ✗ | 1.22 ✗ | N/A | N/A | N/A | N/A | N/A | 128.43 ✗ | – | 22.26 ✗ |
+| **Load** | 71.9 | 43.9 | 657 | 28.8 | 5.16 | 0.85 | 437 | 726 | 3199 | 34.7 |
+| **PageRank** | **0.22** | 1.56 † | 3.52 ✗ | 4.11 | N/A | 9.95 ✗ | 5.72 | 89.2 | 2.64 ✗ | 2.19 |
+| **WCC** | **0.08** | 0.24 | 0.18 | 0.69 | N/A | 12.85 | 119 | 36.7 | 2.42 | 1.56 |
+| **BFS** | **0.08** | 0.20 | 0.65 ‡ | 0.39 | 37.2 | timeout | 3.57 | 27.9 | 0.16 | 0.28 |
+| **LCC** | **2.12** | 2.77 | 15.09 | N/A | N/A | 220 | N/A | N/A | N/A | 102 |
+| **SSSP** | **0.85** | 1.62 | N/A | N/A | N/A | N/A | 67.5 | 185 | N/A | N/A |
+| **CDLP** | 1.01 ✗ | 1.30 ✗ | N/A | N/A | N/A | N/A | timeout | 213 ✗ | 8.01 ✗ | 20.7 ✗ |
 
 - **ArcadeDB** (embedded and Docker) is valid for PageRank, WCC, BFS, LCC and SSSP. Its CDLP fails validation: the engine's `algo.labelPropagation` breaks ties and seeds labels with dense node ids instead of vertex ids, so the labels differ from the reference (the official Mode 1 framework has its own vertex-id based CDLP and passes).
-- **Load** times are not like for like: ArcadeDB loads with its embedded Java loader (and, for Docker, serves over HTTP afterwards), the other server systems load through Python batches over the network. The ArcadeDB Docker load is the time of its original load; later runs reuse the data.
+- **Load** times are not like for like: ArcadeDB loads with its embedded Java loader (and, for Docker, serves over HTTP afterwards), the other server systems load through Python batches over the network. Systems whose algorithms follow the stored edge direction (Memgraph, FalkorDB, ArangoDB; HugeGraph for PageRank/BFS) load every edge in both directions, and that cost is part of their load time. The ArcadeDB Docker load is the time of its original load; later runs reuse the data.
 - † **ArcadeDB Docker PageRank** is the first algorithm call after the container starts, which still takes the record-by-record path instead of the persisted Graph Analytical View (ArcadeDB #9220; run 1 was 112 s, runs 2 and 3 about 71 s). Embedded, with the view ready, the same PageRank takes 0.21 s. The fix is merged in ArcadeDB main (PR #9221) and is not in a released Docker image yet; the other Docker algorithms are not affected because the view is ready by then.
 - ‡ **Neo4j BFS** returns only the reached vertices (no distances), so it is checked as a reachable set, which matches the reference.
-- ✗ reasons: **PageRank** of Kuzu, DuckPGQ, Memgraph, HugeGraph, ArangoDB and Neo4j does not match the reference (0-0.01% of the vertices; the drivers use other iteration counts, damping or normalisation, or follow the stored edge direction on a graph that stores each undirected edge once). **BFS** of Kuzu, Memgraph and HugeGraph matches only 46% of the vertices (directed traversal; the unreachable ones are reported as infinite); the Kuzu and LadybugDB drivers also cap the timed BFS at `LIMIT 50000`, so LadybugDB, which runs the same query, is marked invalid without a separate export. **ArangoDB** WCC, SSSP and CDLP match 83%, 17% and 0% of the vertices. **CDLP** of Memgraph and ArangoDB does not match; HugeGraph's CDLP finds the same communities but with other label values, which the exact-match rule rejects.
+- ✗ reasons: **PageRank**: Neo4j (GDS starts from a different initial vector, does not normalise and has no parameter for either: values are about 5e5 times the reference), DuckPGQ (`pagerank()` takes no iteration or damping parameter; the sum of its ranks is 0.90) and FalkorDB (`algo.pageRank` has no parameters; 14.9% of the vertices within 1e-4) cannot be made to run the 10-iteration Graphalytics PageRank. **CDLP**: the ArcadeDB engine breaks ties and seeds labels with dense ids (see above); ArangoDB's label propagation returns dense ids and does not match; the FalkorDB and HugeGraph runs find the same communities as the reference but with other label values, which the exact-match rule rejects. Memgraph's `community_detection` exceeded the 5-minute limit.
+- Direction handling (all drivers now compute on the undirected graph, as the reference does): Kuzu and LadybugDB add a reversed edge table, Memgraph and FalkorDB and ArangoDB store both directions, HugeGraph runs PageRank and BFS on a second graph loaded from a both-direction copy of the edge file, DuckPGQ uses a symmetric edge table, Neo4j projects an undirected GDS graph. Every timed call is the exact call that is exported and validated (full per-vertex output, no `LIMIT`). PageRank settings that matter: Kuzu `maxIterations 11` and ArangoDB Pregel `maxGSS 11` (the initialisation counts as the first iteration), Memgraph 10 iterations, Vermeer `compute.max_step 10` with no convergence threshold.
+- N/A means the engine has no implementation: LCC in Kuzu, LadybugDB, Memgraph (only a NetworkX procedure that is not installed in the MAGE image), FalkorDB and ArangoDB (the AQL query is rejected); SSSP and CDLP in most systems; HugeGraph/Vermeer SSSP is unweighted only (ArangoDB's weighted SSSP is an AQL weighted traversal, since Pregel's is unweighted); Neo4j has no weighted SSSP or CDLP in this setup. **LadybugDB**: only BFS runs, because the downloaded `algo` extension (0.21.0) for macOS arm64 fails to load (`Library not loaded: @rpath/libnetworkit.dylib`; upstream packaging bug).
 
 Notes:
-- **FalkorDB** did not finish loading the 34M edges within 15 minutes on two attempts (the 5-minute limit applies), so no algorithm results. Its LSQB load (17.9M edges) took 692 s.
-- **Memgraph** now loads the graph (earlier versions segfaulted or timed out), but its LCC query hung for over 45 minutes and was killed (recorded as timeout; the client's `SIGALRM` timeout cannot interrupt a blocking C call).
-- \* **ArangoDB** is run on 3.11.14, not the latest release, because the driver runs PageRank, WCC, SSSP and CDLP through Pregel, which ArangoDB 3.12 and later no longer provide (only BFS works there). On 3.11.14 BFS hit the 60 s client read timeout and LCC is rejected by AQL.
-- **LadybugDB**: only BFS runs. `INSTALL algo` succeeds but the downloaded `algo` extension (0.21.0) for macOS arm64 fails to load (`Library not loaded: @rpath/libnetworkit.dylib`), so PageRank, WCC and LCC are unavailable. Not worked around; to be retried when a fixed extension ships.
-- **Kuzu/DuckPGQ** lack native implementations of most algorithms beyond PageRank, WCC and BFS. DuckPGQ BFS was interrupted at the time limit. HugeGraph/Vermeer SSSP is unweighted only and not run. Neo4j has no weighted SSSP or CDLP in this setup.
+- **DuckPGQ BFS** hit the 5-minute limit (it computes every shortest path of the 633K-vertex graph); the run is then stopped by the idle watchdog.
+- **Memgraph** needs `vm.max_map_count` of at least 524288 in the Docker VM (Docker Desktop's default is 262144, which makes its jemalloc fail and the connection drop mid-query); the harness raises it before each start. WCC takes 119 s on the symmetric graph.
+- **FalkorDB** loading 68.4M edge records (both directions) takes 53 minutes; the result set limit (`RESULTSET_SIZE`, default 10000) is lifted so the full per-vertex outputs are returned.
+- \* **ArangoDB** is run on 3.11.14, not the latest release, because the driver runs PageRank, WCC and CDLP through Pregel, which ArangoDB 3.12 and later no longer provide (only BFS works there).
 - Neo4j and ArcadeDB use a 12 GB heap; Docker Desktop has 32 GB. ArcadeDB Docker loads through the embedded loader first, then serves queries over HTTP (see † for the first call after a restart).
 - None of the competing systems have official LDBC Graphalytics platform drivers. Only ArcadeDB has an official LDBC Graphalytics platform implementation.
+- Re-run on 2026-10-05 on the same machine on AC power: Memgraph, ArangoDB, FalkorDB and HugeGraph (after the driver and harness fixes described in `results-multivendor-validated-2026-10-05.md`); ArcadeDB, Neo4j, Kuzu, LadybugDB and DuckPGQ are from the weekly run of 2026-10-04 (`weekly-results/20261004-175349/weekly.md`).
 
 ## Mode 3: LSQB (Labelled Subgraph Query Benchmark)
 

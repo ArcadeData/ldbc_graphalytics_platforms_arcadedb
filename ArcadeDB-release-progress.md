@@ -3,7 +3,7 @@
 How ArcadeDB itself changes from release to release on this benchmark: same machine for every column,
 same datasets, one JVM at a time. This is the history; the current multi-vendor comparison is in the
 [README](README.md#all-systems-comparison), and the raw data of the latest run is in
-[results-m5-multivendor-2026-10-03.md](results-m5-multivendor-2026-10-03.md). The regressions found between
+[results-multivendor-validated-2026-10-05.md](results-multivendor-validated-2026-10-05.md) (earlier raw data: [results-m5-multivendor-2026-10-03.md](results-m5-multivendor-2026-10-03.md)). The regressions found between
 26.8.1 and 26.10.1 and how they were fixed are in
 [results-26.10.1-SNAPSHOT-vs-26.8.1.md](results-26.10.1-SNAPSHOT-vs-26.8.1.md) and
 [fix-plan-26.10.1-regressions.md](fix-plan-26.10.1-regressions.md).
@@ -54,3 +54,15 @@ OLTP numbers vary about 2x between runs on this machine (e.g. the same OLTP buil
 | `algo.*` waits for the restored view ([#9220](https://github.com/ArcadeData/arcadedb/issues/9220), PR [#9221](https://github.com/ArcadeData/arcadedb/pull/9221)) | First `algo.wcc()` after reopening a database with a persisted view (633K vertices, 34M edges): 69.4 s / 60.2 s before, 1.02 s / 0.67 s after (2 runs each, alternating). Later calls are unchanged (0.02-0.15 s). |
 
 Mode 2 on the 26.10.1-SNAPSHOT build with the WCC fix, validated against the LDBC reference outputs, embedded, median of 3 (seconds): load 71.9, PR 0.21, WCC 0.09, BFS 0.08, LCC 2.25, SSSP 0.96, CDLP 1.03 (CDLP fails validation, see the README).
+
+## 26.10.1-SNAPSHOT (JAR built 2026-10-04 14:11), weekly run 2026-10-04
+
+Temurin 25.0.4.1 with `-XX:+UseCompactObjectHeaders`, AC power, MacBook M5 Pro, median of 3 runs, all outputs validated except CDLP (engine tie-break, see README).
+
+| Variant | Load | PR | WCC | BFS | LCC | SSSP | CDLP |
+|---|---|---|---|---|---|---|---|
+| Embedded Graphalytics (`datagen-7_5-fb`) | 71.9 | 0.22 | 0.08 | 0.08 | 2.12 | 0.85 | 1.01 (invalid) |
+| LSQB OLAP | 119.5 | Q1 0.28, Q2 0.18, Q3 0.11, Q4 0.06, Q5 0.20, Q6 0.13, Q7 0.05, Q8 0.12, Q9 1.68 | | | | | |
+| LSQB OLTP | 159.2 | Q1 3.19, Q2 5.04, Q3 3.71, Q4 1.18, Q5 11.52, Q6 42.52, Q7 5.51, Q8 40.57, Q9 0.98 | | | | | |
+
+Full tables and the other vendors: [results-multivendor-validated-2026-10-05.md](results-multivendor-validated-2026-10-05.md).

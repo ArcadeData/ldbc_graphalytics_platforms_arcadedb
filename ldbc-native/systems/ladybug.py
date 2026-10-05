@@ -7,6 +7,23 @@ import shutil
 from ._common import VERTEX_FILE, EDGE_FILE, bench_common
 
 
+# Undirected shortest paths from the official source, full output (the datasets store each undirected edge once).
+BFS_QUERY = "MATCH (a:Node {id: 6})-[e:Edge* SHORTEST 1..30]-(b:Node) RETURN b.id, length(e)"
+
+
+def _dump_bfs(conn):
+    """Full BFS output of the exact query that is timed (see bench_common.dump_*)."""
+    if not bench_common.dump_enabled():
+        return
+    def rows(q):
+        r = conn.execute(q)
+        while r.has_next():
+            yield r.get_next()
+    bench_common.dump_safely("ladybug", "BFS", lambda: bench_common.dump_bfs(
+        "ladybug", {r[0]: r[1] for r in rows(BFS_QUERY)},
+        [row[0] for row in rows("MATCH (n:Node) RETURN n.id")], 6))
+
+
 def run_benchmark():
     import ladybug as kuzu
     print("\n" + "=" * 70)
@@ -148,10 +165,7 @@ def run_benchmark():
     # --- BFS (shortest path from source) ---
     print("\n[LadybugDB] Running BFS/Shortest Path from vertex 6...")
     def _run_bfs():
-        r = conn.execute("""
-            MATCH (a:Node {id: 6})-[e:Edge* ALL SHORTEST 1..30]->(b:Node)
-            RETURN b.id, length(e) LIMIT 50000
-        """)
+        r = conn.execute(BFS_QUERY)
         count = 0
         while r.has_next():
             r.get_next()
@@ -163,8 +177,9 @@ def run_benchmark():
     if isinstance(elapsed, (int, float)):
         print(f"  BFS time: {elapsed:.2f}s")
 
-    # Cleanup
+    _dump_bfs(conn)
+
+    # The database stays for the next run (load once); --reset deletes it.
     del conn
     del db
-    shutil.rmtree(db_path, ignore_errors=True)
     return results

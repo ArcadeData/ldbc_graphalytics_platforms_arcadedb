@@ -182,6 +182,13 @@ both multi-vendor suites and optionally Mode 1, under the limits above, and writ
 and `weekly.json`. A failed step never stops the next one. The first run after a new image or dataset
 reloads; later runs reuse the data.
 
+### Harness gotchas (learned the hard way)
+
+- A container's port opens before the engine is ready: `shared/bench_containers.py` probes Memgraph (Bolt) and PostgreSQL at protocol level; add a `ready_probe` for any new slow-starting vendor.
+- Memgraph needs `vm.max_map_count >= 524288` in the Docker VM (applied automatically before each start); otherwise it drops the connection mid-run.
+- The datasets store each undirected edge once: drivers must compute on the undirected graph (reverse edge copies / symmetric tables) and time the exact full-output call that is exported and validated. FalkorDB needs `RESULTSET_SIZE -1` (default 10000 truncates outputs) and a long `stop_timeout` (the shutdown snapshot is large).
+- Never run another vendor's container or an unrelated docker-compose stack during measurements (CPU/RAM contention and port clashes: 5433, 7687, 6379, 2480).
+
 ### One vendor at a time — no parallel containers
 
 **NEVER start multiple Docker containers simultaneously.** The orchestrator runs vendors sequentially and does this for you; the manual procedure is:

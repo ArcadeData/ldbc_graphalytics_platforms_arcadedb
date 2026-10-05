@@ -1,8 +1,26 @@
 """HugeGraph (Vermeer) benchmark for LDBC Graphalytics."""
 
+import os
 import time
 
 from ._common import VERTEX_FILE, EDGE_FILE, SOURCE_VERTEX, GRAPHS_DIR, bench_common
+
+
+# The reference PageRank runs 10 iterations from the uniform vector with damping 0.85 (no convergence test)
+PAGERANK_PARAMS = {"pagerank.damping": "0.85", "pagerank.diff_threshold": "0", "compute.max_step": "10"}
+
+
+def _undirected_edge_file():
+    """The datasets store every undirected edge once and Vermeer follows the stored direction: PageRank and BFS run
+    on a second graph ("bench_u") loaded from a copy of the edge file that has every edge in both directions."""
+    import subprocess
+    path = EDGE_FILE[:-len(".e")] + "-undirected.e"
+    if not os.path.exists(path) or os.path.getmtime(path) < os.path.getmtime(EDGE_FILE):
+        tmp = path + ".tmp"
+        with open(tmp, "w") as out:
+            subprocess.run(["awk", "{print; print $2\" \"$1\" \"$3}", EDGE_FILE], stdout=out, check=True)
+        os.replace(tmp, path)
+    return path
 
 
 def _dump_all(run_algo):
@@ -10,17 +28,17 @@ def _dump_all(run_algo):
     if not bench_common.dump_enabled():
         return
     import subprocess as sp
-    def vermeer_out(name, tag, params):
+    def vermeer_out(name, tag, params, graph="bench"):
         p = dict(params)
         p.update({"output.type": "local", "output.parallel": "1", "output.file_path": f"/tmp/dump_{tag}"})
-        run_algo(name, tag, p)
+        run_algo(name, tag, p, graph=graph)
         txt = sp.run(["docker", "exec", "vermeer-worker", "cat", f"/tmp/dump_{tag}_0"],
                      capture_output=True, text=True, check=True).stdout
         for line in txt.splitlines():
             vid, val = line.split(",", 1)
             yield int(vid), val
     bench_common.dump_safely("hugegraph", "PR", lambda: bench_common.dump_rows("hugegraph", "PR", (
-        (v, float(x)) for v, x in vermeer_out("pagerank", "pr", {"pagerank.damping": "0.85", "pagerank.diff_threshold": "0.00001"}))))
+        (v, float(x)) for v, x in vermeer_out("pagerank", "pr", PAGERANK_PARAMS, graph="bench_u"))))
     bench_common.dump_safely("hugegraph", "WCC", lambda: bench_common.dump_rows("hugegraph", "WCC", vermeer_out("wcc", "wcc", {})))
     bench_common.dump_safely("hugegraph", "CDLP", lambda: bench_common.dump_rows("hugegraph", "CDLP", vermeer_out("lpa", "cdlp", {})))
     bench_common.dump_safely("hugegraph", "LCC", lambda: bench_common.dump_rows("hugegraph", "LCC", (
@@ -29,7 +47,7 @@ def _dump_all(run_algo):
         # Vermeer sssp is unweighted (hop count); -1 marks an unreachable vertex
         bench_common.dump_rows("hugegraph", "BFS", (
             (v, bench_common.BFS_UNREACHABLE if int(float(x)) < 0 else int(float(x)))
-            for v, x in vermeer_out("sssp", "bfs", {"sssp.source": str(SOURCE_VERTEX)})))
+            for v, x in vermeer_out("sssp", "bfs", {"sssp.source": str(SOURCE_VERTEX)}, graph="bench_u")))
     bench_common.dump_safely("hugegraph", "BFS", bfs)
 
 
@@ -77,32 +95,24 @@ def run_benchmark():
     if workers[0].get("group") != "$":
         requests.post(f"{vermeer}/admin/workers/group/$/{worker_name}")
 
-    # Check if graph already loaded
-    needs_load = True
-    if not bench_common.RESET:
+    def is_loaded(graph):
         try:
-            r = requests.get(f"{vermeer}/graphs")
-            for g in r.json().get("graphs", []):
-                if g["name"] == "bench" and g["state"] == "loaded":
-                    needs_load = False
-                    print("\n[HugeGraph] Graph already loaded in Vermeer, skipping import")
-                    break
+            for g in requests.get(f"{vermeer}/graphs").json().get("graphs", []):
+                if g["name"] == graph and g["state"] == "loaded":
+                    return True
         except Exception:
             pass
+        return False
 
-    if needs_load:
-        # Delete existing graph if present
+    def load(graph, edge_file):
         try:
-            requests.delete(f"{vermeer}/graphs/bench")
+            requests.delete(f"{vermeer}/graphs/{graph}")
         except Exception:
             pass
-
-        print("\n[HugeGraph] Loading data into Vermeer...")
         start = time.perf_counter()
-
         r = requests.post(f"{vermeer}/tasks/create/sync", json={
             "task_type": "load",
-            "graph": "bench",
+            "graph": graph,
             "params": {
                 "load.type": "local",
                 "load.parallel": "50",
@@ -110,27 +120,42 @@ def run_benchmark():
                 "load.vertex_files": jsonlib.dumps(
                     {worker_ip: VERTEX_FILE.replace(GRAPHS_DIR, "/data/graphs")}),
                 "load.edge_files": jsonlib.dumps(
-                    {worker_ip: EDGE_FILE.replace(GRAPHS_DIR, "/data/graphs")}),
+                    {worker_ip: edge_file.replace(GRAPHS_DIR, "/data/graphs")}),
                 "load.use_property": "1",
                 "load.vertex_backend": "mem"
             }
-        }, timeout=600)
-
+        }, timeout=900)
         if r.status_code != 200 or r.json().get("task", {}).get("state") != "loaded":
-            print(f"  Load failed: {r.text[:300]}")
-            return {"error": "Load failed"}
+            print(f"  Load of {graph} failed: {r.text[:300]}")
+            return None
+        return time.perf_counter() - start
 
-        load_time = time.perf_counter() - start
+    # "bench" is the graph as stored (WCC, LCC, CDLP); "bench_u" has every edge in both directions (PageRank, BFS)
+    if bench_common.RESET or not is_loaded("bench"):
+        print("\n[HugeGraph] Loading data into Vermeer...")
+        load_time = load("bench", EDGE_FILE)
+        if load_time is None:
+            return {"error": "Load failed"}
         results["load"] = load_time
         print(f"  Load time: {load_time:.2f}s")
+    else:
+        print("\n[HugeGraph] Graph already loaded in Vermeer, skipping import")
+    if bench_common.RESET or not is_loaded("bench_u"):
+        print("\n[HugeGraph] Loading the both-direction copy (bench_u) ...")
+        undirected_time = load("bench_u", _undirected_edge_file())
+        if undirected_time is None:
+            return {"error": "Load of bench_u failed"}
+        print(f"  Load time (bench_u): {undirected_time:.2f}s")
+        if "load" in results:
+            results["load"] += undirected_time
 
     # Helper to run a Vermeer compute task (raises on failure)
-    def run_algo(name, display_name, params):
+    def run_algo(name, display_name, params, graph="bench"):
         algo_params = {"compute.algorithm": name}
         algo_params.update(params)
         r = requests.post(f"{vermeer}/tasks/create/sync", json={
             "task_type": "compute",
-            "graph": "bench",
+            "graph": graph,
             "params": algo_params
         }, timeout=600)
         if r.status_code != 200 or r.json().get("task", {}).get("state") != "complete":
@@ -140,8 +165,7 @@ def run_benchmark():
     # --- PageRank ---
     print("\n[HugeGraph] Running PageRank...")
     def _run_pagerank():
-        return run_algo("pagerank", "pagerank",
-                        {"pagerank.damping": "0.85", "pagerank.diff_threshold": "0.00001"})
+        return run_algo("pagerank", "pagerank", PAGERANK_PARAMS, graph="bench_u")
     elapsed, _ = bench_common.run_timed("PageRank", _run_pagerank)
     results["pagerank"] = elapsed
     if isinstance(elapsed, (int, float)):
@@ -159,7 +183,7 @@ def run_benchmark():
     # --- BFS (SSSP unweighted = hop-count BFS) ---
     print("\n[HugeGraph] Running BFS...")
     def _run_bfs():
-        return run_algo("sssp", "bfs", {"sssp.source": str(SOURCE_VERTEX)})
+        return run_algo("sssp", "bfs", {"sssp.source": str(SOURCE_VERTEX)}, graph="bench_u")
     elapsed, _ = bench_common.run_timed("BFS", _run_bfs)
     results["bfs"] = elapsed
     if isinstance(elapsed, (int, float)):

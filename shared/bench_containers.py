@@ -23,7 +23,8 @@ HEAP = "12g"  # CLAUDE.md rule: same JVM heap for every JVM-based vendor
 
 class Spec:
     def __init__(self, name, image, ports=(), env=None, volumes=(), args=(),
-                 ready_port=None, ready_timeout=240, settle=0, stop_timeout=180, run_args=()):
+                 ready_port=None, ready_timeout=240, settle=0, stop_timeout=180, run_args=(),
+                 ready_probe=None, max_map_count=None):
         self.name = name
         self.image = image
         self.ports = list(ports)        # ["host:container", ...]
@@ -35,6 +36,10 @@ class Spec:
         self.settle = settle            # extra seconds after the port opens
         self.stop_timeout = stop_timeout
         self.run_args = list(run_args)  # extra `docker run` options, e.g. --user root
+        # probe(port) -> bool, a protocol level check run after the port opens: Docker accepts the TCP connection
+        # before the engine behind it does (Memgraph while it recovers its data, Postgres during initdb)
+        self.ready_probe = ready_probe
+        self.max_map_count = max_map_count  # kernel setting of the Docker VM that the engine needs (Memgraph: 524288)
 
 
 def _docker(*args, check=False, timeout=600):
@@ -68,6 +73,46 @@ def wait_port(port, timeout, host="127.0.0.1"):
     return False
 
 
+def _exchange(port, payload, expect_len, host="127.0.0.1"):
+    """Send payload, return what the server answers (b"" when it closes the connection or does not answer)."""
+    try:
+        with socket.create_connection((host, port), timeout=5) as s:
+            s.settimeout(5)
+            s.sendall(payload)
+            return s.recv(expect_len)
+    except OSError:
+        return b""
+
+
+def bolt_ready(port):
+    """Bolt handshake (magic + four proposed versions): the server answers with the 4 byte chosen version."""
+    return len(_exchange(port, bytes.fromhex("6060b017") + bytes.fromhex("00000104") + bytes(12), 4)) == 4
+
+
+def postgres_ready(port):
+    """SSLRequest: a running Postgres answers 'S' or 'N'; the Docker proxy just closes while it is not up."""
+    return _exchange(port, bytes.fromhex("0000000804d2162f"), 1) in (b"S", b"N")
+
+
+def wait_probe(probe, port, timeout):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if probe(port):
+            return True
+        time.sleep(3)
+    return False
+
+
+def ensure_max_map_count(minimum):
+    """Raise vm.max_map_count in the Docker VM (Docker Desktop's default, 262144, makes Memgraph's jemalloc fail
+    with 'Error in munmap(): Cannot allocate memory' and drop the connection mid-query). Not persistent across
+    a Docker restart, so it is applied before every start."""
+    r = _docker("run", "--rm", "--privileged", "--pid=host", "alpine", "nsenter", "-t", "1", "-m", "-u", "-n", "-i",
+                "sh", "-c", f"[ $(cat /proc/sys/vm/max_map_count) -ge {minimum} ] || sysctl -w vm.max_map_count={minimum}")
+    if r.returncode != 0:
+        print(f"  Warning: could not raise vm.max_map_count to {minimum}: {r.stderr.strip()[:200]}")
+
+
 def data_dir(suite, key, image):
     return bench_state.state_path("data", f"{suite}-{key}-{image_id(image)}")
 
@@ -79,6 +124,8 @@ def ensure_running(suite, key, spec, log=print):
         log(f"  Container {spec.name} already running, reusing it")
         return iid
     _docker("rm", "-f", spec.name)  # stale stopped container with the same name
+    if spec.max_map_count:
+        ensure_max_map_count(spec.max_map_count)
     cmd = ["run", "-d", "--name", spec.name]
     for p in spec.ports:
         cmd += ["-p", p]
@@ -96,6 +143,9 @@ def ensure_running(suite, key, spec, log=print):
         raise RuntimeError(f"docker run failed for {spec.name}: {r.stderr.strip()[:300]}")
     if spec.ready_port and not wait_port(spec.ready_port, spec.ready_timeout):
         raise RuntimeError(f"{spec.name} did not open port {spec.ready_port} within {spec.ready_timeout}s")
+    if spec.ready_probe and not wait_probe(spec.ready_probe, spec.ready_port, spec.ready_timeout):
+        raise RuntimeError(f"{spec.name} accepts connections on port {spec.ready_port} but is not ready "
+                           f"after {spec.ready_timeout}s")
     if spec.settle:
         time.sleep(spec.settle)
     return iid
@@ -142,23 +192,26 @@ def _specs():
         ("graphalytics", "memgraph"): Spec(
             "memgraph", memgraph_image, ["7687:7687"], {},
             [("data", "/var/lib/memgraph")], args=MEMGRAPH_ARGS, ready_port=7687, settle=5,
-            stop_timeout=600, run_args=MEMGRAPH_RUN),  # snapshot on exit
+            stop_timeout=600, run_args=MEMGRAPH_RUN,  # snapshot on exit
+            ready_timeout=1800, ready_probe=bolt_ready, max_map_count=1048576),  # recovering the 21 GB snapshot takes ~10 minutes
         ("graphalytics", "arangodb"): Spec(
             "arangodb", arango_image, ["8529:8529"], {"ARANGO_ROOT_PASSWORD": "benchmark"},
             [("data", "/var/lib/arangodb3")], ready_port=8529, settle=10),
         ("graphalytics", "falkordb"): Spec(
             "falkordb", falkor_image, ["6379:6379"], {},
-            [("data", "/var/lib/falkordb/data")], ready_port=6379, settle=5),
+            [("data", "/var/lib/falkordb/data")], ready_port=6379, settle=5,
+            stop_timeout=1800),  # the snapshot of the 97M edge graph is written on shutdown; a kill loses it
         ("lsqb", "neo4j"): Spec(
             "neo4j-lsqb", neo4j_image, ["7688:7687", "7474:7474"], NEO4J_ENV,
             [("data", "/data")], ready_port=7688, settle=15),
         ("lsqb", "memgraph"): Spec(
             "memgraph-lsqb", memgraph_image, ["7689:7687"], {},
             [("data", "/var/lib/memgraph")], args=MEMGRAPH_ARGS, ready_port=7689, settle=5,
-            stop_timeout=600, run_args=MEMGRAPH_RUN),
+            stop_timeout=600, run_args=MEMGRAPH_RUN, ready_timeout=1800, ready_probe=bolt_ready, max_map_count=1048576),
         ("lsqb", "postgresql"): Spec(
             "postgres-lsqb", pg_image, ["5433:5432"], {"POSTGRES_PASSWORD": "benchmark"},
-            [("data", "/var/lib/postgresql")], ready_port=5433, settle=8),
+            [("data", "/var/lib/postgresql")], ready_port=5433, settle=8,
+            ready_probe=postgres_ready),
         ("lsqb", "falkordb"): Spec(
             "falkordb-lsqb", falkor_image, ["6379:6379"], {},
             [("data", "/var/lib/falkordb/data")], ready_port=6379, settle=5),
