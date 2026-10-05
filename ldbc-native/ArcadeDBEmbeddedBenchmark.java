@@ -176,6 +176,13 @@ public class ArcadeDBEmbeddedBenchmark {
     Map<String, Double> results = new java.util.LinkedHashMap<>();
     results.put("LOAD", loadTime / 1000.0);
 
+    // -Dwarm.reps=N: after the cold first call of every algorithm, repeat it N times in the same JVM and report the
+    // median (the cold call stays the headline unless -Dwarm.headline=true); JIT and first-touch costs are then visible.
+    final int warmReps = Integer.getInteger("warm.reps", 0);
+    final boolean warmHeadline = Boolean.getBoolean("warm.headline");
+    final GraphAnalyticalView g = gav;
+    final int src = sourceIdx;
+
     // PageRank
     System.out.println("\n[ArcadeDB] Running PageRank (damping=0.85, iter=10)...");
     long start = System.currentTimeMillis();
@@ -184,6 +191,8 @@ public class ArcadeDBEmbeddedBenchmark {
     double[] pr = GraphAlgorithms.pageRank(gav, 0.85, 10, Vertex.DIRECTION.BOTH, EDGE_TYPE);
     double prTime = (System.currentTimeMillis() - start) / 1000.0;
     results.put("PR", prTime);
+    if (warmReps > 0)
+      warm(results, "PR", warmReps, warmHeadline, () -> GraphAlgorithms.pageRank(g, 0.85, 10, Vertex.DIRECTION.BOTH, EDGE_TYPE));
     // Print top 3
     int[] topPR = topK(pr, 3);
     for (int idx : topPR)
@@ -196,6 +205,8 @@ public class ArcadeDBEmbeddedBenchmark {
     int[] wcc = GraphAlgorithms.connectedComponents(gav, EDGE_TYPE);
     double wccTime = (System.currentTimeMillis() - start) / 1000.0;
     results.put("WCC", wccTime);
+    if (warmReps > 0)
+      warm(results, "WCC", warmReps, warmHeadline, () -> GraphAlgorithms.connectedComponents(g, EDGE_TYPE));
     int numComponents = GraphAlgorithms.countComponents(wcc);
     System.out.println("  Components: " + numComponents);
     System.out.println("  WCC time: " + wccTime + "s");
@@ -206,6 +217,8 @@ public class ArcadeDBEmbeddedBenchmark {
     int[] bfs = GraphAlgorithms.shortestPathAll(gav, sourceIdx, Vertex.DIRECTION.BOTH, EDGE_TYPE);
     double bfsTime = (System.currentTimeMillis() - start) / 1000.0;
     results.put("BFS", bfsTime);
+    if (warmReps > 0)
+      warm(results, "BFS", warmReps, warmHeadline, () -> GraphAlgorithms.shortestPathAll(g, src, Vertex.DIRECTION.BOTH, EDGE_TYPE));
     int reached = 0;
     for (int d : bfs) if (d >= 0) reached++;
     System.out.println("  Reached: " + reached + " nodes");
@@ -217,6 +230,8 @@ public class ArcadeDBEmbeddedBenchmark {
     double[] lcc = GraphAlgorithms.localClusteringCoefficient(gav, EDGE_TYPE);
     double lccTime = (System.currentTimeMillis() - start) / 1000.0;
     results.put("LCC", lccTime);
+    if (warmReps > 0)
+      warm(results, "LCC", warmReps, warmHeadline, () -> GraphAlgorithms.localClusteringCoefficient(g, EDGE_TYPE));
     int[] topLCC = topK(lcc, 3);
     for (int idx : topLCC)
       System.out.printf("    Top LCC: node=%d, coeff=%.6f%n", idx, lcc[idx]);
@@ -229,6 +244,8 @@ public class ArcadeDBEmbeddedBenchmark {
         Vertex.DIRECTION.BOTH, EDGE_TYPE);
     double ssspTime = (System.currentTimeMillis() - start) / 1000.0;
     results.put("SSSP", ssspTime);
+    if (warmReps > 0)
+      warm(results, "SSSP", warmReps, warmHeadline, () -> GraphAlgorithms.dijkstraSingleSource(g, src, WEIGHT_PROP, Vertex.DIRECTION.BOTH, EDGE_TYPE));
     int ssspReached = 0;
     for (double d : sssp) if (d < Double.POSITIVE_INFINITY) ssspReached++;
     System.out.println("  Reached: " + ssspReached + " nodes");
@@ -240,6 +257,8 @@ public class ArcadeDBEmbeddedBenchmark {
     int[] cdlp = GraphAlgorithms.labelPropagation(gav, 10, EDGE_TYPE);
     double cdlpTime = (System.currentTimeMillis() - start) / 1000.0;
     results.put("CDLP", cdlpTime);
+    if (warmReps > 0)
+      warm(results, "CDLP", warmReps, warmHeadline, () -> GraphAlgorithms.labelPropagation(g, 10, EDGE_TYPE));
     System.out.println("  CDLP time: " + cdlpTime + "s");
 
     // --- Optional full-output dump (-Ddump.dir=<dir>) to validate against the LDBC reference outputs ---
@@ -279,6 +298,25 @@ public class ArcadeDBEmbeddedBenchmark {
     // Cleanup
     db.close();
     if (discard) deleteDirectory(new java.io.File(DB_PATH));
+  }
+
+  /** Repeats a call `reps` times and records the median as NAME_WARM (and as the headline when asked). */
+  static void warm(Map<String, Double> results, String name, int reps, boolean headline,
+      java.util.function.Supplier<Object> call) {
+    double[] t = new double[reps];
+    for (int i = 0; i < reps; i++) {
+      long s0 = System.nanoTime();
+      call.get();
+      t[i] = (System.nanoTime() - s0) / 1e9;
+    }
+    java.util.Arrays.sort(t);
+    double median = t[reps / 2];
+    System.out.printf("  %s cold first call: %.3fs, warm median of %d: %.3fs%n", name, results.get(name), reps, median);
+    results.put(name + "_WARM", median);
+    if (headline) {
+      results.put(name + "_COLD", results.get(name));
+      results.put(name, median);
+    }
   }
 
   static void dumpDoubles(String dir, String algo, long[] vids, double[] vals) throws Exception {

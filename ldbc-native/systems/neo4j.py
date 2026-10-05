@@ -195,7 +195,7 @@ def run_benchmark():
             for row in rows[:3]:
                 print(f"    Top PR: node={row['id']}, rank={row['score']:.6f}")
         return rows
-    elapsed, _ = bench_common.run_timed("PageRank", _run_pagerank)
+    elapsed, _ = bench_common.run_timed_warm("PageRank", _run_pagerank, record=results)
     results["pagerank"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  PageRank time: {elapsed:.2f}s")
@@ -214,7 +214,7 @@ def run_benchmark():
             for row in rows[:3]:
                 print(f"    Component: id={row['componentId']}, size={row['size']}")
         return rows
-    elapsed, _ = bench_common.run_timed("WCC", _run_wcc)
+    elapsed, _ = bench_common.run_timed_warm("WCC", _run_wcc, record=results)
     results["wcc"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  WCC time: {elapsed:.2f}s")
@@ -234,7 +234,7 @@ def run_benchmark():
             row = r.single()
             print(f"  Reached: {row['reached']} nodes")
         return row
-    elapsed, _ = bench_common.run_timed("BFS", _run_bfs)
+    elapsed, _ = bench_common.run_timed_warm("BFS", _run_bfs, record=results)
     results["bfs"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  BFS time: {elapsed:.2f}s")
@@ -253,7 +253,7 @@ def run_benchmark():
             for row in rows[:3]:
                 print(f"    Top LCC: node={row['id']}, coeff={row['coeff']:.6f}")
         return rows
-    elapsed, _ = bench_common.run_timed("LCC", _run_lcc)
+    elapsed, _ = bench_common.run_timed_warm("LCC", _run_lcc, record=results)
     results["lcc"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  LCC time: {elapsed:.2f}s")

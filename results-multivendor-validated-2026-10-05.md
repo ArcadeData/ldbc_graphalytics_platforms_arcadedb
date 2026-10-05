@@ -68,3 +68,32 @@ Drivers (`ldbc-native/systems/`):
 - ArangoDB: both directions loaded (marker document `meta/both_directions`), Pregel PageRank with `maxGSS 11` (10 and 12 do not match), weighted SSSP through an AQL weighted traversal (`LAST(p.weights)`), BFS `OUTBOUND` with a long client timeout (the 60 s default made it fail).
 - HugeGraph: PageRank and BFS on a second graph loaded from a both-direction copy of the edge file, PageRank with `compute.max_step 10` and no convergence threshold.
 - Kuzu, LadybugDB, DuckPGQ: see the commit history; reversed edge tables / symmetric edge table, full outputs, exact timed query exported.
+
+## Cold first call vs warm median (added 2026-10-05)
+
+The tables above are one cold call per algorithm. For the JVM engines the cold call includes JIT and first-touch costs, so the warm median is
+also measured (new: `bench_common.run_timed_warm`, `GRAPHALYTICS_WARMUP` / `GRAPHALYTICS_REPS`, `-Dwarm.reps` in `ArcadeDBEmbeddedBenchmark`).
+
+| System | Algorithm | Cold first call | Warm median |
+|---|---|---|---|
+| ArcadeDB Docker | PageRank | 2.200 | 0.133 |
+| ArcadeDB Docker | WCC | 0.230 | 0.025 |
+| ArcadeDB Docker | BFS | 0.191 | 0.033 |
+| ArcadeDB Docker | LCC | 2.679 | 2.599 |
+| ArcadeDB Docker | SSSP | 1.430 | 1.304 |
+| ArcadeDB Docker | CDLP (invalid) | 1.217 | 1.077 |
+| ArcadeDB embedded (2 JVMs, warm = median of 5) | PageRank | 0.228 / 0.201 | 0.092 / 0.085 |
+| ArcadeDB embedded | WCC | 0.087 / 0.086 | 0.004 / 0.003 |
+| ArcadeDB embedded | BFS | 0.065 / 0.069 | 0.028 / 0.029 |
+| ArcadeDB embedded | LCC | 2.156 / 2.100 | 2.101 / 2.132 |
+| ArcadeDB embedded | SSSP | 0.852 / 0.840 | 0.753 / 0.776 |
+| ArcadeDB embedded | CDLP (invalid) | 1.004 / 1.006 | 0.982 / 0.963 |
+| Neo4j | PageRank (invalid) | 3.585 | 3.293 |
+| Neo4j | WCC | 0.208 | 0.059 |
+| Neo4j | BFS | 0.608 | 0.442 |
+| Neo4j | LCC | 14.741 | 14.655 |
+
+Consequences:
+- The embedded PageRank of 0.22 s (compared with 0.10 s in the April blog post, ArcadeDB 26.3.2, same machine) is the cold first call; warm it is 0.085-0.092 s, so there is no PageRank regression in the compute itself.
+- The ArcadeDB Docker PageRank of 1.56 s in the weekly run was not the slow path of ArcadeDB #9220 (about 71 s); it is the cold first call (2.2 s here, 0.133 s warm).
+- Non-JVM engines (Kuzu, DuckPGQ, FalkorDB, Memgraph, ArangoDB, HugeGraph, LadybugDB) still have only the cold call; their warm numbers were not measured.

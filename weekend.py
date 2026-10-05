@@ -216,6 +216,10 @@ def step_python(args, report, out_dir, suite):
     # median of 3 (queries slower than 30 s are reported from a single run).
     os.environ.setdefault("LSQB_WARMUP", "1")
     os.environ.setdefault("LSQB_REPS", "3")
+    # Graphalytics: the cold first call is always recorded (`<metric>_cold`); the headline is the median of 3 timed
+    # warm calls after 1 untimed warm-up for the drivers that use run_timed_warm (ArcadeDB Docker, Neo4j)
+    os.environ.setdefault("GRAPHALYTICS_WARMUP", "1")
+    os.environ.setdefault("GRAPHALYTICS_REPS", "3")
     if suite == "m2":
         cmd += ["neo4j", "memgraph", "arangodb", "falkordb", "hugegraph",
                 "arcadedb", "kuzu", "ladybug", "duckpgq"]

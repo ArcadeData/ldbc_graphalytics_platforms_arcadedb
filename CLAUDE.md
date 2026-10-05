@@ -189,6 +189,10 @@ reloads; later runs reuse the data.
 - The datasets store each undirected edge once: drivers must compute on the undirected graph (reverse edge copies / symmetric tables) and time the exact full-output call that is exported and validated. FalkorDB needs `RESULTSET_SIZE -1` (default 10000 truncates outputs) and a long `stop_timeout` (the shutdown snapshot is large).
 - Never run another vendor's container or an unrelated docker-compose stack during measurements (CPU/RAM contention and port clashes: 5433, 7687, 6379, 2480).
 
+### Cold vs warm
+
+The headline Graphalytics number is the cold first call (comparable across vendors). JVM engines also get a warm median: `GRAPHALYTICS_WARMUP=1 GRAPHALYTICS_REPS=3` (set by `weekend.py`) for the drivers that use `bench_common.run_timed_warm` (ArcadeDB Docker, Neo4j), `-Dwarm.reps=5` for `ArcadeDBEmbeddedBenchmark`. The cold call is stored as `<metric>_cold`. Never compare an ArcadeDB warm number with another system's cold number.
+
 ### One vendor at a time — no parallel containers
 
 **NEVER start multiple Docker containers simultaneously.** The orchestrator runs vendors sequentially and does this for you; the manual procedure is:

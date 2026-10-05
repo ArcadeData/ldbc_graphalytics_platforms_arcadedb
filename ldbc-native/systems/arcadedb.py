@@ -263,7 +263,7 @@ public class ArcadeDBEmbeddedLoader {
             if r.status_code != 200:
                 raise RuntimeError(r.text[:200])
             return r
-        elapsed, _ = bench_common.run_timed(name, _run, timeout=timeout)
+        elapsed, _ = bench_common.run_timed_warm(name, _run, timeout=timeout, record=results)
         results[name] = elapsed
         if isinstance(elapsed, (int, float)):
             print(f"  {name} time: {elapsed:.2f}s")

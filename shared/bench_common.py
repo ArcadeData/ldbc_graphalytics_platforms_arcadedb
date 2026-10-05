@@ -67,6 +67,46 @@ def _disarm():
             pass
 
 
+# ------------------------------------------------------------ warm-up and repetitions (Graphalytics)
+
+# JVM servers (ArcadeDB Docker, Neo4j) pay JIT compilation and first-touch work on the first call of the
+# first algorithm. GRAPHALYTICS_WARMUP untimed runs and GRAPHALYTICS_REPS timed runs follow the cold first call;
+# the headline is the median of the timed warm runs and the cold first call is recorded next to it.
+# The defaults (0 and 1) keep the historical single cold run as the headline.
+GRAPHALYTICS_WARMUP = int(os.environ.get("GRAPHALYTICS_WARMUP", "0"))
+GRAPHALYTICS_REPS = max(1, int(os.environ.get("GRAPHALYTICS_REPS", "1")))
+WARM_SLOW = 60.0   # a cold call above this is not repeated (it would only multiply the run time)
+
+
+def run_timed_warm(name, func, timeout=QUERY_TIMEOUT, record=None):
+    """run_timed with the optional warm-up / repetition protocol. Returns (headline seconds, result).
+
+    The cold first call is stored as record["<name>_cold"] (when `record` is given) and printed.
+    """
+    import statistics
+    elapsed, result = run_timed(name, func, timeout=timeout)
+    if not isinstance(elapsed, (int, float)):
+        return elapsed, result
+    if record is not None:
+        record[f"{_metric_key(name)}_cold"] = elapsed
+    if (GRAPHALYTICS_WARMUP == 0 and GRAPHALYTICS_REPS == 1) or elapsed > WARM_SLOW:
+        return elapsed, result
+    print(f"  {name} cold first call: {elapsed:.3f}s", flush=True)
+    for _ in range(GRAPHALYTICS_WARMUP):
+        run_timed(name, func, timeout=timeout)
+    times = []
+    for _ in range(GRAPHALYTICS_REPS):
+        t, result = run_timed(name, func, timeout=timeout)
+        if not isinstance(t, (int, float)):
+            return t, result
+        times.append(t)
+    headline = statistics.median(times)
+    print(f"  {name} warm median of {len(times)}: {headline:.3f}s", flush=True)
+    _PARTIAL["done"][_metric_key(name)] = headline
+    _flush_partial(_PARTIAL)
+    return headline, result
+
+
 # ------------------------------------------------------------ partial results
 
 def _metric_key(name):
