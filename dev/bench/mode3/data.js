@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791106235458,
+  "lastUpdate": 1791194989220,
   "repoUrl": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb",
   "entries": {
     "ArcadeDB Mode 3 — LSQB Embedded (SF0.1)": [
@@ -3023,6 +3023,78 @@ window.BENCHMARK_DATA = {
           {
             "name": "Q9",
             "value": 0.14,
+            "unit": "s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Luca Garulli",
+            "username": "lvca",
+            "email": "lvca@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "Luca Garulli",
+            "username": "lvca",
+            "email": "lvca@users.noreply.github.com"
+          },
+          "id": "190ea994c16c1d00a3afb9623dd441ca6b78d032",
+          "message": "Move the release-over-release history out of the README into ArcadeDB-release-progress.md\n\nThe README keeps the current multi-vendor comparison and links the history. The new file holds the\n26.8.1 to 26.10.1-SNAPSHOT tables unchanged plus the later merged fixes (WCC union-find #9133,\nrestored-view wait #9220/#9221) measured on AC power.",
+          "timestamp": "2026-10-04T20:03:55Z",
+          "url": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb/commit/190ea994c16c1d00a3afb9623dd441ca6b78d032"
+        },
+        "date": 1791194988936,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "LOAD",
+            "value": 31.57,
+            "unit": "s"
+          },
+          {
+            "name": "Q1",
+            "value": 0.63,
+            "unit": "s"
+          },
+          {
+            "name": "Q2",
+            "value": 0.1,
+            "unit": "s"
+          },
+          {
+            "name": "Q3",
+            "value": 0.08,
+            "unit": "s"
+          },
+          {
+            "name": "Q4",
+            "value": 0.02,
+            "unit": "s"
+          },
+          {
+            "name": "Q5",
+            "value": 0.07,
+            "unit": "s"
+          },
+          {
+            "name": "Q6",
+            "value": 0.05,
+            "unit": "s"
+          },
+          {
+            "name": "Q7",
+            "value": 0.01,
+            "unit": "s"
+          },
+          {
+            "name": "Q8",
+            "value": 0.06,
+            "unit": "s"
+          },
+          {
+            "name": "Q9",
+            "value": 0.21,
             "unit": "s"
           }
         ]
