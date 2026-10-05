@@ -256,13 +256,13 @@ Seconds (warm medians), `datagen-7_5-fb`, last row peak memory in GiB. ArcadeDB 
 | Algorithm | ArcadeDB | ArcadeDB Docker | Neo4j | Kuzu | LadybugDB | DuckPGQ | Memgraph | ArangoDB \* | FalkorDB | HugeGraph |
 |-----------|----------|----------------|-------|------|-----------|---------|----------|------------------|----------|-----------|
 | **Load** | 71.9 | 43.9 | 657 | 28.8 | 5.16 | 0.85 | 437 | 726 | 116 | 34.7 |
-| **PageRank** | **0.086** | 0.156 | 6.98 § | 1.16 | N/A | 1.51 ✗ | 5.49 | 92.0 | 2.67 ✗ | 2.41 |
-| **WCC** | **0.004** | 0.022 | 0.111 | 0.434 | N/A | 2.00 | 189 | 36.9 | 2.50 | 0.293 |
-| **BFS** | **0.022** | 0.032 | 0.480 ‡ | 0.328 | 7.89 | timeout ¶ | 3.85 | 41.8 | 0.057 | 0.195 |
+| **PageRank** | **0.086** | 0.156 | 6.98 § | 1.16 | N/A | 1.51 ✗ | 5.49 | 93.0 | 2.67 ✗ | 2.41 |
+| **WCC** | **0.004** | 0.022 | 0.111 | 0.434 | N/A | 2.00 | 189 | 40.9 | 2.50 | 0.293 |
+| **BFS** | **0.022** | 0.032 | 0.480 ‡ | 0.328 | 7.89 | timeout ¶ | 3.85 | 38.4 | 0.057 | 0.195 |
 | **LCC** | **2.19** | 2.65 | 15.4 | N/A | N/A | 49.3 | N/A | N/A | N/A | 110 |
-| **SSSP** | **0.84** | 1.56 | N/A | N/A | N/A | N/A | 75.9 | 253 | N/A | N/A |
-| **CDLP** | 1.09 ✗ | 1.08 ✗ | N/A | N/A | N/A | N/A | timeout | timeout ✗ | 10.6 ✗ | 22.3 ✗ |
-| **Peak memory (GiB)** | 6.4 / 0.75 live heap | 12.3 | 13.3 | 0.87 | 1.0 | 8.3 | 25.1 | 25.2 | 8.4 | 3.2 |
+| **SSSP** | **0.84** | 1.56 | N/A | N/A | N/A | N/A | 75.9 | 173 | N/A | N/A |
+| **CDLP** | 1.09 ✗ | 1.08 ✗ | N/A | N/A | N/A | N/A | timeout | 254 ✗ | 10.6 ✗ | 22.3 ✗ |
+| **Peak memory (GiB)** | 6.4 / 0.75 live heap | 12.3 | 13.3 | 0.87 | 1.0 | 8.3 | 25.1 | 23.2 | 8.4 | 3.2 |
 
 - **ArcadeDB** (embedded and Docker) is valid for PageRank, WCC, BFS, LCC and SSSP. Its CDLP fails validation: the engine's `algo.labelPropagation` breaks ties and seeds labels with dense node ids instead of vertex ids, so the labels differ from the reference (the official Mode 1 framework has its own vertex-id based CDLP and passes).
 - **Load** times are not like for like: ArcadeDB loads with its embedded Java loader (and, for Docker, serves over HTTP afterwards), the other server systems load through Python batches over the network. Systems whose algorithms follow the stored edge direction (Memgraph, FalkorDB, ArangoDB; HugeGraph for PageRank/BFS) load every edge in both directions, and that cost is part of their load time. FalkorDB loads with its bulk loader (`falkordb-bulk-insert`, 116 s for the 68.4M edge records; the per-query path took 53 minutes). The ArcadeDB Docker load is the time of its original load; later runs reuse the data.
@@ -274,10 +274,10 @@ Seconds (warm medians), `datagen-7_5-fb`, last row peak memory in GiB. ArcadeDB 
 - N/A means the engine has no implementation: LCC in Kuzu, LadybugDB, Memgraph (only a NetworkX procedure that is not installed in the MAGE image), FalkorDB and ArangoDB (the AQL query is rejected); SSSP and CDLP in most systems; HugeGraph/Vermeer SSSP is unweighted only (ArangoDB's weighted SSSP is an AQL weighted traversal, since Pregel's is unweighted). **LadybugDB**: only BFS runs, because the downloaded `algo` extension (0.21.0) for macOS arm64 fails to load (`Library not loaded: @rpath/libnetworkit.dylib`; upstream packaging bug).
 
 Notes:
-- **Docker memory:** Docker Desktop had 36 GB for every run on 2026-10-05 except HugeGraph (32 GB). Memgraph's WCC and ArangoDB's SSSP/BFS use the most memory (about 25 GiB peak). ArangoDB keeps the in-memory graph copy of every finished Pregel job until its time-to-live expires, so the driver deletes each job after it finishes; without that, repeated warm runs were killed by the out-of-memory killer at 34 GiB.
+- **Docker memory:** Docker Desktop had 36 GB for every run on 2026-10-05 except HugeGraph (32 GB). Memgraph (25 GiB) and ArangoDB (23 GiB, SSSP and BFS) use the most memory. ArangoDB keeps the in-memory graph copy of every finished Pregel job until its time-to-live expires, so the driver deletes each job after it finishes; without that, repeated warm runs were killed by the out-of-memory killer at 34 GiB.
 - **Memgraph** needs `vm.max_map_count` of at least 524288 in the Docker VM (Docker Desktop's default is 262144, which makes its jemalloc fail and the connection drop mid-query); the harness raises it before each start. WCC and SSSP exceed 60 s, so they are a single timed run after the warm-up call.
 - **FalkorDB**: Redis's background snapshots (default save points) fork the 20+ GB process during a load, the fork fails and Redis then refuses every write; the driver turns them off and takes one synchronous `SAVE` after the load. The default `RESULTSET_SIZE` of 10000 rows silently truncates full per-vertex outputs and is lifted.
-- \* **ArangoDB** is run on 3.11.14, not the latest release, because the driver runs PageRank, WCC, SSSP and CDLP through Pregel, which ArangoDB 3.12 and later no longer provide (only BFS works there). PageRank, SSSP and the other long operations are a single timed run after the warm-up call; CDLP exceeded the 5-minute limit in the latest run.
+- \* **ArangoDB** is run on 3.11.14, not the latest release, because the driver runs PageRank, WCC, SSSP and CDLP through Pregel, which ArangoDB 3.12 and later no longer provide (only BFS works there). PageRank, SSSP and CDLP are a single timed run after the warm-up call (each warm-up exceeded 60 s); the run was done alone on a quiet machine on 2026-10-05.
 - Neo4j and ArcadeDB use a 12 GB heap; Docker Desktop has 32 GB. ArcadeDB Docker loads through the embedded loader first, then serves queries over HTTP (see † for the first call after a restart).
 - None of the competing systems have official LDBC Graphalytics platform drivers. Only ArcadeDB has an official LDBC Graphalytics platform implementation.
 - Systems and versions are listed in the table above; ArcadeDB is the official 26.10.1 release (measured on the identical pre-release snapshot built on 2026-10-04). Raw logs, the harness fixes and the remaining history are in `results-multivendor-validated-2026-10-05.md` and `ArcadeDB-release-progress.md`.

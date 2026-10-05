@@ -26,7 +26,7 @@ ArcadeDB: `26.10.1` (measured on the identical pre-release snapshot JAR built 20
 | LadybugDB | 5.16 | N/A | N/A | 7.89 | N/A | N/A | N/A | 1.0 process |
 | DuckPGQ | 0.85 | 1.51 invalid | 2.00 | exceeds the limit | 49.3 | N/A | N/A | 8.3 process |
 | Memgraph | 437 | 5.49 | 189 | 3.85 | N/A | 75.9 | timeout | 25.1 container |
-| ArangoDB 3.11.14 | 726 | 92.0 | 36.9 | 41.8 | N/A | 253 | timeout | 25.2 container |
+| ArangoDB 3.11.14 | 726 | 93.0 | 40.9 | 38.4 | N/A | 173 | 254 invalid | 23.2 container |
 | FalkorDB (bulk load) | 116 | 2.67 invalid | 2.50 | 0.057 | N/A | N/A | 10.6 (same communities, other labels) | 8.4 container |
 | HugeGraph (Vermeer) | 15.2 + 22.4 | 2.41 | 0.293 | 0.195 | 110 | N/A | 22.3 (same communities, other labels) | 3.2 containers |
 
@@ -35,10 +35,10 @@ Why the invalid and N/A cells cannot be fixed from the driver:
 - DuckPGQ: `pagerank()` has no iteration or damping parameter (ranks sum to 0.90). BFS exceeds the 5-minute limit because DuckDB does not honour the in-process interrupt while its shortest-path operator runs (the run ends after about 25 minutes).
 - FalkorDB PageRank: `algo.pageRank` has no parameters (14.9% of vertices within 1e-4). CDLP finds the reference communities with other label values.
 - ArcadeDB CDLP: the engine breaks ties and seeds labels with dense ids instead of vertex ids (Mode 1 passes).
-- ArangoDB CDLP: Pregel label propagation returns dense ids, 0% match. LCC: the AQL query is rejected.
+- ArangoDB CDLP: Pregel label propagation returns dense ids, 0.0% match (254 s). LCC: the AQL query is rejected.
 - LadybugDB: the `algo` extension for macOS arm64 does not load (`libnetworkit.dylib`), so only BFS runs.
 - LCC: no native implementation in Kuzu, LadybugDB, Memgraph (the MAGE image lacks NetworkX) and FalkorDB.
-- ArangoDB's numbers are from a run with high swap; a quiet-machine rerun is noted in the README when done.
+- ArangoDB: quiet-machine rerun on 2026-10-05 (19:00-19:30; PageRank, SSSP and CDLP are one timed run each); PageRank, WCC, BFS and SSSP validate. An earlier run under about 5 GB of swap was slower (SSSP 253 s) and its CDLP hit the time limit.
 
 ## LSQB, SF1 (seconds, warm medians, all counts match the official expected counts)
 
@@ -71,7 +71,7 @@ Harness (`shared/`):
 Drivers (`ldbc-native/systems/`, `lsqb/systems/`):
 - Memgraph: reverse edges, full-output queries, LCC skipped (a failed procedure call also kills the Bolt session).
 - FalkorDB: edges in both directions, bulk loader (116 s instead of 53 minutes), `RESULTSET_SIZE` unlimited (the default 10000 rows silently truncated every output), `save ""` + `stop-writes-on-bgsave-error no` + one synchronous `SAVE` (a failed background-save fork made Redis answer every write with `MISCONF` and aborted the load at 35M edges).
-- ArangoDB: both directions, Pregel PageRank with `maxGSS 11` (10 and 12 do not match), weighted SSSP through an AQL weighted traversal (`LAST(p.weights)`), BFS `OUTBOUND` with a long client timeout, and **finished Pregel jobs are deleted**: ArangoDB keeps the in-memory graph copy of a finished job until its time-to-live expires, so the repeated warm runs grew from 5 to 34 GiB in 7 minutes and the container was killed by the out-of-memory killer; with the cleanup the peak is 25 GiB.
+- ArangoDB: both directions, Pregel PageRank with `maxGSS 11` (10 and 12 do not match), weighted SSSP through an AQL weighted traversal (`LAST(p.weights)`), BFS `OUTBOUND` with a long client timeout, and **finished Pregel jobs are deleted**: ArangoDB keeps the in-memory graph copy of a finished job until its time-to-live expires, so the repeated warm runs grew from 5 to 34 GiB in 7 minutes and the container was killed by the out-of-memory killer; with the cleanup the peak is 23-25 GiB.
 - HugeGraph: PageRank and BFS on a second graph loaded from a both-direction copy of the edge file, PageRank with `compute.max_step 10` and no convergence threshold.
 - Neo4j: exact PageRank through the two-run correction described above.
 - LadybugDB LSQB: Q4, Q5, Q7 and Q8 as Post + Comment parts (`REPLY_OF_C` table); single-file database handling for Kuzu and LadybugDB.
