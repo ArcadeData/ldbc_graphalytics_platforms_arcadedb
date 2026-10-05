@@ -127,7 +127,7 @@ The first Docker run used a single cold query per query (new JVM, no warm-up) an
 
 | | Load | Q1 | Q2 | Q3 | Q4 | Q5 | Q6 | Q7 | Q8 | Q9 |
 |---|---|---|---|---|---|---|---|---|---|---|
-| ArcadeDB Docker, warm (26.10.1-SNAPSHOT) | 107.8 | 0.19 | 0.19 | 0.09 | 0.06 | 0.26 | 0.14 | 0.05 | 0.13 | 2.47 |
+| ArcadeDB Docker, warm (26.10.1, snapshot build at the time) | 107.8 | 0.19 | 0.19 | 0.09 | 0.06 | 0.26 | 0.14 | 0.05 | 0.13 | 2.47 |
 | ArcadeDB Docker, cold single run | 113.6 | 2.01 | 1.45 | 1.26 | 0.53 | 1.65 | 1.61 | 0.41 | 0.82 | 12.38 |
 | arcadedb.com page (26.4.1, warm) | - | 0.25 | 0.19 | 0.13 | 0.03 | 0.23 | 0.11 | 0.02 | 0.19 | 1.06 |
 | Neo4j 2026.09.0, warm | 252.0 | 8.35 | 1.69 | 15.98 | 8.20 | 6.73 | 41.93 | 12.39 | 14.37 | 240.76 |
@@ -160,7 +160,7 @@ Scaling from `datagen-7_5-fb` (ArcadeDB Docker): PR 0.44 -> 1.51 s, WCC 0.20 -> 
 
 ## WCC re-test after ArcadeData/arcadedb#9133 (parallel union-find, PR #9135 merged 2026-10-04)
 
-Same machine, Temurin 25 with compact headers, 12 GB heap, ArcadeDB `26.10.1-SNAPSHOT` rebuilt after the merge (engine JAR 00:37, Docker image 00:39; the benchmark JAR was rebuilt with `-Darcadedb.version=26.10.1-SNAPSHOT`) against the previous snapshot (`02ac27327d`). Both engines were timed with the identical harness on the already loaded ArcadeDB databases (fresh JVM per measurement, 5 repetitions, medians; "cold" = the first WCC call in a JVM, which is what the multi-vendor benchmark times; "warm" = best of the following calls). Neo4j: GDS projection built first (not timed), same protocol, 7 runs. Seconds.
+Same machine, Temurin 25 with compact headers, 12 GB heap, ArcadeDB `26.10.1` (pre-release snapshot build) rebuilt after the merge (engine JAR 00:37, Docker image 00:39; the benchmark JAR was rebuilt with `-Darcadedb.version=26.10.1-SNAPSHOT`) against the previous snapshot (`02ac27327d`). Both engines were timed with the identical harness on the already loaded ArcadeDB databases (fresh JVM per measurement, 5 repetitions, medians; "cold" = the first WCC call in a JVM, which is what the multi-vendor benchmark times; "warm" = best of the following calls). Neo4j: GDS projection built first (not timed), same protocol, 7 runs. Seconds.
 
 | WCC | datagen-7_5-fb cold | datagen warm | graph500-22 cold | graph500-22 warm |
 |---|---|---|---|---|

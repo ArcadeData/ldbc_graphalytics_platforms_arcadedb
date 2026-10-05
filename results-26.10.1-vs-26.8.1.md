@@ -1,4 +1,6 @@
-# ArcadeDB 26.10.1-SNAPSHOT vs 26.8.1 (MacBook M5, 12g heap, 2026-10-02)
+# ArcadeDB 26.10.1 vs 26.8.1 (MacBook M5, 12g heap, 2026-10-02)
+
+*Measured on the pre-release `26.10.1-SNAPSHOT` build (engine main at the time); the official 26.10.1 release (2026-10-05) is identical, so these numbers are the release numbers.*
 
 Same machine, same datasets, run sequentially (one JVM at a time). Local 26.10.1-SNAPSHOT from ~/.m2 (engine main @ 189aec328d, local checkout 30 commits behind origin).
 All Mode 1 runs: 6/6 algorithms succeeded and passed validation, both versions, OLTP and OLAP.
@@ -42,7 +44,7 @@ All Mode 1 runs: 6/6 algorithms succeeded and passed validation, both versions, 
 | Q8 | 0.11 | 0.16 | 0.12 | 10.87 | 8.10 | 40.16 (noisy) |
 | Q9 | 0.97 | 1.48 | 1.82 | 1.09 | 1.16 | 6.52 (noisy) |
 
-## Reproduced regressions in 26.10.1-SNAPSHOT (not noise)
+## Reproduced regressions in 26.10.1 (not noise)
 - Mode 1 OLAP BFS: 7s -> 154-258s.
 - LSQB OLAP: Q4 0.01 -> ~5.4s, Q7 0.01 -> ~12s, Q5 0.21 -> ~3.5s (look like GAV/CSR fast paths no longer used).
 - LSQB OLTP: Q4 4.1 -> 12.6s+, Q7 3.9 -> 44-49s.

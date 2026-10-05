@@ -5,16 +5,16 @@ same datasets, one JVM at a time. This is the history; the current multi-vendor 
 [README](README.md#all-systems-comparison), and the raw data of the latest run is in
 [results-multivendor-validated-2026-10-05.md](results-multivendor-validated-2026-10-05.md) (earlier raw data: [results-m5-multivendor-2026-10-03.md](results-m5-multivendor-2026-10-03.md)). The regressions found between
 26.8.1 and 26.10.1 and how they were fixed are in
-[results-26.10.1-SNAPSHOT-vs-26.8.1.md](results-26.10.1-SNAPSHOT-vs-26.8.1.md) and
+[results-26.10.1-vs-26.8.1.md](results-26.10.1-vs-26.8.1.md) and
 [fix-plan-26.10.1-regressions.md](fix-plan-26.10.1-regressions.md).
 
 *Keep this file updated: after every benchmark run on a new ArcadeDB version (or a fix branch), add the new
 column here and in the results file, and say which engine build or PR each column refers to.*
 
-## 26.8.1 to 26.10.1-SNAPSHOT
+## 26.8.1 to 26.10.1
 
 
-Same machine for every column (MacBook M5, `-Xms12g -Xmx12g`, OpenJDK 21), same datasets, one JVM at a time, measured 2026-10-02 (later runs use Temurin 25 only). This tracks ArcadeDB itself across versions; the multi-vendor tables below were re-measured on 2026-10-03 on the same machine with ArcadeDB `26.10.1-SNAPSHOT` and the newest release of every other system (raw detail, Java 21 vs 25 and decision log: [`results-m5-multivendor-2026-10-03.md`](results-m5-multivendor-2026-10-03.md)). The 26.10.1 column is the `26.10.1-SNAPSHOT` built from ArcadeDB `main` @ `02ac27327d` (not in a release yet). Raw numbers: [`results-26.10.1-SNAPSHOT-vs-26.8.1.md`](results-26.10.1-SNAPSHOT-vs-26.8.1.md).
+Same machine for every column (MacBook M5, `-Xms12g -Xmx12g`, OpenJDK 21), same datasets, one JVM at a time, measured 2026-10-02 (later runs use Temurin 25 only). This tracks ArcadeDB itself across versions; the multi-vendor tables below were re-measured on 2026-10-03 on the same machine with ArcadeDB `26.10.1-SNAPSHOT` and the newest release of every other system (raw detail, Java 21 vs 25 and decision log: [`results-m5-multivendor-2026-10-03.md`](results-m5-multivendor-2026-10-03.md)). The 26.10.1 column is the `26.10.1-SNAPSHOT` built from ArcadeDB `main` @ `02ac27327d` (not in a release yet). Raw numbers: [`results-26.10.1-vs-26.8.1.md`](results-26.10.1-vs-26.8.1.md).
 
 **Mode 1 (official framework, datagen-7_5-fb), processing_time in seconds, all runs validated:**
 
@@ -53,9 +53,9 @@ OLTP numbers vary about 2x between runs on this machine (e.g. the same OLTP buil
 | WCC union-find ([#9133](https://github.com/ArcadeData/arcadedb/issues/9133)) | Embedded WCC on the warm view: 0.003 s on `datagen-7_5-fb` and 0.012 s on `graph500-22` (details in the results file). |
 | `algo.*` waits for the restored view ([#9220](https://github.com/ArcadeData/arcadedb/issues/9220), PR [#9221](https://github.com/ArcadeData/arcadedb/pull/9221)) | First `algo.wcc()` after reopening a database with a persisted view (633K vertices, 34M edges): 69.4 s / 60.2 s before, 1.02 s / 0.67 s after (2 runs each, alternating). Later calls are unchanged (0.02-0.15 s). |
 
-Mode 2 on the 26.10.1-SNAPSHOT build with the WCC fix, validated against the LDBC reference outputs, embedded, median of 3 (seconds): load 71.9, PR 0.21, WCC 0.09, BFS 0.08, LCC 2.25, SSSP 0.96, CDLP 1.03 (CDLP fails validation, see the README).
+Mode 2 on the 26.10.1 build (measured on the identical pre-release snapshot) with the WCC fix, validated against the LDBC reference outputs, embedded, median of 3 (seconds): load 71.9, PR 0.21, WCC 0.09, BFS 0.08, LCC 2.25, SSSP 0.96, CDLP 1.03 (CDLP fails validation, see the README).
 
-## 26.10.1-SNAPSHOT (JAR built 2026-10-04 14:11), weekly run 2026-10-04
+## 26.10.1 (measured on the identical pre-release snapshot JAR built 2026-10-04 14:11), weekly run 2026-10-04
 
 Temurin 25.0.4.1 with `-XX:+UseCompactObjectHeaders`, AC power, MacBook M5 Pro, median of 3 runs, all outputs validated except CDLP (engine tie-break, see README).
 

@@ -213,14 +213,14 @@ Dataset: **datagen-7_5-fb** (633,432 vertices, 34,185,747 edges, undirected, wei
 
 #### ArcadeDB across releases
 
-The official-framework (Mode 1) numbers per ArcadeDB release, Mode 2 and LSQB (26.8.1 against 26.10.1-SNAPSHOT), and the effect of later fixes such as the WCC union-find and the restored-view wait, are in [ArcadeDB-release-progress.md](ArcadeDB-release-progress.md).
+The official-framework (Mode 1) numbers per ArcadeDB release, Mode 2 and LSQB (26.8.1 against 26.10.1), and the effect of later fixes such as the WCC union-find and the restored-view wait, are in [ArcadeDB-release-progress.md](ArcadeDB-release-progress.md).
 
 #### Systems and versions (both suites)
 
 | System | Version | Edition | License | Mode | Overhead | Used in |
 |--------|---------|---------|---------|------|----------|---------|
-| **ArcadeDB** (embedded) | 26.10.1-SNAPSHOT | Open Source | Apache 2.0 | Embedded (in-process, Temurin 25) | None | Graphalytics, LSQB |
-| **ArcadeDB** (Docker) | 26.10.1-SNAPSHOT | Open Source | Apache 2.0 | Server (Docker, HTTP API) | Network + Docker | Graphalytics, LSQB |
+| **ArcadeDB** (embedded) | 26.10.1 | Open Source | Apache 2.0 | Embedded (in-process, Temurin 25) | None | Graphalytics, LSQB |
+| **ArcadeDB** (Docker) | 26.10.1 | Open Source | Apache 2.0 | Server (Docker, HTTP API) | Network + Docker | Graphalytics, LSQB |
 | **Neo4j** | 2026.09.0 | Community | GPL 3.0 | Server (Docker, Bolt protocol, GDS) | Network + Docker | Graphalytics, LSQB |
 | **Kuzu** | 0.11.3 (archived project) | Open Source | MIT | Embedded (in-process, C++ via Python) | None | Graphalytics, LSQB |
 | **LadybugDB** (Kuzu fork) | 0.21.2 | Open Source | MIT | Embedded (in-process, C++ via Python) | None | Graphalytics, LSQB |

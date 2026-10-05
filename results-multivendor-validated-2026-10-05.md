@@ -2,7 +2,7 @@
 
 Same machine as `results-m5-multivendor-2026-10-03.md` (MacBook Pro 16" 2026, Apple M5 Pro, 48 GB RAM, Docker Desktop 32 GB), always on AC power,
 one process / one container at a time, 5-minute limit per operation, JVM systems with `-Xms12g -Xmx12g`.
-ArcadeDB: `26.10.1-SNAPSHOT` JAR built 2026-10-04 14:11, Temurin 25.0.4.1 with `-XX:+UseCompactObjectHeaders`.
+ArcadeDB: `26.10.1` (measured on the identical pre-release snapshot JAR built 2026-10-04 14:11; the release was published 2026-10-05), Temurin 25.0.4.1 with `-XX:+UseCompactObjectHeaders`.
 
 Every Graphalytics output was exported in full (no `LIMIT`, no top-10 aggregation) from the exact call that was timed and checked with
 `scripts/validate_outputs.py` against the official reference outputs. A cell is only comparable when it validated.

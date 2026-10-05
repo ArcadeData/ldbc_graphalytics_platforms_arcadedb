@@ -189,9 +189,26 @@ reloads; later runs reuse the data.
 - The datasets store each undirected edge once: drivers must compute on the undirected graph (reverse edge copies / symmetric tables) and time the exact full-output call that is exported and validated. FalkorDB needs `RESULTSET_SIZE -1` (default 10000 truncates outputs) and a long `stop_timeout` (the shutdown snapshot is large).
 - Never run another vendor's container or an unrelated docker-compose stack during measurements (CPU/RAM contention and port clashes: 5433, 7687, 6379, 2480).
 
-### Cold vs warm
+### Reporting a running queue: always use the queue picture
 
-The headline Graphalytics number is the cold first call (comparable across vendors). JVM engines also get a warm median: `GRAPHALYTICS_WARMUP=1 GRAPHALYTICS_REPS=3` (set by `weekend.py`) for the drivers that use `bench_common.run_timed_warm` (ArcadeDB Docker, Neo4j), `-Dwarm.reps=5` for `ArcadeDBEmbeddedBenchmark`. The cold call is stored as `<metric>_cold`. Never compare an ArcadeDB warm number with another system's cold number.
+Whenever benchmarks run (a single vendor, a chain of vendors, `weekend.py`), report progress with the ASCII queue picture, in ONE
+fenced code block: `python3 scripts/queue_status.py` (finished steps with their time, the running step with a bar and its last log
+line, waiting steps, estimated finish, power / free memory / swap / containers). Write the plan first: a JSON file at
+`~/.cache/ldbc-graph-bench/queue-plan.json` (format in the script's docstring) listing the steps, their logs and expected minutes, and
+append `<step> done HH:MM` to the plan's progress file after each step. For a long queue, refresh the picture every 5 minutes with a
+recurring cron job; add one line under the picture when a step finishes (with its validation verdict) and one line when the Mac is on
+battery or swap is above 6 GB. Never start, stop or change a benchmark from the picture job.
+
+### Warm measurements only — never publish or rank a cold number
+
+Production servers run warm, so every published number is a warm number. The first call of every algorithm/query is the
+warm-up: it is executed but never reported (it pays JIT, page-cache and first-touch costs). The reported value is the median
+of 3 timed runs that follow (5 in the embedded Graphalytics JVM, `-Dwarm.reps`); when the warm-up call takes longer than
+60 s (30 s for LSQB) there is a single timed run instead. Implemented in `shared/bench_common.py` (`run_timed_warm` for
+Graphalytics, `measure_repeated` for LSQB), `ArcadeDBEmbeddedBenchmark.java` and `ArcadeDBEmbeddedLSQB.java`; every driver
+must go through one of them (a new driver that times a single call is a bug). Extra untimed runs: `GRAPHALYTICS_WARMUP` /
+`LSQB_WARMUP`; repetitions: `GRAPHALYTICS_REPS` / `LSQB_REPS` (defaults 0 and 3). Load times are one-off and not warmed.
+The only exception is Mode 1 (the official LDBC framework): it runs each algorithm once after its own load and cannot be warmed.
 
 ### One vendor at a time — no parallel containers
 
