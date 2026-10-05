@@ -210,6 +210,17 @@ must go through one of them (a new driver that times a single call is a bug). Ex
 `LSQB_WARMUP`; repetitions: `GRAPHALYTICS_REPS` / `LSQB_REPS` (defaults 0 and 3). Load times are one-off and not warmed.
 The only exception is Mode 1 (the official LDBC framework): it runs each algorithm once after its own load and cannot be warmed.
 
+### Memory is reported next to every result
+
+The orchestrator samples memory once per second while a vendor runs (`shared/bench_memory.py`): the working set of the vendor's Docker
+containers (`docker stats`) or the RSS of its process; the harness stores per-operation peaks in `result["_memory"]` and prints a
+`Memory <vendor>: ...` line. README tables show the peak in GiB with a basis note: JVM systems (ArcadeDB, Neo4j) run with a fixed
+12 GB heap, so their process/container size is mostly that heap (the embedded ArcadeDB benchmark also prints the live heap after a full
+GC); Kuzu, DuckDB and LadybugDB size their buffer pools from the machine RAM. A vendor that starts its own container (the ArcadeDB
+Graphalytics driver) must be listed in `own_containers` in `run_vendor_isolated`. Check `sysctl vm.swapusage` and
+`memory_pressure` before a long run: a Docker VM that still holds its memory plus an in-process engine can push the Mac into swap and
+distort timings (the harness waits while free memory is below 25%).
+
 ### One vendor at a time — no parallel containers
 
 **NEVER start multiple Docker containers simultaneously.** The orchestrator runs vendors sequentially and does this for you; the manual procedure is:

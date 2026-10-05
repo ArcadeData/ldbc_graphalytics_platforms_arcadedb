@@ -53,16 +53,26 @@ OLTP numbers vary about 2x between runs on this machine (e.g. the same OLTP buil
 | WCC union-find ([#9133](https://github.com/ArcadeData/arcadedb/issues/9133)) | Embedded WCC on the warm view: 0.003 s on `datagen-7_5-fb` and 0.012 s on `graph500-22` (details in the results file). |
 | `algo.*` waits for the restored view ([#9220](https://github.com/ArcadeData/arcadedb/issues/9220), PR [#9221](https://github.com/ArcadeData/arcadedb/pull/9221)) | First `algo.wcc()` after reopening a database with a persisted view (633K vertices, 34M edges): 69.4 s / 60.2 s before, 1.02 s / 0.67 s after (2 runs each, alternating). Later calls are unchanged (0.02-0.15 s). |
 
-Mode 2 on the 26.10.1 build (measured on the identical pre-release snapshot) with the WCC fix, validated against the LDBC reference outputs, embedded, median of 3 (seconds): load 71.9, PR 0.21, WCC 0.09, BFS 0.08, LCC 2.25, SSSP 0.96, CDLP 1.03 (CDLP fails validation, see the README).
+Current Mode 2 and LSQB numbers of the release (warm, validated) are in the last section.
 
-## 26.10.1 (measured on the identical pre-release snapshot JAR built 2026-10-04 14:11), weekly run 2026-10-04
+## 26.10.1, warm runs of 2026-10-05
 
-Temurin 25.0.4.1 with `-XX:+UseCompactObjectHeaders`, AC power, MacBook M5 Pro, median of 3 runs, all outputs validated except CDLP (engine tie-break, see README).
+Official release 26.10.1 (measured on the identical pre-release snapshot JAR built 2026-10-04 14:11; the smoke run on the rebuilt release JAR gives the same numbers).
+Temurin 25.0.4.1 with `-XX:+UseCompactObjectHeaders`, AC power, MacBook M5 Pro. Warm: the first call of each algorithm or query is discarded and the value is the median of
+5 (Graphalytics, per JVM launch) or 3 (LSQB) timed runs, then the median of 3 JVM launches; all outputs validated except CDLP (engine tie-break, see README).
+The earlier cold single-run numbers of 2026-10-02 to 2026-10-04 are superseded.
 
 | Variant | Load | PR | WCC | BFS | LCC | SSSP | CDLP |
 |---|---|---|---|---|---|---|---|
-| Embedded Graphalytics (`datagen-7_5-fb`) | 71.9 | 0.22 | 0.08 | 0.08 | 2.12 | 0.85 | 1.01 (invalid) |
-| LSQB OLAP | 119.5 | Q1 0.28, Q2 0.18, Q3 0.11, Q4 0.06, Q5 0.20, Q6 0.13, Q7 0.05, Q8 0.12, Q9 1.68 | | | | | |
-| LSQB OLTP | 159.2 | Q1 3.19, Q2 5.04, Q3 3.71, Q4 1.18, Q5 11.52, Q6 42.52, Q7 5.51, Q8 40.57, Q9 0.98 | | | | | |
+| Embedded Graphalytics (`datagen-7_5-fb`) | 71.9 | 0.086 | 0.004 | 0.022 | 2.19 | 0.84 | 1.09 (invalid) |
+| Docker Graphalytics | 43.9 | 0.156 | 0.022 | 0.032 | 2.65 | 1.56 | 1.08 (invalid) |
+
+| LSQB SF1 | Load | Q1 | Q2 | Q3 | Q4 | Q5 | Q6 | Q7 | Q8 | Q9 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Embedded OLAP (GAV) | 119.5 | 0.09 | 0.15 | 0.07 | 0.04 | 0.19 | 0.13 | 0.05 | 0.12 | 1.78 |
+| Embedded OLTP | 159.2 | 2.83 | 4.54 | 3.44 | 1.24 | 13.59 | 12.77 | 1.13 | 8.60 | 0.90 |
+| Server (Docker) | 101.7 | 0.14 | 0.19 | 0.08 | 0.05 | 0.27 | 0.18 | 0.06 | 0.13 | 2.32 |
+
+Memory: embedded Graphalytics process peak 6.4 GiB with a 0.75 GiB live heap after GC (fixed 12 GB heap); Docker container 12.3 GiB.
 
 Full tables and the other vendors: [results-multivendor-validated-2026-10-05.md](results-multivendor-validated-2026-10-05.md).
