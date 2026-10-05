@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791106231024,
+  "lastUpdate": 1791194984687,
   "repoUrl": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb",
   "entries": {
     "ArcadeDB Mode 1 — Official LDBC Graphalytics": [
@@ -3443,6 +3443,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "CDLP processing",
             "value": 30.677,
+            "unit": "s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Luca Garulli",
+            "username": "lvca",
+            "email": "lvca@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "Luca Garulli",
+            "username": "lvca",
+            "email": "lvca@users.noreply.github.com"
+          },
+          "id": "190ea994c16c1d00a3afb9623dd441ca6b78d032",
+          "message": "Move the release-over-release history out of the README into ArcadeDB-release-progress.md\n\nThe README keeps the current multi-vendor comparison and links the history. The new file holds the\n26.8.1 to 26.10.1-SNAPSHOT tables unchanged plus the later merged fixes (WCC union-find #9133,\nrestored-view wait #9220/#9221) measured on AC power.",
+          "timestamp": "2026-10-04T20:03:55Z",
+          "url": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb/commit/190ea994c16c1d00a3afb9623dd441ca6b78d032"
+        },
+        "date": 1791194984310,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "SSSP load",
+            "value": 84.763,
+            "unit": "s"
+          },
+          {
+            "name": "SSSP processing",
+            "value": 16.676,
+            "unit": "s"
+          },
+          {
+            "name": "LCC load",
+            "value": 90.153,
+            "unit": "s"
+          },
+          {
+            "name": "LCC processing",
+            "value": 23.358,
+            "unit": "s"
+          },
+          {
+            "name": "WCC load",
+            "value": 90.153,
+            "unit": "s"
+          },
+          {
+            "name": "WCC processing",
+            "value": 12.684,
+            "unit": "s"
+          },
+          {
+            "name": "BFS load",
+            "value": 90.153,
+            "unit": "s"
+          },
+          {
+            "name": "BFS processing",
+            "value": 22.157,
+            "unit": "s"
+          },
+          {
+            "name": "PR load",
+            "value": 90.153,
+            "unit": "s"
+          },
+          {
+            "name": "PR processing",
+            "value": 13.638,
+            "unit": "s"
+          },
+          {
+            "name": "CDLP load",
+            "value": 90.153,
+            "unit": "s"
+          },
+          {
+            "name": "CDLP processing",
+            "value": 30.779,
             "unit": "s"
           }
         ]
