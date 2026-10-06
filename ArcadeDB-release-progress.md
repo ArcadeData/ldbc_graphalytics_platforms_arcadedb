@@ -143,6 +143,18 @@ The Docker drivers now send the timed calls over Bolt (the earlier tables were m
 
 Every difference is within the spread between two runs of the same protocol, so Bolt and HTTP are indistinguishable here. That is expected: each timed call returns one row (`count(*)`), so the protocol adds only per-request overhead. The protocol would matter for calls that return many rows (the per-vertex exports are not timed). Container memory peaks are the same (12.5-12.8 GiB, the fixed heap).
 
+### Bolt against HTTP when a call returns many rows (same image and day, AC power, `scripts/bolt_transfer_bench.py`)
+
+The calls above return one row. Calls that return many rows show the real protocol cost (warm median of 3, rows consumed on the client, row counts equal over both protocols):
+
+| Call | Bolt | HTTP | Bolt / HTTP | Bolt rows/s | HTTP rows/s |
+|---|---|---|---|---|---|
+| vertex ids, 633,432 rows x 1 | 14.12 s | 0.37 s | 38x | 44,900 | 1,694,000 |
+| PageRank scores, 633,432 rows x 2 | 7.57 s | 1.16 s | 6.5x | 83,600 | 545,000 |
+| edge sample, 2,000,000 rows x 2 | 44.77 s | 1.92 s | 23x | 44,700 | 1,043,000 |
+
+Over Bolt the server returns about 45,000 rows per second for these shapes (the PageRank call, whose rows come from the analytical view, about 84,000), against 0.5-1.7 million over HTTP. Moving a full per-vertex result over Bolt is therefore the one place where the protocol matters; this is the baseline to compare an improved Bolt image with.
+
 ## The three 26.8.1 to 26.10.1 regressions: status on 26.11.1-SNAPSHOT
 
 Details and root causes: [fix-plan-26.10.1-regressions.md](fix-plan-26.10.1-regressions.md). Verdicts from the warm runs above plus the bulk UPDATE reproducer (`scripts/bulk_update_repro.py`, AC power, Temurin 25).
