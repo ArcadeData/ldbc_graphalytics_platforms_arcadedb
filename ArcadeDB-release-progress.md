@@ -5,7 +5,6 @@ same datasets, one JVM at a time. This is the history; the current multi-vendor 
 [README](README.md#all-systems-comparison), and the raw data of the latest run is in
 [results-multivendor-validated-2026-10-05.md](results-multivendor-validated-2026-10-05.md) (earlier raw data: [results-m5-multivendor-2026-10-03.md](results-m5-multivendor-2026-10-03.md)). The regressions found between
 26.8.1 and 26.10.1 and how they were fixed are in
-[results-26.10.1-vs-26.8.1.md](results-26.10.1-vs-26.8.1.md) and
 [fix-plan-26.10.1-regressions.md](fix-plan-26.10.1-regressions.md).
 
 *Keep this file updated: after every benchmark run on a new ArcadeDB version (or a fix branch), add the new
@@ -14,7 +13,7 @@ column here and in the results file, and say which engine build or PR each colum
 ## 26.8.1 to 26.10.1
 
 
-Same machine for every column (MacBook M5, `-Xms12g -Xmx12g`, OpenJDK 21), same datasets, one JVM at a time, measured 2026-10-02 (later runs use Temurin 25 only). This tracks ArcadeDB itself across versions; the multi-vendor tables below were re-measured on 2026-10-03 on the same machine with ArcadeDB `26.10.1-SNAPSHOT` and the newest release of every other system (raw detail, Java 21 vs 25 and decision log: [`results-m5-multivendor-2026-10-03.md`](results-m5-multivendor-2026-10-03.md)). The 26.10.1 column is the `26.10.1-SNAPSHOT` built from ArcadeDB `main` @ `02ac27327d` (not in a release yet). Raw numbers: [`results-26.10.1-vs-26.8.1.md`](results-26.10.1-vs-26.8.1.md).
+Same machine for every column (MacBook M5, `-Xms12g -Xmx12g`, OpenJDK 21), same datasets, one JVM at a time, measured 2026-10-02 (later runs use Temurin 25 only). This tracks ArcadeDB itself across versions; the multi-vendor tables below were re-measured on 2026-10-03 on the same machine with ArcadeDB `26.10.1-SNAPSHOT` and the newest release of every other system (raw detail, Java 21 vs 25 and decision log: [`results-m5-multivendor-2026-10-03.md`](results-m5-multivendor-2026-10-03.md)). The 26.10.1 column is the `26.10.1-SNAPSHOT` built from ArcadeDB `main` @ `02ac27327d` (not in a release yet).
 
 **Mode 1 (official framework, datagen-7_5-fb), processing_time in seconds, all runs validated:**
 

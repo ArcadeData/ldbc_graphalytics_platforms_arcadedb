@@ -1,6 +1,6 @@
 # Fix plan: ArcadeDB 26.10.x performance regressions (found by the Graphalytics/LSQB suite)
 
-Target repo: ~/Documents/GitHub/arcadedb (engine). Evidence: `results-26.10.1-vs-26.8.1.md`.
+Target repo: ~/Documents/GitHub/arcadedb (engine). Evidence: the 26.8.1 vs 26.10.1 numbers in `ArcadeDB-release-progress.md`.
 Rule for all three: **keep the correctness the original commit bought, restore the fast path where it is provably sound.** Do not revert the commits.
 
 Priority order (impact / risk): 1 > 2 > 3.
