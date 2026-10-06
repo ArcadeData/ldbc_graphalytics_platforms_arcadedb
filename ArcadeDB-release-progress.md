@@ -100,6 +100,19 @@ Memory: embedded Graphalytics process peak 5.6 GiB (live heap 0.77 GiB after GC)
 Q9 is now 5.9x faster embedded and 7x faster in Docker, and the GAV is faster than the OLTP path on all nine queries. The other LSQB queries and algorithms are unchanged within run-to-run noise.
 The Docker CDLP time includes computing the vertex-id tie-break rank inside the procedure; the embedded kernel gets a precomputed rank.
 
+## The three 26.8.1 to 26.10.1 regressions: status on 26.11.1-SNAPSHOT
+
+Details and root causes: [fix-plan-26.10.1-regressions.md](fix-plan-26.10.1-regressions.md). Verdicts from the warm runs above plus the bulk UPDATE reproducer (`scripts/bulk_update_repro.py`, AC power, Temurin 25).
+
+| # | Regression (bad build) | Engine fix | 26.11.1-SNAPSHOT |
+|---|---|---|---|
+| 1 | Bulk UPDATE quadratic in `LocalBucket.findAvailableSpace` (Mode 1 BFS 7 s to 80-260 s) | PR #8955 (#8660), merged 2026-10-02 | every bulk UPDATE 2.0-3.8 s in both property orders; Mode 1 OLAP BFS 8.25 s on 26.10.1 |
+| 2 | Star-join push-down declined for labelled arms (LSQB Q4/Q7 OLAP 0.01 s to 5-12 s) | `6e54555ea0` (#6337) | OLAP Q4 0.04 s, Q7 0.04 s; OLTP 1.06 s, 1.07 s |
+| 3 | Q5 push-down declined (OLAP 0.2 s to ~3.5 s) | not identified | OLAP Q5 0.17 s |
+
+Still to measure on the final build: Mode 1 in the default algorithm order (BFS after other algorithms had written results), 3 repetitions.
+The guard against a repeat is the `bulk-update` step and the previous-run comparison in `weekend.py` (`scripts/check_regressions.py`).
+
 ## graph500-22-w (2.4M vertices, 64M edges), 26.11.1-SNAPSHOT, 2026-10-06
 
 Warm, validated against the official `graph500-22` reference (ids 6 and 248533 swapped back), same machine and JVM rules as above; no SSSP (not defined for this dataset).

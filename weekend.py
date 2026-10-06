@@ -10,6 +10,7 @@ Steps (in order):
   preflight  Docker memory, disk, datasets, JAR, stray vendor containers
   java-m2    ArcadeDB embedded, Graphalytics (reps runs; load once, then reuse)
   java-lsqb  ArcadeDB embedded, LSQB OLAP (GAV) and OLTP (no GAV) (reps runs)
+  bulk-update  #8660 reproducer: one SQL bulk UPDATE per algorithm property on a clone of the m2 database (scripts/bulk_update_repro.py)
   py-m2      Graphalytics, all vendors (ldbc-native/benchmark.py)
   py-lsqb    LSQB, all vendors (lsqb/lsqb_benchmark.py)
   mode1      Official framework (only with --mode1-dist)
@@ -45,8 +46,11 @@ import bench_memory  # noqa: E402
 import bench_isolation  # noqa: E402
 import bench_state  # noqa: E402
 
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
+import check_regressions  # noqa: E402
+
 JAR = os.path.join(ROOT, "target", "graphalytics-platforms-arcadedb-0.1-SNAPSHOT-default.jar")
-STEPS = ["preflight", "java-m2", "java-lsqb", "py-m2", "py-lsqb", "mode1"]
+STEPS = ["preflight", "java-m2", "java-lsqb", "bulk-update", "py-m2", "py-lsqb", "mode1"]
 M2_KEYS = ["LOAD", "PR", "WCC", "BFS", "LCC", "SSSP", "CDLP"]
 LSQB_KEYS = ["LOAD"] + [f"Q{i}" for i in range(1, 10)]
 STRAY = ["arcadedb", "arcadedb-lsqb", "neo4j-gds", "neo4j-lsqb", "memgraph", "memgraph-lsqb",
@@ -236,6 +240,17 @@ def step_python(args, report, out_dir, suite):
     report[f"py-{suite}"] = {"outcome": repr(outcome), "results": bench_isolation.read_json(out)}
 
 
+def step_bulk_update(args, report, out_dir):
+    out = os.path.join(out_dir, "bulk-update.json")
+    cmd = [sys.executable, os.path.join(ROOT, "scripts", "bulk_update_repro.py"), "--json", out,
+           "--out-dir", os.path.join(out_dir, "bulk-update"), "--jvm-flags", args.jvm_flags]
+    if args.java_home:
+        cmd += ["--java-home", args.java_home]
+    outcome = bench_isolation.run_child(cmd, total_timeout=2 * 900 + 300, idle_timeout=900,
+                                        log_file=os.path.join(out_dir, "bulk-update.log"), log=log)
+    report["bulk-update"] = {"outcome": repr(outcome), **(bench_isolation.read_json(out) or {})}
+
+
 def step_mode1(args, report, out_dir):
     cmd = [sys.executable, os.path.join(ROOT, "scripts", "run_mode1.py"), "--dist", args.mode1_dist,
            "--out-dir", os.path.join(out_dir, "mode1"), "--jvm-flags", args.jvm_flags]
@@ -320,6 +335,18 @@ def md_report(report):
                 L.append(f"| {n} | {m['basis']} | " + (f"{before / 1024:.1f}" if before is not None else "n/a") + " | "
                          + (f"{peak / 1024:.1f}" if peak is not None else "n/a") + " |")
             L.append("")
+    if report.get("bulk-update", {}).get("runs"):
+        bu = report["bulk-update"]
+        L += [f"## Bulk UPDATE reproducer (#8660), seconds per UPDATE (limit {bu['limit']:.0f} s)", ""]
+        for r in bu["runs"]:
+            L.append(f"- {r['order']}: " + ", ".join(f"{a} {t:.2f}" for a, t in r["updates"].items())
+                     + f" -> {'OK' if r['ok'] else 'SLOW or INCOMPLETE'}")
+        L.append("")
+    if report.get("regressions") is not None:
+        L += ["## Regression check (ArcadeDB, versus " + str(report.get("regressions_vs")) + ")", ""]
+        L += [f"- **{lab}**: {was} -> {now} ({note})" for lab, was, now, note in report["regressions"]] \
+            or ["- no regressions (more than 2x and more than 0.25 s slower)"]
+        L.append("")
     if "mode1" in report and report["mode1"].get("summary"):
         L += ["## Mode 1 (official framework), processing time (s)", ""]
         for mode, d in report["mode1"]["summary"].items():
@@ -388,6 +415,7 @@ def main():
     dispatch = {
         "java-m2": lambda: step_java(args, report, out_dir, "m2"),
         "java-lsqb": lambda: step_java(args, report, out_dir, "lsqb"),
+        "bulk-update": lambda: step_bulk_update(args, report, out_dir),
         "py-m2": lambda: step_python(args, report, out_dir, "m2"),
         "py-lsqb": lambda: step_python(args, report, out_dir, "lsqb"),
         "mode1": lambda: step_mode1(args, report, out_dir),
@@ -408,6 +436,13 @@ def main():
         report["step_seconds"][step] = time.monotonic() - t0
         bench_isolation.atomic_write_json(os.path.join(out_dir, "weekly.json"), report)
 
+    if not args.dry_run:
+        prev = check_regressions.previous_run(os.path.join(out_dir, "weekly.json"))
+        if prev:
+            report["regressions_vs"] = os.path.relpath(prev, ROOT)
+            report["regressions"] = check_regressions.compare(report, json.load(open(prev)))
+            for lab, was, now, note in report["regressions"]:
+                log(f"  REGRESSION {lab}: {was} -> {now} ({note})")
     report["finished"] = bench_state.now_iso()
     bench_isolation.atomic_write_json(os.path.join(out_dir, "weekly.json"), report)
     with open(os.path.join(out_dir, "weekly.md"), "w") as f:

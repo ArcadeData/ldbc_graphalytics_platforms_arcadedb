@@ -9,6 +9,8 @@ Priority order (impact / risk): 1 > 2 > 3.
 
 ## 1. Bulk update quadratic in `LocalBucket.findAvailableSpace` (commit 62124466c9, #8660)
 
+**Status (2026-10-06): fixed in the engine** by PR #8955 (merged 2026-10-02, `5e44bc7ab3`; free-space map capped at `MAX_PAGES_GATHER_STATS`, resume gather skipped when the map is full, back-off after a failed gather). It is in the 26.10.1 build and in 26.11.1-SNAPSHOT (`cbf701d66e`); the 26.10.1 Mode 1 OLAP BFS is 8.25 s (26.8.1: 7.14 s). **Verified 2026-10-06** (AC power, Temurin 25, `scripts/bulk_update_repro.py`, 26.11.1-SNAPSHOT `cbf701d66e`): every bulk UPDATE of the six algorithm properties takes 2.0-3.8 s, in both property orders (BFS first and BFS last); the bad engine took 65-260 s. The repro is now in the repo and is the `bulk-update` step of `weekend.py`; the 2x guard is `scripts/check_regressions.py`. **Still to do:** Mode 1 in the default order with 3 reps. The text below is the original analysis.
+
 Impact: Mode 1 OLAP BFS 7s -> 80-260s; any bulk UPDATE that grows records on a bucket whose free-space map is "full but useless". This is an engine-wide write-path hazard, not just a benchmark issue, so fix first.
 
 Mechanism (LocalBucket ~6294 and `gatherPageStatistics()` ~6426):
@@ -32,6 +34,8 @@ Acceptance (reproducers exist, see "Reproducers"):
 ---
 
 ## 2. Star-join count push-down declined for any labelled arm endpoint (commit 10c39f40af, #6337)
+
+**Status (2026-10-06): fixed in the engine** by `6e54555ea0` ("the star-join count push-down enforces arm endpoint labels instead of declining"), in 26.11.1-SNAPSHOT. LSQB SF1 OLAP on 26.11.1: Q4 0.04 s, Q7 0.04 s (bad: 5-12 s); OLTP Q4 1.06 s, Q7 1.07 s (bad: 12-134 s); counts all equal the expected ones. The text below is the original analysis.
 
 Impact: LSQB Q4/Q7 OLAP 0.01s -> 5-12s, OLTP 4s -> 12-134s. Biggest SNB-style query regression.
 
@@ -57,6 +61,8 @@ Acceptance: LSQB Q4/Q7 OLAP back to ~0.01-0.05s, OLTP <= 4-5s, with #6337 tests 
 
 ## 3. Count push-down declines Q5 (commit 11da14a84b, #8426)
 
+**Status (2026-10-06): LSQB Q5 OLAP is 0.17 s on 26.11.1-SNAPSHOT** (bad: ~3.5 s), counts correct; I did not look up which engine commit changed `chainHopsAreUnique`. The text below is the original analysis.
+
 Impact: LSQB Q5 OLAP 0.2s -> ~3.5s.
 
 Mechanism: `CypherExecutionPlan.chainHopsAreUnique` (new in that commit) only accepts an overlapping pair of hops if it is **adjacent** (`overlapSecondHop == overlapFirstHop + 1`) and the inequality is on nodes `i` and `i+2`. Q5 = `(t1)<-[:HAS_TAG]-(m)<-[:REPLY_OF]-(c)-[:HAS_TAG]->(t2) WHERE t1 <> t2`: hops 0 and 2 overlap (both `HAS_TAG`), non-adjacent, so it is declined. It is actually safe: the two hops bind the same edge only if `m = c` **and** `t1 = t2`, and `t1 <> t2` forbids that.
@@ -81,7 +87,7 @@ Acceptance: LSQB Q5 OLAP back to ~0.2s.
 
 ## Reproducers (kept in this session's scratchpad, copy into the repo if wanted)
 
-- `repro/BfsRepro.java` + a database snapshot taken at the start of BFS in the Mode 1 sequence (`snap.sh`): bulk update 65s (bad) vs 2.9s (good).
+- #8660: `ldbc-native/BulkUpdateRepro.java` + `scripts/bulk_update_repro.py` (in this repo; clones the loaded embedded database, one bulk UPDATE per algorithm property, two orders): 65-260 s (bad) vs 2-4 s (good).
 - LSQB: load once with 26.8.1, copy the DB, run `ArcadeDBEmbeddedLSQB` against each engine build with its `engine/target/classes` first on the classpath (`try.sh`, `bis3.sh`).
 - `git bisect run` scripts: `bis.sh` (Q7), `bis2.sh` (BFS bulk update), `bis3.sh` (parameterised by query/threshold).
 

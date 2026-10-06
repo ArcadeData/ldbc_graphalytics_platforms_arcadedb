@@ -182,6 +182,13 @@ both multi-vendor suites and optionally Mode 1, under the limits above, and writ
 and `weekly.json`. A failed step never stops the next one. The first run after a new image or dataset
 reloads; later runs reuse the data.
 
+### Regression guards
+
+`python3 scripts/bulk_update_repro.py` (also the `bulk-update` step of `weekend.py`) is the #8660 reproducer: one SQL bulk UPDATE per algorithm
+property on a clone of the loaded embedded database, two property orders, fails when one UPDATE takes more than `--limit` (15 s; good engine 2-4 s,
+bad engine 65-260 s). At the end of every `weekend.py` run `scripts/check_regressions.py` compares the ArcadeDB numbers with the previous
+weekly run and flags anything more than 2x and 0.25 s slower (or newly invalid); OLTP numbers are noisy, read their flags as "look at it".
+
 ### Harness gotchas (learned the hard way)
 
 - A container's port opens before the engine is ready: `shared/bench_containers.py` probes Memgraph (Bolt) and PostgreSQL at protocol level; add a `ready_probe` for any new slow-starting vendor.
