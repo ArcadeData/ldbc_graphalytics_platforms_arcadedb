@@ -84,7 +84,9 @@ def extract(report_dir):
 
 
 def run_mode(dist, mode, java_home, jvm_flags, out_dir, total_timeout, idle_timeout, log=print):
-    for d in ("report", "output"):
+    # `intermediate` holds the loaded database; the framework removes it when a run ends, but a killed run leaves a
+    # half-loaded one behind and the next run would reuse it silently (empty graph, every output invalid)
+    for d in ("report", "output", "intermediate"):
         shutil.rmtree(os.path.join(dist, d), ignore_errors=True)
     link = os.path.join(dist, "config")
     if os.path.islink(link) or os.path.exists(link):
