@@ -1,10 +1,11 @@
 """Time many-row calls over HTTP, Bolt (one PULL) and gRPC streaming (three batch sizes) on one ArcadeDB container.
 
   pip install grpcio grpcio-tools neo4j requests
-  (generate the stubs from arcadedb/grpc/src/main/proto/arcadedb-server.proto into , see the comment below)
+  (generate the stubs from arcadedb/grpc/src/main/proto/arcadedb-server.proto into $GRPC_STUBS_DIR, see the comment below)
   ARCADEDB_IMAGE=arcadedata/arcadedb:<tag> python scripts/grpc_transfer_bench.py out.json
 
-Starts the Graphalytics container with the Bolt and gRPC plugins (,
+Starts the Graphalytics container with the Bolt and gRPC plugins
+(-Darcadedb.server.plugins=Bolt:com.arcadedb.bolt.BoltProtocolPlugin,GRPC:com.arcadedb.server.grpc.GrpcServerPlugin;
 ports 7687 and 50051; gRPC authenticates with the call metadata x-arcade-user / x-arcade-password). Warm-up + median of 3. Run on AC for
 publishable numbers; one container at a time.
 """
