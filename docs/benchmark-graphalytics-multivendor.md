@@ -106,20 +106,22 @@ size their buffer pools from the machine's RAM. The only exception to the warm p
 
 ### All Systems Comparison
 
-Seconds (warm medians), `datagen-7_5-fb`, last row peak memory in GiB. ArcadeDB embedded and ArcadeDB Docker run on Temurin 25 with compact object headers.
+Seconds (warm medians), `datagen-7_5-fb`, last column peak memory in GiB. ArcadeDB embedded and ArcadeDB Docker run on Temurin 25 with compact object headers.
 
-**Every result is checked against the official LDBC reference outputs** (`scripts/validate_outputs.py`; BFS and CDLP exact, WCC same partition, PageRank/LCC/SSSP within 1e-4). A value marked **✗** failed that check: the system computed something other than the Graphalytics algorithm, so its time is shown for completeness but is **not comparable** and is not ranked. Bold marks the fastest *valid* result per row.
+**Every result is checked against the official LDBC reference outputs** (`scripts/validate_outputs.py`; BFS and CDLP exact, WCC same partition, PageRank/LCC/SSSP within 1e-4). A value marked **✗** failed that check: the system computed something other than the Graphalytics algorithm, so its time is shown for completeness but is **not comparable** and is not ranked. Bold marks the fastest *valid* result per column.
 
-| Algorithm | ArcadeDB | ArcadeDB Docker | Neo4j | Kuzu | LadybugDB | DuckPGQ | Memgraph | ArangoDB \* | FalkorDB | HugeGraph |
-|-----------|----------|----------------|-------|------|-----------|---------|----------|------------------|----------|-----------|
-| **Load** | 71.9 | 43.9 | 657 | 28.8 | 5.16 | 0.85 | 437 | 726 | 116 | 34.7 |
-| **PageRank** | **0.085** | 0.16 | 6.98 § | 1.16 | N/A | 1.51 ✗ | 5.49 | 93.0 | 2.67 ✗ | 2.41 |
-| **WCC** | **0.003** | 0.02 | 0.111 | 0.434 | N/A | 2.00 | 189 | 40.9 | 2.50 | 0.293 |
-| **BFS** | **0.020** | 0.06 | 0.480 ‡ | 0.328 | 7.89 | timeout ¶ | 3.85 | 38.4 | 0.057 | 0.195 |
-| **LCC** | **2.05** | 2.61 | 15.4 | N/A | N/A | 49.3 | N/A | N/A | N/A | 110 |
-| **SSSP** | **0.75** | 1.39 | N/A | N/A | N/A | N/A | 75.9 | 173 | N/A | N/A |
-| **CDLP** | **0.96** | 1.45 | N/A | N/A | N/A | N/A | timeout | 254 ✗ | 10.6 ✗ | 22.3 ✗ |
-| **Peak memory (GiB)** | 5.6 | 12.3 | 13.3 | 0.87 | 1.0 | 8.3 | 25.1 | 23.2 | 8.4 | 3.2 |
+| System | Load | PageRank | WCC | BFS | LCC | SSSP | CDLP | Peak memory (GiB) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| ArcadeDB embedded | 71.9 | **0.085** | **0.003** | **0.020** | **2.05** | **0.75** | **0.96** | 5.6 |
+| ArcadeDB Docker | 43.9 | 0.16 | 0.02 | 0.06 | 2.61 | 1.39 | 1.45 | 12.3 |
+| Neo4j | 657 | 6.98§ | 0.111 | 0.480‡ | 15.4 | N/A | N/A | 13.3 |
+| Kuzu | 28.8 | 1.16 | 0.434 | 0.328 | N/A | N/A | N/A | 0.87 |
+| LadybugDB | 5.16 | N/A | N/A | 7.89 | N/A | N/A | N/A | 1.0 |
+| DuckPGQ | 0.85 | 1.51✗ | 2.00 | timeout¶ | 49.3 | N/A | N/A | 8.3 |
+| Memgraph | 437 | 5.49 | 189 | 3.85 | N/A | 75.9 | timeout | 25.1 |
+| ArangoDB \* | 726 | 93.0 | 40.9 | 38.4 | N/A | 173 | 254✗ | 23.2 |
+| FalkorDB | 116 | 2.67✗ | 2.50 | 0.057 | N/A | N/A | 10.6✗ | 8.4 |
+| HugeGraph | 34.7 | 2.41 | 0.293 | 0.195 | 110 | N/A | 22.3✗ | 3.2 |
 
 - **ArcadeDB** (embedded and Docker) is valid for all six algorithms. CDLP used to fail validation because the engine broke ties by dense node index instead of vertex id ([ArcadeData/arcadedb#9285](https://github.com/ArcadeData/arcadedb/issues/9285)); from 26.11.1-SNAPSHOT `algo.labelPropagation` takes a `tieBreakProperty` (the Docker driver passes `VID`) and the embedded kernel takes a tie-break rank, and the output matches the reference exactly. The embedded benchmark builds the vertex-id rank once, outside the timed call (like the node mapping); the Docker call computes it inside the timed procedure, which is part of why it is slower (1.45 s against 0.96 s).
 - **Load** times are not like for like: ArcadeDB loads with its embedded Java loader (and, for Docker, serves over HTTP afterwards), the other server systems load through Python batches over the network. Systems whose algorithms follow the stored edge direction (Memgraph, FalkorDB, ArangoDB; HugeGraph for PageRank/BFS) load every edge in both directions, and that cost is part of their load time. FalkorDB loads with its bulk loader (`falkordb-bulk-insert`, 116 s for the 68.4M edge records; the per-query path took 53 minutes). The ArcadeDB Docker load is the time of its original load; later runs reuse the data.

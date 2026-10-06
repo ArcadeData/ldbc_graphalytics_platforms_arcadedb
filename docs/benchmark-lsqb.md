@@ -79,19 +79,34 @@ Systems and versions: see the "Systems and versions" table in [benchmark-graphal
 
 Seconds. ArcadeDB Embedded (Temurin 25, compact object headers) is shown with the Graph Analytical View (OLAP) and without it (OLTP). Load times are one-off and remembered from the original load of each database; peak memory is in GiB (process RSS for embedded engines, container working set for Docker systems; the JVM rows are dominated by the fixed 12 GB heap).
 
-| Query | Expected Count | ArcadeDB Embedded OLAP | ArcadeDB Embedded OLTP | ArcadeDB Docker | DuckDB | Kuzu | LadybugDB | Neo4j | PostgreSQL | Memgraph | FalkorDB | Winner |
-|-------|---------------|----------|----------|-----------------|--------|------|-----------|-------|------------|----------|----------|--------|
-| **Load** | — | 119.5 | 159.2 | 99.4 | **0.46** | 2.44 | 2.95 | 252.0 | 15.1 | 222.2 | 659.3 | DuckDB |
-| **Q1** | 221,636,419 | **0.08** | 2.45 | 0.17 | 0.11 | 4.61 | 0.12 | 4.99 | 9.17 | 58.06 | 36.43 | ArcadeDB |
-| **Q2** | 1,085,627 | 0.13 | 4.40 | 0.17 | **0.01** | 0.15 | 0.10 | 1.63 | 0.65 | timeout | 53.78 | DuckDB |
-| **Q3** | 753,570 | 0.05 | 3.17 | 0.06 | **0.04** | 2.30 | 10.44 | 10.76 | 1.60 | timeout | 4.59 | DuckDB |
-| **Q4** | 14,836,038 | **0.04** | 1.06 | 0.05 | 0.06 | N/A | 0.17 | 6.28 | 6.35 | 4.30 | 3.53 | ArcadeDB |
-| **Q5** | 13,824,510 | 0.17 | 11.39 | 0.25 | **0.04** | N/A | 0.18 | 5.66 | 2.17 | 3.54 | 3.93 | DuckDB |
-| **Q6** | 1,668,134,320 | **0.07** | 11.00 | 0.13 | 1.84 | 1.38 | 0.66 | 28.49 | 15.50 | 121.15 | 40.93 | ArcadeDB |
-| **Q7** | 26,190,133 | **0.04** | 1.07 | 0.06 | 0.07 | N/A | 0.41 | 8.04 | 11.16 | 4.92 | 47.96 | ArcadeDB |
-| **Q8** | 6,907,213 | 0.11 | 6.91 | 0.14 | **0.07** | N/A | 0.32 | 12.39 | 3.39 | 3.02 | 4.90 | DuckDB |
-| **Q9** | 1,596,153,418 | 0.30 | 0.87 | 0.33 | 6.03 | 6.39 | **0.07** | 254.29 | 50.62 | timeout | 225.22 | LadybugDB |
-| **Peak memory (GiB)** | — | 4.3 | 12.0 | 12.9 | 0.9 | 5.1 | 8.8 | 13.3 | 0.5 | 3.1 | 2.4 | — |
+| System | Load | Q1 | Q2 | Q3 | Q4 | Q5 | Q6 | Q7 | Q8 | Q9 | Peak GiB |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| ArcadeDB OLAP | 119.5 | **0.08** | 0.13 | 0.05 | **0.04** | 0.17 | **0.07** | **0.04** | 0.11 | 0.30 | 4.3 |
+| ArcadeDB OLTP | 159.2 | 2.45 | 4.40 | 3.17 | 1.06 | 11.39 | 11.00 | 1.07 | 6.91 | 0.87 | 12.0 |
+| ArcadeDB Docker | 99.4 | 0.17 | 0.17 | 0.06 | 0.05 | 0.25 | 0.13 | 0.06 | 0.14 | 0.33 | 12.9 |
+| DuckDB | **0.46** | 0.11 | **0.01** | **0.04** | 0.06 | **0.04** | 1.84 | 0.07 | **0.07** | 6.03 | 0.9 |
+| Kuzu | 2.44 | 4.61 | 0.15 | 2.30 | N/A | N/A | 1.38 | N/A | N/A | 6.39 | 5.1 |
+| LadybugDB | 2.95 | 0.12 | 0.10 | 10.44 | 0.17 | 0.18 | 0.66 | 0.41 | 0.32 | **0.07** | 8.8 |
+| Neo4j | 252.0 | 4.99 | 1.63 | 10.76 | 6.28 | 5.66 | 28.49 | 8.04 | 12.39 | 254.29 | 13.3 |
+| PostgreSQL | 15.1 | 9.17 | 0.65 | 1.60 | 6.35 | 2.17 | 15.50 | 11.16 | 3.39 | 50.62 | 0.5 |
+| Memgraph | 222.2 | 58.06 | timeout | timeout | 4.30 | 3.54 | 121.15 | 4.92 | 3.02 | timeout | 3.1 |
+| FalkorDB | 659.3 | 36.43 | 53.78 | 4.59 | 3.53 | 3.93 | 40.93 | 47.96 | 4.90 | 225.22 | 2.4 |
+
+Expected counts (every system matches them) and the fastest system per query:
+
+| Query | Expected count | Fastest |
+|---|---:|---|
+| Q1 | 221,636,419 | ArcadeDB |
+| Q2 | 1,085,627 | DuckDB |
+| Q3 | 753,570 | DuckDB |
+| Q4 | 14,836,038 | ArcadeDB |
+| Q5 | 13,824,510 | DuckDB |
+| Q6 | 1,668,134,320 | ArcadeDB |
+| Q7 | 26,190,133 | ArcadeDB |
+| Q8 | 6,907,213 | DuckDB |
+| Q9 | 1,596,153,418 | LadybugDB |
+
+Fastest load: DuckDB.
 
 All counts reported by every system match the [official LSQB expected output](https://github.com/ldbc/lsqb/blob/main/expected-output/expected-output.csv). Kuzu skips Q4/Q5/Q7/Q8 (its driver has no `:Message` supertype support yet; LadybugDB's driver runs each of them as a Post part plus a Comment part and adds the counts, so all nine queries are covered). Memgraph times out (5 min) on Q2, Q3 and Q9. Dgraph and SurrealDB are excluded by default (see below). The embedded ArcadeDB live heap after a full GC is 0.67 GiB (OLAP) and 1.4 GiB (OLTP).
 

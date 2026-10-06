@@ -5,21 +5,21 @@ Machine: MacBook Pro M5 Pro, 48 GB, AC power, Docker Desktop 32 GB, 5-minute lim
 (ArcadeDB `main` @ `cbf701d66e`, with the Q9 fix #9282 and the CDLP tie-break #9285), Temurin 25 with `-XX:+UseCompactObjectHeaders`. Raw logs: `weekly-results/20261006-graph500-22-w/`.
 This replaces the cold, unvalidated single-run table of 2026-10-03 in [`results-m5-multivendor-2026-10-03.md`](../results-m5-multivendor-2026-10-03.md).
 
-| Vendor | Load | PageRank | WCC | LCC | BFS | CDLP | Peak memory (GiB) |
-|---|---|---|---|---|---|---|---|
-| ArcadeDB embedded (26.11.1-SNAPSHOT) | 114.5 | **0.268** | **0.013** | **46.9** | **0.076** | **1.78** | 1.6 live heap \*\* |
-| ArcadeDB Docker (26.11.1-SNAPSHOT) | 101 † | 0.59 | 0.09 | 60.1 | 0.24 | 4.33 | 13.5 |
-| Neo4j (GDS) | 2017 † | 12.5 | 0.20 | timeout | 1.05 | N/A | 13.3 |
-| Kuzu | 53.8 † | 3.13 | 1.26 | N/A | 0.94 | N/A | 5.9 |
-| LadybugDB | 10.1 † | N/A | N/A | N/A | 16.7 | N/A | 2.0 |
-| DuckPGQ | 0.57 † | 9.27 ✗ | 4.94 | timeout | exceeds the limit ‡ | N/A | 15.7 |
-| Memgraph | 932 § | 31.0 | out of memory | N/A | 12.5 | out of memory | 25.0 |
-| ArangoDB 3.11.14 | 1700 † | 261.9 | 106.4 | N/A | out of memory ¶ | timeout | 30.6 |
-| FalkorDB | 348.5 | 7.97 ✗ | 7.30 | N/A | 0.151 | 39.8 ✗ | 15.9 |
-| HugeGraph (Vermeer) | 34.2 † | 6.03 | 0.67 | timeout | 0.42 | 44.7 ✗ | 8.8 |
+| System | Load | PageRank | WCC | BFS | LCC | CDLP | Peak memory (GiB) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| ArcadeDB embedded | 114.5 | **0.268** | **0.013** | **0.076** | **46.9** | **1.78** | 1.6\*\* |
+| ArcadeDB Docker | 101† | 0.59 | 0.09 | 0.24 | 60.1 | 4.33 | 13.5 |
+| Neo4j | 2017† | 12.5 | 0.20 | 1.05 | timeout | N/A | 13.3 |
+| Kuzu | 53.8† | 3.13 | 1.26 | 0.94 | N/A | N/A | 5.9 |
+| LadybugDB | 10.1† | N/A | N/A | 16.7 | N/A | N/A | 2.0 |
+| DuckPGQ | 0.57† | 9.27✗ | 4.94 | timeout‡ | timeout | N/A | 15.7 |
+| Memgraph | 932§ | 31.0 | OOM | 12.5 | N/A | OOM | 25.0 |
+| ArangoDB 3.11.14 | 1700† | 261.9 | 106.4 | OOM¶ | N/A | timeout | 30.6 |
+| FalkorDB | 348.5 | 7.97✗ | 7.30 | 0.151 | N/A | 39.8✗ | 15.9 |
+| HugeGraph | 34.2† | 6.03 | 0.67 | 0.42 | timeout | 44.7✗ | 8.8 |
 
 - Seconds, warm medians (the first call of every algorithm is an untimed warm-up; median of 3 timed runs, 5 in the embedded ArcadeDB JVM which is launched 3 times and the median of those is shown; when the warm-up call takes longer than 60 s there is a single timed run). Bold = fastest valid result in the column.
-- **✗** = the output was exported in full and **failed** the check against the official `graph500-22` reference outputs, so the time is shown for completeness and is not ranked. **N/A** = the system has no implementation (or its extension does not load). **timeout** = the 5-minute limit per operation. **out of memory** = the system ran out of memory inside Docker Desktop's 32 GB.
+- **✗** = the output was exported in full and **failed** the check against the official `graph500-22` reference outputs, so the time is shown for completeness and is not ranked. **N/A** = the system has no implementation (or its extension does not load). **timeout** = the 5-minute limit per operation. **OOM** = the system ran out of memory inside Docker Desktop's 32 GB.
 - Every other cell was validated at 100% against the official reference (BFS and CDLP exact, WCC same partition, PageRank and LCC within 1e-4), after swapping ids 6 and 248533 back (the derived `graph500-22-w` swaps them so that the official BFS source 248533 is the vertex 6 the drivers use, and it carries a constant edge weight of 1.0). SSSP is not part of `graph500-22` (no weights, no reference output) and was skipped for every system.
 - \*\* The embedded benchmark is launched as a plain Java process without the memory sampler of the multi-vendor harness, so the process peak was not measured; the table shows its live heap after a full GC (1.6 GiB, 3.6 GiB in the first launch). It uses a fixed 12 GB heap.
 - † The load time is the remembered original load of the same database (2026-10-03 / 2026-10-04); the data was reused in this run. The ArcadeDB Docker database was built on 2026-10-03 by the 26.10.1-era embedded loader; the embedded benchmark loaded its own database in this run. Load times are not like for like (ArcadeDB loads with its embedded Java loader, the other server systems through Python batches over the network, FalkorDB with its bulk loader).
