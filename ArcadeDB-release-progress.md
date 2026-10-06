@@ -169,6 +169,21 @@ After the Bolt buffering fix (#9165) the Python client still needed 4-12 s for w
 
 So the server streams about 1.35 million rows/s over Bolt, faster than HTTP, and the slowness seen in the benchmarks is the **Python driver** (about 5 us of Python per record in its message loop and result handling, which the Rust codec does not cover), plus the round trip of every PULL (about 1.3 ms each through Docker Desktop on macOS, so 2,000 of them cost about 2.7 s). The published Graphalytics and LSQB numbers are unaffected, since each timed call returns one row. For many-row results use a large fetch size (`ARCADEDB_BENCH_BOLT_FETCH_SIZE=-1` for the Python helper) or a fast client.
 
+### gRPC against HTTP and Bolt for many rows (new image , Python client, on battery so relative, )
+
+The gRPC plugin () ships in the image and starts with ; the streaming call  returns batches of typed records. Seconds, warm median of 3, rows consumed on the client (every column read except in the "count only" line), row counts equal everywhere:
+
+| | vertex ids (633K x 1) | PageRank scores (633K x 2) | edge sample (2M x 2) |
+|---|---|---|---|
+| HTTP | 0.54 | 0.98 | 1.61 |
+| Bolt (Python driver, all rows in one PULL) | 2.59 | 2.81 | 8.55 |
+| gRPC, 1,000 rows per batch | 0.44 | 1.80 | 2.95 |
+| gRPC, 10,000 rows per batch | 0.35 | 0.85 | 1.50 |
+| gRPC, 100,000 rows per batch | 0.30 | 0.79 | 1.34 |
+| gRPC, 10,000 per batch, rows only counted | 0.33 | 0.82 | 1.44 |
+
+With a batch of 10,000 rows or more gRPC matches or beats HTTP (up to 1.2x on the edge sample, 1.8x on the vertex ids) and is 3x to 8x faster than the Python Bolt client; with 1,000 rows per batch it is no better than HTTP on the wider rows. Reading the values adds about 5% over only counting the records, so the Python protobuf decoding is not the limit. Authentication goes in the call metadata (, ). For a Python user with large results, gRPC streaming with a large batch size is the fastest of the three on this machine; for the Java driver Bolt was the fastest (1.48 s on the edge sample).
+
 ## The three 26.8.1 to 26.10.1 regressions: status on 26.11.1-SNAPSHOT
 
 Details and root causes: [fix-plan-26.10.1-regressions.md](fix-plan-26.10.1-regressions.md). Verdicts from the warm runs above plus the bulk UPDATE reproducer (`scripts/bulk_update_repro.py`, AC power, Temurin 25).
