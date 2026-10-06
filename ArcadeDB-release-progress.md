@@ -115,7 +115,9 @@ Same engine build (`cbf701d66e`), machine and rules as above (Temurin 25, compac
 | **LCC** | 5.80 | 6.24 | 5.17 | 169 | 177 | 320 |
 | **SSSP** | 6.45 | 7.00 | 6.71 | 54.6 | 54.9 | 41.4 |
 
-OLAP BFS runs after four other algorithms and still takes 9.1 s, so the bulk-UPDATE regression (#8660) is gone. OLTP varies about 2x between runs of the same build, so the PR, WCC and LCC increases are not yet a verdict (see below).
+OLAP BFS runs after four other algorithms and still takes 9.1 s, so the bulk-UPDATE regression (#8660) is gone.
+
+**OLTP PR, WCC and LCC: noise, not a regression.** The first run was slower than the 26.10.1 column for these three (PR 90.1, WCC 113.9, LCC 320). A repeat of exactly these three on the same build and machine (AC power, fresh load, validated, 2026-10-06 12:52) gave PR 36.1, WCC 68.1, LCC 149.6, at or below the 26.10.1 column (45.8, 75.8, 177). The same build therefore varies 2.5x (PR), 1.7x (WCC) and 2.1x (LCC) between two runs, and between the 26.10.1 release and this build only 6 engine files changed (none on the no-view PR/WCC/LCC path). Read OLTP differences below about 2.5x as noise; the table above keeps the first run, the repeat is in the text.
 
 ## The three 26.8.1 to 26.10.1 regressions: status on 26.11.1-SNAPSHOT
 
