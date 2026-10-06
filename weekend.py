@@ -243,7 +243,7 @@ def step_python(args, report, out_dir, suite):
 def step_bulk_update(args, report, out_dir):
     out = os.path.join(out_dir, "bulk-update.json")
     cmd = [sys.executable, os.path.join(ROOT, "scripts", "bulk_update_repro.py"), "--json", out,
-           "--out-dir", os.path.join(out_dir, "bulk-update"), "--jvm-flags", args.jvm_flags]
+           "--out-dir", os.path.join(out_dir, "bulk-update"), f"--jvm-flags={args.jvm_flags}"]
     if args.java_home:
         cmd += ["--java-home", args.java_home]
     outcome = bench_isolation.run_child(cmd, total_timeout=2 * 900 + 300, idle_timeout=900,
@@ -253,7 +253,7 @@ def step_bulk_update(args, report, out_dir):
 
 def step_mode1(args, report, out_dir):
     cmd = [sys.executable, os.path.join(ROOT, "scripts", "run_mode1.py"), "--dist", args.mode1_dist,
-           "--out-dir", os.path.join(out_dir, "mode1"), "--jvm-flags", args.jvm_flags]
+           "--out-dir", os.path.join(out_dir, "mode1"), f"--jvm-flags={args.jvm_flags}"]
     if args.java_home:
         cmd += ["--java-home", args.java_home]
     outcome = bench_isolation.run_child(cmd, total_timeout=2 * 3600 + 600, idle_timeout=1200,
