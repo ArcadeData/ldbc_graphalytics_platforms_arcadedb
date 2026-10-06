@@ -100,6 +100,23 @@ Memory: embedded Graphalytics process peak 5.6 GiB (live heap 0.77 GiB after GC)
 Q9 is now 5.9x faster embedded and 7x faster in Docker, and the GAV is faster than the OLTP path on all nine queries. The other LSQB queries and algorithms are unchanged within run-to-run noise.
 The Docker CDLP time includes computing the vertex-id tie-break rank inside the procedure; the embedded kernel gets a precomputed rank.
 
+### Mode 1 (official framework) on 26.11.1-SNAPSHOT, 2026-10-06
+
+Same engine build (`cbf701d66e`), machine and rules as above (Temurin 25, compact object headers, AC power, 12 GB runner heap; raw logs in `weekly-results/20261006-2611-final-part2/`).
+`datagen-7_5-fb`, `processing_time` in seconds, **one run per cell** (the framework runs each algorithm once after its own load and cannot be warmed), every run validated by the framework. The framework ran the algorithms in its own order
+(CDLP, PR, LCC, WCC, BFS, SSSP for OLAP; WCC, SSSP, BFS, PR, CDLP, LCC for OLTP).
+
+| Algorithm | OLAP (GAV) 26.8.1 | OLAP 26.10.1 | OLAP 26.11.1 | OLTP 26.8.1 | OLTP 26.10.1 | OLTP 26.11.1 |
+|-----------|------|------|------|------|------|------|
+| **PR** | 3.04 | 2.61 | 2.99 | 43.6 | 45.8 | 90.1 |
+| **BFS** | 7.14 | 8.25 | 9.13 | 98.8 | 91.1 | 79.9 |
+| **WCC** | 3.14 | 3.92 | 3.60 | 94.3 | 75.8 | 113.9 |
+| **CDLP** | 13.5 | 14.7 | 10.97 | 58.3 | 69.8 | 40.2 |
+| **LCC** | 5.80 | 6.24 | 5.17 | 169 | 177 | 320 |
+| **SSSP** | 6.45 | 7.00 | 6.71 | 54.6 | 54.9 | 41.4 |
+
+OLAP BFS runs after four other algorithms and still takes 9.1 s, so the bulk-UPDATE regression (#8660) is gone. OLTP varies about 2x between runs of the same build, so the PR, WCC and LCC increases are not yet a verdict (see below).
+
 ## The three 26.8.1 to 26.10.1 regressions: status on 26.11.1-SNAPSHOT
 
 Details and root causes: [fix-plan-26.10.1-regressions.md](fix-plan-26.10.1-regressions.md). Verdicts from the warm runs above plus the bulk UPDATE reproducer (`scripts/bulk_update_repro.py`, AC power, Temurin 25).

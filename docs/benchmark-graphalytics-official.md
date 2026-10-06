@@ -53,3 +53,7 @@ for rid, r in sorted(runs.items(), key=lambda x: x[1]['timestamp']):
     print(f\"{algo:6} proc={r['processing_time']:>8}s  load={r['load_time']:>8}s\")
 "
 ```
+
+## Results
+
+Per-release Mode 1 tables (OLAP and OLTP, validated): [ArcadeDB-release-progress.md](../ArcadeDB-release-progress.md#mode-1-official-framework-on-26111-snapshot-2026-10-06). One run per cell: the framework cannot warm up, and OLTP varies about 2x between runs.
