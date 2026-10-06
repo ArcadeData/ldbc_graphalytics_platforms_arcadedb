@@ -136,6 +136,8 @@ Against the page's 26.4.1 values, warm 26.10.1 is equal or better on Q1, Q2, Q3,
 
 ## LDBC Graphalytics on graph500-22 (2026-10-03)
 
+> **Superseded** by [`results-graph500-22-w-2026-10-06.md`](results-graph500-22-w-2026-10-06.md) (warm, validated, ArcadeDB 26.11.1-SNAPSHOT). The cold single-run numbers below are kept for history only.
+
 Dataset `graph500-22`: 2,396,657 vertices, 64,155,735 edges, undirected, unweighted, official algorithms BFS, CDLP, LCC, PR, WCC (no SSSP). The harness loaders expect a weight column, so the data was loaded from a derived copy `graph500-22-w` with a constant weight of 1.0 and with vertex ids 6 and 248533 swapped (an isomorphic graph in which the official BFS source 248533 is vertex 6, the id the drivers use). SSSP is therefore not reported. Seconds, one run per vendor, 5-minute limit per algorithm, 12 GB heap, same machine as the other results; ArcadeDB runs the Graph Analytical View (OLAP).
 
 | | Load | PageRank | WCC | LCC | BFS | CDLP |

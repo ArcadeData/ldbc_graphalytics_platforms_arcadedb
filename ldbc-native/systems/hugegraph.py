@@ -41,8 +41,9 @@ def _dump_all(run_algo):
         (v, float(x)) for v, x in vermeer_out("pagerank", "pr", PAGERANK_PARAMS, graph="bench_u"))))
     bench_common.dump_safely("hugegraph", "WCC", lambda: bench_common.dump_rows("hugegraph", "WCC", vermeer_out("wcc", "wcc", {})))
     bench_common.dump_safely("hugegraph", "CDLP", lambda: bench_common.dump_rows("hugegraph", "CDLP", vermeer_out("lpa", "cdlp", {})))
-    bench_common.dump_safely("hugegraph", "LCC", lambda: bench_common.dump_rows("hugegraph", "LCC", (
-        (v, float(x)) for v, x in vermeer_out("clustering_coefficient", "lcc", {}))))
+    if "lcc" not in bench_common.GRAPHALYTICS_SKIP:
+        bench_common.dump_safely("hugegraph", "LCC", lambda: bench_common.dump_rows("hugegraph", "LCC", (
+            (v, float(x)) for v, x in vermeer_out("clustering_coefficient", "lcc", {}))))
     def bfs():
         # Vermeer sssp is unweighted (hop count); -1 marks an unreachable vertex
         bench_common.dump_rows("hugegraph", "BFS", (

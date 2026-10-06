@@ -40,7 +40,8 @@ def _dump_all(cmd):
             "YIELD node, cost RETURN node.VID AS id, cost", "id", "cost")}
         dist[6] = 0.0
         bench_common.dump_rows("arcadedb", "SSSP", ((i, dist.get(i, "infinity")) for i in all_ids()))
-    bench_common.dump_safely("arcadedb", "SSSP", sssp)
+    if "sssp" not in bench_common.GRAPHALYTICS_SKIP:
+        bench_common.dump_safely("arcadedb", "SSSP", sssp)
     def cdlp():
         # communityId is the dense index of the vertex whose label was adopted, and the procedure emits its rows in dense
         # order, so the label of vertex i is the id found in row communityId.
@@ -210,7 +211,8 @@ public class ArcadeDBEmbeddedLoader {
         "docker", "run", "-d", "--name", "arcadedb",
         "-p", f"{http_port}:2480", "-p", f"{binary_port}:2424",
         "-e", "ARCADEDB_OPTS_MEMORY=-Xms12g -Xmx12g",
-        "-e", "JAVA_OPTS=--add-modules jdk.incubator.vector -Darcadedb.server.rootPassword=benchmark",
+        "-e", "JAVA_OPTS=--add-modules jdk.incubator.vector -Darcadedb.server.rootPassword=benchmark "
+                 "-Darcadedb.server.httpQueryMaxResultRows=5000000",   # full per-vertex export of graph500-22 (2.4M rows)
         "-v", f"{data_root}:/home/arcadedb/databases",
         "-v", f"{log_root}:/home/arcadedb/log",
         os.environ.get("ARCADEDB_IMAGE", "arcadedata/arcadedb:26.11.1-SNAPSHOT")

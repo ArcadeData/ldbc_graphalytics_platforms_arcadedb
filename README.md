@@ -282,6 +282,34 @@ Notes:
 - None of the competing systems have official LDBC Graphalytics platform drivers. Only ArcadeDB has an official LDBC Graphalytics platform implementation.
 - Systems and versions are listed in the table above; the ArcadeDB rows were re-measured on 2026-10-06 on `26.11.1-SNAPSHOT` (ArcadeDB `main` @ `cbf701d66e`, which contains the Q9 fix [#9282](https://github.com/ArcadeData/arcadedb/issues/9282) and the CDLP tie-break [#9285](https://github.com/ArcadeData/arcadedb/issues/9285)); the other systems were measured on 2026-10-03 to 2026-10-05, and ArcadeDB 26.10.1 numbers are in `ArcadeDB-release-progress.md`. Raw logs, the harness fixes and the remaining history are in `results-multivendor-validated-2026-10-05.md` and `ArcadeDB-release-progress.md`.
 
+### Larger dataset: graph500-22 (2.4M vertices, 64M edges)
+
+| Vendor | Load | PageRank | WCC | LCC | BFS | CDLP | Peak memory (GiB) |
+|---|---|---|---|---|---|---|---|
+| ArcadeDB embedded (26.11.1-SNAPSHOT) | 114.5 | **0.268** | **0.013** | **46.9** | **0.076** | **1.78** | 1.6 live heap \*\* |
+| ArcadeDB Docker (26.11.1-SNAPSHOT) | 101 † | 0.59 | 0.09 | 60.1 | 0.24 | 4.33 | 13.5 |
+| Neo4j (GDS) | 2017 † | 12.5 | 0.20 | timeout | 1.05 | N/A | 13.3 |
+| Kuzu | 53.8 † | 3.13 | 1.26 | N/A | 0.94 | N/A | 5.9 |
+| LadybugDB | 10.1 † | N/A | N/A | N/A | 16.7 | N/A | 2.0 |
+| DuckPGQ | 0.57 † | 9.27 ✗ | 4.94 | timeout | exceeds the limit ‡ | N/A | 15.7 |
+| Memgraph | 932 § | 31.0 | out of memory | N/A | 12.5 | out of memory | 25.0 |
+| ArangoDB 3.11.14 | 1700 † | 261.9 | 106.4 | N/A | out of memory ¶ | timeout | 30.6 |
+| FalkorDB | 348.5 | 7.97 ✗ | 7.30 | N/A | 0.151 | 39.8 ✗ | 15.9 |
+| HugeGraph (Vermeer) | 34.2 † | 6.03 | 0.67 | timeout | 0.42 | 44.7 ✗ | 8.8 |
+
+- Seconds, warm medians (the first call of every algorithm is an untimed warm-up; median of 3 timed runs, 5 in the embedded ArcadeDB JVM which is launched 3 times and the median of those is shown; when the warm-up call takes longer than 60 s there is a single timed run). Bold = fastest valid result in the column.
+- **✗** = the output was exported in full and **failed** the check against the official `graph500-22` reference outputs, so the time is shown for completeness and is not ranked. **N/A** = the system has no implementation (or its extension does not load). **timeout** = the 5-minute limit per operation. **out of memory** = the system ran out of memory inside Docker Desktop's 32 GB.
+- Every other cell was validated at 100% against the official reference (BFS and CDLP exact, WCC same partition, PageRank and LCC within 1e-4), after swapping ids 6 and 248533 back (the derived `graph500-22-w` swaps them so that the official BFS source 248533 is the vertex 6 the drivers use, and it carries a constant edge weight of 1.0). SSSP is not part of `graph500-22` (no weights, no reference output) and was skipped for every system.
+- \*\* The embedded benchmark is launched as a plain Java process without the memory sampler of the multi-vendor harness, so the process peak was not measured; the table shows its live heap after a full GC (1.6 GiB, 3.6 GiB in the first launch). It uses a fixed 12 GB heap.
+- † The load time is the remembered original load of the same database (2026-10-03 / 2026-10-04); the data was reused in this run. The ArcadeDB Docker database was built on 2026-10-03 by the 26.10.1-era embedded loader; the embedded benchmark loaded its own database in this run. Load times are not like for like (ArcadeDB loads with its embedded Java loader, the other server systems through Python batches over the network, FalkorDB with its bulk loader).
+- ‡ DuckPGQ's BFS ran for 20 minutes without finishing (DuckDB does not honour the in-process interrupt while its shortest-path operator runs); the run was ended by hand. The same happens on `datagen-7_5-fb`.
+- § Memgraph stores every edge in both directions (128M edge records): the load includes the one-off reverse-edge step (553 s). WCC and CDLP exceed the 31-32 GiB the engine may use in Docker's 32 GB; they fail inside the engine.
+- ¶ ArangoDB's container was killed by the out-of-memory limit (peak 30.6 GiB) during BFS, after PageRank (261.9 s, one timed run) and WCC (106.4 s, one timed run); CDLP hit the 5-minute limit and the AQL LCC query is rejected.
+
+Per-system notes, the harness problems found and the raw logs: [`results-graph500-22-w-2026-10-06.md`](results-graph500-22-w-2026-10-06.md).
+
+Reproduce: `cd ldbc-native && GRAPHALYTICS_DATASET=graph500-22-w GRAPHALYTICS_SKIP=sssp python3 benchmark.py <vendor>` (add `GRAPHALYTICS_DUMP_DIR=<dir>` to export and validate the outputs, and `--vendor-timeout 5400` for the slow loaders); embedded ArcadeDB: `java ... -Dgraph=graph500-22-w -Dskip.sssp=true -Ddb.path=<dir> ArcadeDBEmbeddedBenchmark`. Docker Desktop needs 32 GB for the in-memory systems.
+
 ## Mode 3: LSQB (Labelled Subgraph Query Benchmark)
 
 The [LSQB benchmark](https://github.com/ldbc/lsqb) is a lightweight microbenchmark from the LDBC council that focuses on **subgraph pattern matching** — counting how many times a given labelled graph pattern appears in the dataset. It tests the query optimizer's ability to handle multi-way joins, anti-patterns (NOT EXISTS), and type hierarchy (Message supertype with Post/Comment subtypes).

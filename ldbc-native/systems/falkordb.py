@@ -55,7 +55,9 @@ def _bulk_load(graph="bench"):
     subprocess.run(["awk", "BEGIN{print \"id\"} {print $1}", VERTEX_FILE], stdout=open(nodes, "w"), check=True)
     subprocess.run(["awk", "BEGIN{print \"src dst weight\"} {print $1\" \"$2\" \"$3; print $2\" \"$1\" \"$3}", EDGE_FILE],
                    stdout=open(edges, "w"), check=True)
-    cmd = [_bulk_insert_command(), graph, "-o", " ", "-n", nodes, "-r", edges]
+    # The loader's client has a short default socket timeout: while the server builds the matrices of a big edge batch it
+    # does not read, and the send then fails with "Timeout writing to socket" (graph500-22, 128M edge records).
+    cmd = [_bulk_insert_command(), graph, "-u", "redis://127.0.0.1:6379?socket_timeout=3600", "-o", " ", "-n", nodes, "-r", edges]
     print("  " + " ".join(cmd), flush=True)
     subprocess.run(cmd, check=True)
     for f in (nodes, edges):

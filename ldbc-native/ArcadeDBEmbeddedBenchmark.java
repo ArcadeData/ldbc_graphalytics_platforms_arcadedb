@@ -22,9 +22,12 @@ import java.util.Map;
  */
 public class ArcadeDBEmbeddedBenchmark {
 
-  static final String GRAPHS_DIR    = "../datasets/datagen-7_5-fb";
-  static final String VERTEX_FILE   = GRAPHS_DIR + "/datagen-7_5-fb.v";
-  static final String EDGE_FILE     = GRAPHS_DIR + "/datagen-7_5-fb.e";
+  // Dataset under ../datasets/<name>/<name>.{v,e}; -Dgraph=graph500-22-w selects the larger one, -Dskip.sssp=true skips SSSP
+  // (the official graph500-22 defines no SSSP).
+  static final String DATASET       = System.getProperty("graph", "datagen-7_5-fb");
+  static final String GRAPHS_DIR    = "../datasets/" + DATASET;
+  static final String VERTEX_FILE   = GRAPHS_DIR + "/" + DATASET + ".v";
+  static final String EDGE_FILE     = GRAPHS_DIR + "/" + DATASET + ".e";
   static final String DB_PATH       = System.getProperty("db.path", "/tmp/arcadedb_benchmark");
   static final String VERTEX_TYPE   = "Vertex";
   static final String EDGE_TYPE     = "EDGE";
@@ -235,17 +238,23 @@ public class ArcadeDBEmbeddedBenchmark {
     System.out.println("  LCC time: " + lccTime + "s");
 
     // SSSP (Dijkstra)
-    System.out.println("\n[ArcadeDB] Running SSSP from vertex " + SOURCE_VERTEX + "...");
-    start = System.currentTimeMillis();
-    double[] sssp = GraphAlgorithms.dijkstraSingleSource(gav, sourceIdx, WEIGHT_PROP,
-        Vertex.DIRECTION.BOTH, EDGE_TYPE);
-    double ssspTime = (System.currentTimeMillis() - start) / 1000.0;
-    results.put("SSSP", ssspTime);
-    warm(results, "SSSP", warmReps, () -> GraphAlgorithms.dijkstraSingleSource(g, src, WEIGHT_PROP, Vertex.DIRECTION.BOTH, EDGE_TYPE));
-    int ssspReached = 0;
-    for (double d : sssp) if (d < Double.POSITIVE_INFINITY) ssspReached++;
-    System.out.println("  Reached: " + ssspReached + " nodes");
-    System.out.println("  SSSP time: " + ssspTime + "s");
+    double[] sssp = null;
+    if (Boolean.getBoolean("skip.sssp")) {
+      System.out.println("\n[ArcadeDB] SSSP skipped (-Dskip.sssp=true)");
+    } else {
+      System.out.println("\n[ArcadeDB] Running SSSP from vertex " + SOURCE_VERTEX + "...");
+      start = System.currentTimeMillis();
+      sssp = GraphAlgorithms.dijkstraSingleSource(gav, sourceIdx, WEIGHT_PROP,
+          Vertex.DIRECTION.BOTH, EDGE_TYPE);
+      double ssspTime = (System.currentTimeMillis() - start) / 1000.0;
+      results.put("SSSP", ssspTime);
+      warm(results, "SSSP", warmReps, () -> GraphAlgorithms.dijkstraSingleSource(g, src, WEIGHT_PROP, Vertex.DIRECTION.BOTH, EDGE_TYPE));
+      int ssspReached = 0;
+      for (double d : sssp) if (d < Double.POSITIVE_INFINITY) ssspReached++;
+      System.out.println("  Reached: " + ssspReached + " nodes");
+      System.out.println("  SSSP time: " + ssspTime + "s");
+
+    }
 
     // CDLP: LDBC Graphalytics breaks ties by the smallest vertex id, so the kernel gets the rank of every dense node in
     // vertex-id order (built once, outside the timed call, like the node mapping itself).
@@ -284,14 +293,15 @@ public class ArcadeDBEmbeddedBenchmark {
       dumpDoubles(dumpDir, "PR", vids, pr);
       dumpInts(dumpDir, "WCC", vids, wcc, false);
       dumpDoubles(dumpDir, "LCC", vids, lcc);
-      dumpDoubles(dumpDir, "SSSP", vids, sssp);
+      if (sssp != null)
+        dumpDoubles(dumpDir, "SSSP", vids, sssp);
       dumpInts(dumpDir, "BFS", vids, bfs, true);
       dumpInts(dumpDir, "CDLP", vids, cdlp, false);
     }
 
     // --- SUMMARY ---
     System.out.println("\n======================================================================");
-    System.out.println("SUMMARY  -  datagen-7_5-fb (" + n + " vertices, " + edgeCount + " edges)");
+    System.out.println("SUMMARY  -  " + DATASET + " (" + n + " vertices, " + edgeCount + " edges)");
     System.out.println("======================================================================");
     System.out.printf("%-10s %10s%n", "Algorithm", "ArcadeDB");
     System.out.println("-".repeat(22));

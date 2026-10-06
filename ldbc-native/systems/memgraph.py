@@ -55,9 +55,12 @@ def _dump_all(cursor, skip_cdlp=False):
         return cursor.fetchall()
     bench_common.dump_safely("memgraph", "PR", lambda: bench_common.dump_rows("memgraph", "PR", (
         (r[0], float(r[1])) for r in rows(PAGERANK_QUERY))))
-    bench_common.dump_safely("memgraph", "WCC", lambda: bench_common.dump_rows("memgraph", "WCC", (
-        (r[0], r[1]) for r in rows(WCC_QUERY))))
-    if not skip_cdlp:  # the timed run hit the limit: running it again for the export would only repeat that
+    # An algorithm that is skipped (GRAPHALYTICS_SKIP) is not exported either: on graph500-22 the WCC and CDLP procedures run out
+    # of memory, and that kills the session the remaining exports need.
+    if "wcc" not in bench_common.GRAPHALYTICS_SKIP:
+        bench_common.dump_safely("memgraph", "WCC", lambda: bench_common.dump_rows("memgraph", "WCC", (
+            (r[0], r[1]) for r in rows(WCC_QUERY))))
+    if not skip_cdlp and "cdlp" not in bench_common.GRAPHALYTICS_SKIP:  # a timed run that hit the limit is not repeated for the export
         bench_common.dump_safely("memgraph", "CDLP", lambda: bench_common.dump_rows("memgraph", "CDLP", (
             (r[0], r[1]) for r in rows(CDLP_QUERY))))
     def bfs():
@@ -176,13 +179,19 @@ def run_benchmark():
     cursor.execute("MATCH ()-[e:EDGE {rev: true}]->() RETURN count(e)")
     if cursor.fetchone()[0] == 0:
         print("\n[Memgraph] Adding the reverse direction of every edge...")
-        elapsed, _ = bench_common.run_timed("Reverse edges", lambda: _add_reverse_edges(conn, cursor))
+        # Part of the one-off load, so it is not bound by the 5-minute per-operation limit (the 64M edges of graph500-22
+        # need more than that): a timeout here left a graph with only some reverse edges and invalid algorithm results.
+        elapsed, _ = bench_common.run_timed("Reverse edges", lambda: _add_reverse_edges(conn, cursor), timeout=2400)
         if isinstance(elapsed, (int, float)):
             if "load" in results:
                 results["load"] += elapsed
             print(f"  Reverse edges time: {elapsed:.2f}s (one-time step, add it to the recorded load time)")
         else:
-            print("  Reverse edges did not finish; the algorithms below run on the stored direction only")
+            # A half-built graph gives invalid algorithm results: report the load and stop.
+            print("  Reverse edges did not finish; stopping, the algorithms would run on a graph with only some reverse edges")
+            conn.close()
+            bench_common.cleanup_docker("memgraph")
+            return results
     cursor.execute("MATCH ()-[e]->() RETURN count(e)")
     print(f"  Edges (both directions): {cursor.fetchone()[0]}")
 

@@ -99,3 +99,9 @@ Load times: the embedded Graphalytics, Docker Graphalytics and embedded LSQB dat
 Memory: embedded Graphalytics process peak 5.6 GiB (live heap 0.77 GiB after GC), LSQB OLAP 4.3 GiB (0.67), OLTP 12.0 GiB (1.4); Docker 12.3 GiB (Graphalytics), 12.9 GiB (LSQB).
 Q9 is now 5.9x faster embedded and 7x faster in Docker, and the GAV is faster than the OLTP path on all nine queries. The other LSQB queries and algorithms are unchanged within run-to-run noise.
 The Docker CDLP time includes computing the vertex-id tie-break rank inside the procedure; the embedded kernel gets a precomputed rank.
+
+## graph500-22-w (2.4M vertices, 64M edges), 26.11.1-SNAPSHOT, 2026-10-06
+
+Warm, validated against the official `graph500-22` reference (ids 6 and 248533 swapped back), same machine and JVM rules as above; no SSSP (not defined for this dataset).
+ArcadeDB embedded: load 114.5 s, PageRank 0.268, WCC 0.013, BFS 0.076, LCC 46.9, CDLP 1.78 (all valid; the first cold run of 2026-10-03 had PR 0.31, WCC 0.54, BFS 0.17, LCC 44.3, CDLP 4.46).
+ArcadeDB Docker: PageRank 0.59, WCC 0.09, BFS 0.24, LCC 60.1, CDLP 4.33 (all valid, 13.5 GiB container). All other systems: [results-graph500-22-w-2026-10-06.md](results-graph500-22-w-2026-10-06.md).

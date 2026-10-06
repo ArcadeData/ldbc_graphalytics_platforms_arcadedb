@@ -29,6 +29,8 @@ RESET = False
 # data directories and load markers so that data of one dataset is never reused for another.
 DEFAULT_DATASET = "datagen-7_5-fb"
 GRAPHALYTICS_DATASET = os.environ.get("GRAPHALYTICS_DATASET", DEFAULT_DATASET)
+# Algorithms the dataset does not define (graph500-22 has no SSSP): comma separated, for example GRAPHALYTICS_SKIP=sssp.
+GRAPHALYTICS_SKIP = {x.strip().lower() for x in os.environ.get("GRAPHALYTICS_SKIP", "").split(",") if x.strip()}
 
 
 def graphalytics_suite():
@@ -83,6 +85,9 @@ WARM_SLOW = 60.0
 def run_timed_warm(name, func, timeout=QUERY_TIMEOUT):
     """run_timed with the warm protocol above. Returns (warm median seconds, result), or 'timeout' / 'N/A'."""
     import statistics
+    if _metric_key(name) in GRAPHALYTICS_SKIP:
+        print(f"  {name}: skipped (GRAPHALYTICS_SKIP)", flush=True)
+        return "N/A", None
     first, result = run_timed(name, func, timeout=timeout)       # warm-up call: not reported
     if not isinstance(first, (int, float)):
         return first, result
@@ -212,12 +217,34 @@ def dump_bfs(vendor, reached, all_ids, source):
     dump_rows(vendor, "BFS", ((v, reached.get(v, BFS_UNREACHABLE)) for v in all_ids))
 
 
+DUMP_TIMEOUT = 600   # an export that has not finished after 10 minutes is abandoned (a hung export must not stall the vendor)
+
+
 def dump_safely(vendor, algo, fn):
-    """Run an export; a failing export must never break the benchmark."""
+    """Run an export; a failing or hanging export must never break the benchmark."""
+    import signal
+
+    if {"PR": "pagerank"}.get(algo.upper(), algo.lower()) in GRAPHALYTICS_SKIP:   # skipped algorithms are not exported either
+        print(f"  [dump] {vendor} {algo}: skipped (GRAPHALYTICS_SKIP)", flush=True)
+        return
+
+    def _expired(signum, frame):
+        raise TimeoutError(f"export exceeded {DUMP_TIMEOUT}s")
+
     try:
+        previous = signal.signal(signal.SIGALRM, _expired)
+    except (ValueError, AttributeError):   # not the main thread / no SIGALRM: run without the guard
+        previous = None
+    try:
+        if previous is not None:
+            signal.alarm(DUMP_TIMEOUT)
         fn()
     except Exception as e:  # noqa: BLE001
-        print(f"  [dump] {vendor} {algo}: export failed: {str(e)[:200]}")
+        print(f"  [dump] {vendor} {algo}: export failed: {str(e)[:200]}", flush=True)
+    finally:
+        if previous is not None:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, previous)
 
 
 LAST_CALL_SECONDS = 0.0   # duration of the most recent call made by measure_repeated (also when it raised)
