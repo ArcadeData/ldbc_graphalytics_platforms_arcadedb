@@ -155,6 +155,20 @@ The calls above return one row. Calls that return many rows show the real protoc
 
 Over Bolt the server returns about 45,000 rows per second for these shapes (the PageRank call, whose rows come from the analytical view, about 84,000), against 0.5-1.7 million over HTTP. Moving a full per-vertex result over Bolt is therefore the one place where the protocol matters; this is the baseline to compare an improved Bolt image with.
 
+### Why Bolt looked slower than HTTP for many rows (new image `661e5110188f`, 2026-10-06, on battery, so relative numbers)
+
+After the Bolt buffering fix (#9165) the Python client still needed 4-12 s for what HTTP does in 0.4-2.5 s. Experiments, all on the same container:
+
+| Experiment | Result |
+|---|---|
+| Same scan, 1 row on the wire (engine only) | HTTP 0.9 s, Bolt 0.8 s: the engine is not slower under Bolt |
+| Python driver with the Rust codec (`neo4j-rust-ext`) against pure Python | 7-12% faster: value decoding is a small part |
+| Python driver, rows per PULL 1,000 / 10,000 / 100,000 / all (edge sample, 2M rows) | 15.0 / 11.1 / 10.8 / 10.8 s: each PULL is a round trip, worth about 25% |
+| Server CPU profile (JFR) while streaming the edge sample | the Bolt encoder (`sendRecord`, `PackStreamWriter`) is about 9% of the samples; the server thread is idle about 60% of the time, waiting for the client's next PULL |
+| **Official Java driver, same server, same calls** (`scripts/JavaBoltBench.java`) | vertex ids **0.25 s**, edge sample **1.48 s** with all rows in one PULL (HTTP: 0.40 s and 2.5 s); with the default 1,000 rows per PULL 1.40 s and 4.19 s |
+
+So the server streams about 1.35 million rows/s over Bolt, faster than HTTP, and the slowness seen in the benchmarks is the **Python driver** (about 5 us of Python per record in its message loop and result handling, which the Rust codec does not cover), plus the round trip of every PULL (about 1.3 ms each through Docker Desktop on macOS, so 2,000 of them cost about 2.7 s). The published Graphalytics and LSQB numbers are unaffected, since each timed call returns one row. For many-row results use a large fetch size (`ARCADEDB_BENCH_BOLT_FETCH_SIZE=-1` for the Python helper) or a fast client.
+
 ## The three 26.8.1 to 26.10.1 regressions: status on 26.11.1-SNAPSHOT
 
 Details and root causes: [fix-plan-26.10.1-regressions.md](fix-plan-26.10.1-regressions.md). Verdicts from the warm runs above plus the bulk UPDATE reproducer (`scripts/bulk_update_repro.py`, AC power, Temurin 25).

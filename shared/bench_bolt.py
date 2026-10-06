@@ -6,6 +6,7 @@ create/rebuild, the LSQB bulk load through /api/v1/batch) stays on HTTP.
 
   ARCADEDB_BENCH_PROTOCOL=http   run the timed calls over the HTTP API instead (the previous behaviour), for an A/B on one image
   ARCADEDB_BENCH_BOLT_PORT=7687  host port of the Bolt listener
+  ARCADEDB_BENCH_BOLT_FETCH_SIZE=N  rows the client asks for per PULL (default: the driver's, 1000); -1 asks for everything
 
 The server needs the Bolt plugin: JAVA_OPTS must carry BOLT_PLUGIN_OPT and the container must publish 7687.
 """
@@ -29,12 +30,20 @@ def bolt_port():
     return os.environ.get("ARCADEDB_BENCH_BOLT_PORT", "7687")
 
 
+def fetch_size():
+    """Rows per PULL, or None for the driver's default. Each PULL is a client-server round trip, so a large result costs
+    rows / fetch_size round trips; Docker Desktop on macOS makes every one of them expensive."""
+    value = os.environ.get("ARCADEDB_BENCH_BOLT_FETCH_SIZE")
+    return int(value) if value else None
+
+
 class ArcadeBolt:
     """One driver (connection pool) to one ArcadeDB database over Bolt."""
 
-    def __init__(self, database, port=None, user="root", password="benchmark", wait=180):
+    def __init__(self, database, port=None, user="root", password="benchmark", wait=180, fetch_size=None):
         from neo4j import GraphDatabase   # only installed with the `neo4j` extra of pyproject.toml
         self.database = database
+        self.fetch_size = fetch_size if fetch_size is not None else globals()["fetch_size"]()
         self.uri = f"bolt://localhost:{port or bolt_port()}"
         self.driver = GraphDatabase.driver(self.uri, auth=(user, password))
         # the port opens before the plugin and the database are ready: retry until a query answers
@@ -50,9 +59,14 @@ class ArcadeBolt:
                 time.sleep(2)
         raise RuntimeError(f"Bolt endpoint {self.uri} not ready after {wait}s: {last}")
 
+    def _session(self):
+        if self.fetch_size is None:
+            return self.driver.session(database=self.database)
+        return self.driver.session(database=self.database, fetch_size=self.fetch_size)
+
     def run(self, cypher, params=None):
         """All rows of one statement, as dicts (the result is consumed inside the timed call)."""
-        with self.driver.session(database=self.database) as session:
+        with self._session() as session:
             return session.run(cypher, params or {}).data()
 
     def scalar(self, cypher, key):
@@ -63,7 +77,7 @@ class ArcadeBolt:
 
     def rows(self, cypher, *cols):
         """Stream the rows of a statement as tuples (full per-vertex exports are millions of rows)."""
-        with self.driver.session(database=self.database) as session:
+        with self._session() as session:
             for record in session.run(cypher):
                 yield tuple(record[c] for c in cols)
 
