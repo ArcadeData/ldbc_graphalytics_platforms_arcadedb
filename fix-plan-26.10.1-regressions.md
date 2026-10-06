@@ -91,6 +91,10 @@ Acceptance: LSQB Q5 OLAP back to ~0.2s.
 - LSQB: load once with 26.8.1, copy the DB, run `ArcadeDBEmbeddedLSQB` against each engine build with its `engine/target/classes` first on the classpath (`try.sh`, `bis3.sh`).
 - `git bisect run` scripts: `bis.sh` (Q7), `bis2.sh` (BFS bulk update), `bis3.sh` (parameterised by query/threshold).
 
+## Follow-up: LSQB Q8 (2026-10-06)
+
+Not one of the three regressions above, found while checking them. #9290 removed the unsound anti-join fast path for Q8 and left it on the row pipeline (OLAP 0.11 s to 3.9 s, OLTP 8 s to 9 s). [#9354](https://github.com/ArcadeData/arcadedb/pull/9354) restores the push-down with an exact count (labels of both tags, parallel edges, directed hops only, middle type unrelated to the tag type) and a randomized test against the row pipeline; relative measurement on battery 43x (OLAP) and 7x (OLTP). The test that pins every LSQB push-down is `LsqbCountPushDownEligibilityTest` (Q8 is now covered by `AntiJoinChainQ8ShapeTest`).
+
 ## Guarding against recurrence
 
 - This repo's daily benchmark workflow should fail or alert when any ArcadeDB number regresses > 2x versus the previous run (LSQB Q1-Q9 OLAP/OLTP, Mode 2 algorithms, Mode 1 full sequence **in the default algorithm order**, since BFS only regressed after other algorithms had written results).

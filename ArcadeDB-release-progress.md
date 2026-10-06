@@ -129,6 +129,8 @@ Details and root causes: [fix-plan-26.10.1-regressions.md](fix-plan-26.10.1-regr
 | 2 | Star-join push-down declined for labelled arms (LSQB Q4/Q7 OLAP 0.01 s to 5-12 s) | `6e54555ea0` (#6337) | OLAP Q4 0.04 s, Q7 0.04 s; OLTP 1.06 s, 1.07 s |
 | 3 | Q5 push-down declined (OLAP 0.2 s to ~3.5 s) | not identified | OLAP Q5 0.17 s |
 
+**LSQB Q8 after #9290.** The 0.11 s OLAP time of Q8 in the 26.11.1-SNAPSHOT column came from an operator fast path that ignored the labels of `t1` and `t2` and was wrong with parallel edges. [#9290](https://github.com/ArcadeData/arcadedb/issues/9290) (merged after that build) made the push-down decline the shape, so Q8 fell back to the row pipeline: 3.9 s with the analytical view and 9.2 s without (battery, relative measurement, same count 6,907,213). [#9354](https://github.com/ArcadeData/arcadedb/pull/9354) (merged 2026-10-06) counts the shape exactly on both paths and brings it back to 0.09 s and 1.2 s. Seconds on AC power for the merged build are still to be measured.
+
 Still to measure on the final build: Mode 1 in the default algorithm order (BFS after other algorithms had written results), 3 repetitions.
 The guard against a repeat is the `bulk-update` step and the previous-run comparison in `weekend.py` (`scripts/check_regressions.py`).
 
