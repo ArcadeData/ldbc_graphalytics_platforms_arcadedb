@@ -3,7 +3,7 @@
 Dataset: `graph500-22` as `graph500-22-w` (2,396,657 vertices, 64,155,735 undirected edges, stored once; ids 6 and 248533 swapped, constant weight 1.0). Official algorithms BFS, CDLP, LCC, PR, WCC.
 Machine: MacBook Pro M5 Pro, 48 GB, AC power, Docker Desktop 32 GB, 5-minute limit per operation, 12 GB heap for JVM systems, ArcadeDB `26.11.1-SNAPSHOT`
 (ArcadeDB `main` @ `cbf701d66e`, with the Q9 fix #9282 and the CDLP tie-break #9285), Temurin 25 with `-XX:+UseCompactObjectHeaders`. Raw logs: `weekly-results/20261006-graph500-22-w/`.
-This replaces the cold, unvalidated single-run table of 2026-10-03 in `results-m5-multivendor-2026-10-03.md`.
+This replaces the cold, unvalidated single-run table of 2026-10-03 in [`results-m5-multivendor-2026-10-03.md`](../results-m5-multivendor-2026-10-03.md).
 
 | Vendor | Load | PageRank | WCC | LCC | BFS | CDLP | Peak memory (GiB) |
 |---|---|---|---|---|---|---|---|
@@ -26,6 +26,8 @@ This replaces the cold, unvalidated single-run table of 2026-10-03 in `results-m
 - ‡ DuckPGQ's BFS ran for 20 minutes without finishing (DuckDB does not honour the in-process interrupt while its shortest-path operator runs); the run was ended by hand. The same happens on `datagen-7_5-fb`.
 - § Memgraph stores every edge in both directions (128M edge records): the load includes the one-off reverse-edge step (553 s). WCC and CDLP exceed the 31-32 GiB the engine may use in Docker's 32 GB; they fail inside the engine.
 - ¶ ArangoDB's container was killed by the out-of-memory limit (peak 30.6 GiB) during BFS, after PageRank (261.9 s, one timed run) and WCC (106.4 s, one timed run); CDLP hit the 5-minute limit and the AQL LCC query is rejected.
+
+Reproduce: `cd ldbc-native && GRAPHALYTICS_DATASET=graph500-22-w GRAPHALYTICS_SKIP=sssp python3 benchmark.py <vendor>` (add `GRAPHALYTICS_DUMP_DIR=<dir>` to export and validate the outputs, and `--vendor-timeout 5400` for the slow loaders); embedded ArcadeDB: `java ... -Dgraph=graph500-22-w -Dskip.sssp=true -Ddb.path=<dir> ArcadeDBEmbeddedBenchmark`. Docker Desktop needs 32 GB for the in-memory systems.
 
 ## Per system
 

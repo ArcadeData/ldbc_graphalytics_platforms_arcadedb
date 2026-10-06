@@ -360,7 +360,9 @@ docker network rm hugegraph-net
 
 ## Keeping results current
 
-After any benchmark run on a new ArcadeDB version (or a fix branch), update `ArcadeDB-release-progress.md` and `results-*.md` with the new numbers (same machine, same method, one JVM at a time), and note which engine build or PR each column refers to. Do not overwrite the multi-vendor tables unless those vendors were re-run too.
+Documentation layout: `README.md` holds only the three results tables (Graphalytics `datagen-7_5-fb`, Graphalytics `graph500-22`, LSQB) with a link to one detailed page per benchmark in `docs/` (`benchmark-graphalytics-official.md`, `benchmark-graphalytics-multivendor.md`, `benchmark-graphalytics-graph500-22.md`, `benchmark-lsqb.md`; also `vendor-notes.md`, `architecture.md`). Change a number in the README table and on its detailed page together, and keep long notes, footnotes and how-to-run text on the detailed page, not in the README.
+
+After any benchmark run on a new ArcadeDB version (or a fix branch), update `ArcadeDB-release-progress.md`, the README table with its detailed page, and `results-*.md` with the new numbers (same machine, same method, one JVM at a time), and note which engine build or PR each column refers to. Do not overwrite the multi-vendor tables unless those vendors were re-run too.
 
 ## Key Files
 

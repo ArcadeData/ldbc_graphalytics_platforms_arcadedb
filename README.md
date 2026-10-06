@@ -81,177 +81,22 @@ limit; a hung vendor gets SIGTERM, then SIGKILL, and the run continues. Loaded d
 `~/.cache/ldbc-graph-bench` and reused, so only the first run (or `--reset`, a new image, a changed dataset)
 pays for the loads. See `CLAUDE.md` for the details and `python3 -m unittest discover -s tests` for the tests.
 
----
+## Benchmarks and results
 
-## Mode 1: Official LDBC Graphalytics Benchmark
+Every number is a **warm** number (first call discarded, median of 3 timed runs), measured one system at a time on AC power and **validated against the official LDBC reference outputs** (or the official expected counts for LSQB). A value marked **✗** failed that check and is not ranked; **N/A** = no implementation; **timeout** = the 5-minute limit per operation. Footnote symbols (§ ‡ ¶ \*) are explained on the detailed pages. Machine: MacBook Pro 16" (2026), Apple M5 Pro, 48 GB RAM; ArcadeDB on Eclipse Temurin 25 with `-XX:+UseCompactObjectHeaders`, 12 GB heap for every JVM system, Docker Desktop with 32 GB.
 
-Uses the official [LDBC Graphalytics framework](https://github.com/ldbc/ldbc_graphalytics) with ArcadeDB's platform driver. Produces standardized results with separate `load_time`, `processing_time`, and `makespan` measurements. The framework reloads the graph for each algorithm to ensure isolated measurements.
+| Benchmark | What it measures | Detailed page |
+|---|---|---|
+| Graphalytics, official framework (Mode 1) | ArcadeDB only, official LDBC harness, one graph load per algorithm | [docs/benchmark-graphalytics-official.md](docs/benchmark-graphalytics-official.md) |
+| Graphalytics, multi-vendor (Mode 2), `datagen-7_5-fb` | 6 algorithms, 10 systems, 633K vertices / 34M edges | [docs/benchmark-graphalytics-multivendor.md](docs/benchmark-graphalytics-multivendor.md) |
+| Graphalytics, multi-vendor, `graph500-22` | 5 algorithms, 10 systems, 2.4M vertices / 64M edges | [docs/benchmark-graphalytics-graph500-22.md](docs/benchmark-graphalytics-graph500-22.md) |
+| LSQB SF1 (Mode 3) | 9 subgraph pattern matching queries, 7+ systems | [docs/benchmark-lsqb.md](docs/benchmark-lsqb.md) |
 
-### Configuration
+How ArcadeDB itself changes from release to release (official framework, Mode 2 and LSQB): [ArcadeDB-release-progress.md](ArcadeDB-release-progress.md).
 
-The build produces a ready-to-run distribution with sensible defaults. You can optionally tune the configuration files in `graphalytics-1.3.0-arcadedb-0.1-SNAPSHOT/config/`:
+### Graphalytics, `datagen-7_5-fb` (633,432 vertices, 34,185,747 edges)
 
-**benchmark.properties** — dataset paths and memory:
-```properties
-graphs.root-directory = ../datasets          # default: empty (set to your datasets location)
-graphs.validation-directory = ../datasets    # default: empty
-benchmark.runner.max-memory = 16384          # default: empty (MB, recommended: 16384)
-```
-
-**benchmarks/custom.properties** — which graphs and algorithms to run:
-```properties
-benchmark.custom.graphs = datagen-7_5-fb                       # default: datagen-7_5-fb
-benchmark.custom.algorithms = BFS, WCC, PR, CDLP, LCC, SSSP   # default: all 6 algorithms
-benchmark.custom.timeout = 7200                                 # default: 7200 (seconds)
-benchmark.custom.output-required = true                         # default: true
-benchmark.custom.validation-required = true                     # default: true
-benchmark.custom.repetitions = 1                                # default: 1
-```
-
-**platform.properties** — ArcadeDB-specific settings:
-```properties
-platform.olap = true   # default: false (enable CSR-accelerated graph algorithms)
-```
-
-### Run
-
-```bash
-cd graphalytics-1.3.0-arcadedb-0.1-SNAPSHOT
-bash bin/sh/run-benchmark.sh
-```
-
-Results are written to `report/<timestamp>-ARCADEDB-report-CUSTOM/json/results.json`.
-
-### Extract Results
-
-```bash
-LATEST=$(ls -td report/*ARCADEDB* | head -1)
-python3 -c "
-import json
-with open('$LATEST/json/results.json') as f:
-    data = json.load(f)
-result = data.get('result', data.get('experiments', {}))
-runs = result.get('runs', {})
-jobs = result.get('jobs', {})
-for rid, r in sorted(runs.items(), key=lambda x: x[1]['timestamp']):
-    algo = next(j['algorithm'] for j in jobs.values() if rid in j['runs'])
-    print(f\"{algo:6} proc={r['processing_time']:>8}s  load={r['load_time']:>8}s\")
-"
-```
-
----
-
-## Mode 2: Native Multi-Vendor Comparison
-
-Located in `ldbc-native/`. Loads the graph once and runs all algorithms sequentially on the same in-memory structure. This provides a fair apples-to-apples comparison since all systems use the same approach.
-
-**Systems tested:** ArcadeDB, Kuzu, LadybugDB, DuckPGQ, Memgraph, Neo4j, ArangoDB, FalkorDB, HugeGraph
-
-### ArcadeDB (Java)
-
-```bash
-# Compile (use the LDBC platform fat JAR for dependencies)
-LDBC_JAR=target/graphalytics-platforms-arcadedb-0.1-SNAPSHOT-default.jar
-cd ldbc-native
-javac --add-modules jdk.incubator.vector -cp "../$LDBC_JAR" ArcadeDBEmbeddedBenchmark.java
-
-# Run
-java --add-modules jdk.incubator.vector -Xms8g -Xmx8g -cp ".:../$LDBC_JAR" ArcadeDBEmbeddedBenchmark
-```
-
-### Kuzu, DuckPGQ, Memgraph, Neo4j, ArangoDB (Python)
-
-```bash
-# Create virtual environment and install dependencies (from repo root)
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[neo4j,kuzu,duckdb,memgraph,arangodb,falkordb]"
-# or: pip install -e ".[all]" for every vendor, including postgresql
-
-# Run all available benchmarks
-cd ldbc-native
-python3 benchmark.py
-```
-
-For Memgraph, start Docker first:
-```bash
-docker run -d --name memgraph -p 7687:7687 memgraph/memgraph-mage
-```
-
-For Neo4j, start Docker with GDS plugin:
-```bash
-docker run -d --name neo4j -p 7474:7474 -p 7688:7687 \
-  -e NEO4J_AUTH=neo4j/benchmark123 \
-  -e NEO4J_PLUGINS='["graph-data-science"]' \
-  neo4j:2026-community
-```
-
-For ArangoDB, start Docker (use 3.11 — Pregel was removed in 3.12):
-```bash
-docker run -d --name arangodb -p 8529:8529 -e ARANGO_ROOT_PASSWORD=benchmark arangodb:3.11
-```
-
-For HugeGraph (Vermeer OLAP engine):
-```bash
-docker network create hugegraph-net
-docker run -d --name vermeer-master --network hugegraph-net \
-  -p 6688:6688 -p 6689:6689 hugegraph/vermeer --env=master
-docker run -d --name vermeer-worker --network hugegraph-net \
-  -p 6788:6788 -p 6789:6789 \
-  -v "$(pwd)/datasets":/data/graphs:ro \
-  hugegraph/vermeer --env=worker --master_peer=vermeer-master:6689
-# Assign worker to common pool:
-WORKER=$(curl -s http://localhost:6688/api/v1/workers | python3 -c "import sys,json; print(json.load(sys.stdin)['workers'][0]['name'])")
-curl -X POST "http://localhost:6688/api/v1/admin/workers/group/\$/${WORKER}"
-```
-
-### Benchmark Results
-
-Dataset: **datagen-7_5-fb** (633,432 vertices, 34,185,747 edges, undirected, weighted)
-
-*All benchmarks in this section were run on a MacBook Pro 16" (2026), Apple M5 Pro, 48GB RAM, 1TB SSD, macOS (ArcadeDB on Eclipse Temurin 25 with `-XX:+UseCompactObjectHeaders`, 12 GB heap for every JVM system, Docker Desktop with 32 GB). Measured 2026-10-03.*
-
-#### ArcadeDB across releases
-
-The official-framework (Mode 1) numbers per ArcadeDB release, Mode 2 and LSQB (26.8.1 against 26.10.1), and the effect of later fixes such as the WCC union-find and the restored-view wait, are in [ArcadeDB-release-progress.md](ArcadeDB-release-progress.md).
-
-#### Systems and versions (both suites)
-
-| System | Version | Edition | License | Mode | Overhead | Used in |
-|--------|---------|---------|---------|------|----------|---------|
-| **ArcadeDB** (embedded) | 26.11.1-SNAPSHOT | Open Source | Apache 2.0 | Embedded (in-process, Temurin 25) | None | Graphalytics, LSQB |
-| **ArcadeDB** (Docker) | 26.11.1-SNAPSHOT | Open Source | Apache 2.0 | Server (Docker, HTTP API) | Network + Docker | Graphalytics, LSQB |
-| **Neo4j** | 2026.09.0 | Community | GPL 3.0 | Server (Docker, Bolt protocol, GDS) | Network + Docker | Graphalytics, LSQB |
-| **Kuzu** | 0.11.3 (archived project) | Open Source | MIT | Embedded (in-process, C++ via Python) | None | Graphalytics, LSQB |
-| **LadybugDB** (Kuzu fork) | 0.21.2 | Open Source | MIT | Embedded (in-process, C++ via Python) | None | Graphalytics, LSQB |
-| **DuckPGQ** | DuckDB 1.5.0 | Open Source | MIT | Embedded (in-process, C++ via Python) | None | Graphalytics |
-| **DuckDB** | 1.5.6 | Open Source | MIT | Embedded (in-process, C++ via Python) | None | LSQB |
-| **PostgreSQL** | 18 | Open Source | PostgreSQL | Server (Docker) | Network + Docker | LSQB |
-| **Memgraph** | 3.13.1 (MAGE) | Community | BSL 1.1 | Server (Docker, Bolt protocol) | Network + Docker | Graphalytics, LSQB |
-| **ArangoDB** | 3.11.14 \* | Community | Apache 2.0 | Server (Docker, HTTP API) | Network + Docker | Graphalytics |
-| **FalkorDB** | 6.0.1 (Redis 8.10.2) | Open Source | Source Available | Server (Docker, Redis protocol) | Network + Docker | Graphalytics, LSQB |
-| **HugeGraph** | Vermeer latest | Open Source | Apache 2.0 | Server (Docker, HTTP API) | Network + Docker | Graphalytics |
-
-All systems are the newest available release as of 2026-10-03. Exceptions: DuckPGQ is pinned to DuckDB 1.5.0 because the `duckpgq` extension is not published for newer DuckDB releases; ArangoDB is pinned to 3.11.14 (see the \* note below); Kuzu 0.11.3 is the last release of an archived project and is kept for reference next to its active fork LadybugDB. ArcadeDB is tested **embedded** (in-process Java, zero overhead) and in **Docker** (same HTTP/network overhead as the other Docker systems).
-
-#### How we measure
-
-Every number below is a **warm** number, the way a production server runs. Each algorithm (or query) is executed once as a warm-up call that is
-never reported (it pays JIT compilation, page-cache and first-touch costs), and the reported value is the **median of 3 timed runs** that follow it
-(5 for the embedded ArcadeDB Graphalytics benchmark, which is itself run in 3 separate JVM launches; the median of those is shown). An operation
-whose warm-up call takes longer than 60 s (30 s for LSQB) gets a single timed run instead, so it is still warm, just not repeated. Loads are one-off and not
-warmed. One system at a time, 5-minute limit per operation, AC power only, 12 GB heap for every JVM system, every output validated.
-
-**Memory** is sampled once per second while the timed operations run: the working set of the vendor's Docker containers (`docker stats`) or the
-resident memory (RSS) of the vendor's process for embedded engines. Read it with care: JVM systems (ArcadeDB, Neo4j) run with a fixed 12 GB heap, so their
-process or container size mostly shows that heap (the embedded ArcadeDB benchmark also prints its live heap after a full GC, 0.77 GiB for Graphalytics, 0.67 GiB for LSQB OLAP and 1.4 GiB for OLTP; this was not measured for Neo4j or the other systems, so it is not in the tables); Kuzu, LadybugDB and DuckDB
-size their buffer pools from the machine's RAM. The only exception to the warm protocol is Mode 1 (the official LDBC framework), which runs each algorithm once after its own load.
-
-#### All Systems Comparison
-
-Seconds (warm medians), `datagen-7_5-fb`, last row peak memory in GiB. ArcadeDB embedded and ArcadeDB Docker run on Temurin 25 with compact object headers.
-
-**Every result is checked against the official LDBC reference outputs** (`scripts/validate_outputs.py`; BFS and CDLP exact, WCC same partition, PageRank/LCC/SSSP within 1e-4). A value marked **✗** failed that check: the system computed something other than the Graphalytics algorithm, so its time is shown for completeness but is **not comparable** and is not ranked. Bold marks the fastest *valid* result per row.
+Seconds, last row peak memory in GiB. Bold marks the fastest *valid* result per row. Systems, versions, how we measure, per-system notes and how to run each vendor: [detailed page](docs/benchmark-graphalytics-multivendor.md).
 
 | Algorithm | ArcadeDB | ArcadeDB Docker | Neo4j | Kuzu | LadybugDB | DuckPGQ | Memgraph | ArangoDB \* | FalkorDB | HugeGraph |
 |-----------|----------|----------------|-------|------|-----------|---------|----------|------------------|----------|-----------|
@@ -264,25 +109,9 @@ Seconds (warm medians), `datagen-7_5-fb`, last row peak memory in GiB. ArcadeDB 
 | **CDLP** | **0.96** | 1.45 | N/A | N/A | N/A | N/A | timeout | 254 ✗ | 10.6 ✗ | 22.3 ✗ |
 | **Peak memory (GiB)** | 5.6 | 12.3 | 13.3 | 0.87 | 1.0 | 8.3 | 25.1 | 23.2 | 8.4 | 3.2 |
 
-- **ArcadeDB** (embedded and Docker) is valid for all six algorithms. CDLP used to fail validation because the engine broke ties by dense node index instead of vertex id ([ArcadeData/arcadedb#9285](https://github.com/ArcadeData/arcadedb/issues/9285)); from 26.11.1-SNAPSHOT `algo.labelPropagation` takes a `tieBreakProperty` (the Docker driver passes `VID`) and the embedded kernel takes a tie-break rank, and the output matches the reference exactly. The embedded benchmark builds the vertex-id rank once, outside the timed call (like the node mapping); the Docker call computes it inside the timed procedure, which is part of why it is slower (1.45 s against 0.96 s).
-- **Load** times are not like for like: ArcadeDB loads with its embedded Java loader (and, for Docker, serves over HTTP afterwards), the other server systems load through Python batches over the network. Systems whose algorithms follow the stored edge direction (Memgraph, FalkorDB, ArangoDB; HugeGraph for PageRank/BFS) load every edge in both directions, and that cost is part of their load time. FalkorDB loads with its bulk loader (`falkordb-bulk-insert`, 116 s for the 68.4M edge records; the per-query path took 53 minutes). The ArcadeDB Docker load is the time of its original load; later runs reuse the data.
-- ‡ **Neo4j BFS** returns only the reached vertices (no distances), so it is checked as a reachable set, which matches the reference.
-- § **Neo4j PageRank** is exact but needs two GDS runs: GDS starts every vertex at 1-d, does not normalise and counts the initialisation as the first iteration, so its scores differ from the Graphalytics reference by 0.85·A¹⁰·1. The update is linear, so the reference follows from the scores of two runs (10 and 11 iterations): rank = (20·S11 − 17·S10) / 3 / N (verified against a simulation to 3e-14, and the output validates at 100%). The timed value is those two compute-only GDS runs; the validated export streams both score sets and applies the formula.
-- ¶ **DuckPGQ BFS** (undirected shortest paths from vertex 6) does not finish within the 5-minute limit: DuckDB does not honour the in-process interrupt while its shortest-path operator runs, so the run only ends after about 25 minutes.
-- ✗ reasons: **PageRank** of DuckPGQ (`pagerank()` takes no iteration or damping parameter; its ranks sum to 0.90) and FalkorDB (`algo.pageRank` has no parameters; 14.9% of the vertices within 1e-4) cannot be made to run the 10-iteration Graphalytics PageRank. **CDLP**: ArangoDB's label propagation returns dense ids and does not match; FalkorDB and HugeGraph find the same communities as the reference but with other label values, which the exact-match rule rejects. Memgraph's `community_detection` exceeds the 5-minute limit.
-- Direction handling (all drivers compute on the undirected graph, as the reference does): Kuzu and LadybugDB add a reversed edge table, Memgraph, FalkorDB and ArangoDB store both directions, HugeGraph runs PageRank and BFS on a second graph loaded from a both-direction copy of the edge file, DuckPGQ uses a symmetric edge table, Neo4j projects an undirected GDS graph. Every timed call is the exact call that is exported and validated (full per-vertex output, no `LIMIT`), except Neo4j PageRank (see §). PageRank settings that matter: Kuzu `maxIterations 11` and ArangoDB Pregel `maxGSS 11` (the initialisation counts as the first iteration), Memgraph 10 iterations, Vermeer `compute.max_step 10` with no convergence threshold.
-- N/A means the engine has no implementation: LCC in Kuzu, LadybugDB, Memgraph (only a NetworkX procedure that is not installed in the MAGE image), FalkorDB and ArangoDB (the AQL query is rejected); SSSP and CDLP in most systems; HugeGraph/Vermeer SSSP is unweighted only (ArangoDB's weighted SSSP is an AQL weighted traversal, since Pregel's is unweighted). **LadybugDB**: only BFS runs, because the downloaded `algo` extension (0.21.0) for macOS arm64 fails to load (`Library not loaded: @rpath/libnetworkit.dylib`; upstream packaging bug).
+### Graphalytics, `graph500-22` (2,396,657 vertices, 64,155,735 edges)
 
-Notes:
-- **Docker memory:** Docker Desktop had 36 GB for every run on 2026-10-05 except HugeGraph (32 GB). Memgraph (25 GiB) and ArangoDB (23 GiB, SSSP and BFS) use the most memory. ArangoDB keeps the in-memory graph copy of every finished Pregel job until its time-to-live expires, so the driver deletes each job after it finishes; without that, repeated warm runs were killed by the out-of-memory killer at 34 GiB.
-- **Memgraph** needs `vm.max_map_count` of at least 524288 in the Docker VM (Docker Desktop's default is 262144, which makes its jemalloc fail and the connection drop mid-query); the harness raises it before each start. WCC and SSSP exceed 60 s, so they are a single timed run after the warm-up call.
-- **FalkorDB**: Redis's background snapshots (default save points) fork the 20+ GB process during a load, the fork fails and Redis then refuses every write; the driver turns them off and takes one synchronous `SAVE` after the load. The default `RESULTSET_SIZE` of 10000 rows silently truncates full per-vertex outputs and is lifted.
-- \* **ArangoDB** is run on 3.11.14, not the latest release, because the driver runs PageRank, WCC, SSSP and CDLP through Pregel, which ArangoDB 3.12 and later no longer provide (only BFS works there). PageRank, SSSP and CDLP are a single timed run after the warm-up call (each warm-up exceeded 60 s); the run was done alone on a quiet machine on 2026-10-05.
-- Neo4j and ArcadeDB use a 12 GB heap; Docker Desktop has 32 GB. ArcadeDB Docker loads through the embedded loader first, then serves queries over HTTP (see † for the first call after a restart).
-- None of the competing systems have official LDBC Graphalytics platform drivers. Only ArcadeDB has an official LDBC Graphalytics platform implementation.
-- Systems and versions are listed in the table above; the ArcadeDB rows were re-measured on 2026-10-06 on `26.11.1-SNAPSHOT` (ArcadeDB `main` @ `cbf701d66e`, which contains the Q9 fix [#9282](https://github.com/ArcadeData/arcadedb/issues/9282) and the CDLP tie-break [#9285](https://github.com/ArcadeData/arcadedb/issues/9285)); the other systems were measured on 2026-10-03 to 2026-10-05, and ArcadeDB 26.10.1 numbers are in `ArcadeDB-release-progress.md`. Raw logs, the harness fixes and the remaining history are in `results-multivendor-validated-2026-10-05.md` and `ArcadeDB-release-progress.md`.
-
-### Larger dataset: graph500-22 (2.4M vertices, 64M edges)
+Seconds; no SSSP (not defined for this dataset). ArcadeDB is `26.11.1-SNAPSHOT`. Per-system notes, the harness problems found and how to reproduce: [detailed page](docs/benchmark-graphalytics-graph500-22.md).
 
 | Vendor | Load | PageRank | WCC | LCC | BFS | CDLP | Peak memory (GiB) |
 |---|---|---|---|---|---|---|---|
@@ -297,99 +126,11 @@ Notes:
 | FalkorDB | 348.5 | 7.97 ✗ | 7.30 | N/A | 0.151 | 39.8 ✗ | 15.9 |
 | HugeGraph (Vermeer) | 34.2 † | 6.03 | 0.67 | timeout | 0.42 | 44.7 ✗ | 8.8 |
 
-- Seconds, warm medians (the first call of every algorithm is an untimed warm-up; median of 3 timed runs, 5 in the embedded ArcadeDB JVM which is launched 3 times and the median of those is shown; when the warm-up call takes longer than 60 s there is a single timed run). Bold = fastest valid result in the column.
-- **✗** = the output was exported in full and **failed** the check against the official `graph500-22` reference outputs, so the time is shown for completeness and is not ranked. **N/A** = the system has no implementation (or its extension does not load). **timeout** = the 5-minute limit per operation. **out of memory** = the system ran out of memory inside Docker Desktop's 32 GB.
-- Every other cell was validated at 100% against the official reference (BFS and CDLP exact, WCC same partition, PageRank and LCC within 1e-4), after swapping ids 6 and 248533 back (the derived `graph500-22-w` swaps them so that the official BFS source 248533 is the vertex 6 the drivers use, and it carries a constant edge weight of 1.0). SSSP is not part of `graph500-22` (no weights, no reference output) and was skipped for every system.
-- \*\* The embedded benchmark is launched as a plain Java process without the memory sampler of the multi-vendor harness, so the process peak was not measured; the table shows its live heap after a full GC (1.6 GiB, 3.6 GiB in the first launch). It uses a fixed 12 GB heap.
-- † The load time is the remembered original load of the same database (2026-10-03 / 2026-10-04); the data was reused in this run. The ArcadeDB Docker database was built on 2026-10-03 by the 26.10.1-era embedded loader; the embedded benchmark loaded its own database in this run. Load times are not like for like (ArcadeDB loads with its embedded Java loader, the other server systems through Python batches over the network, FalkorDB with its bulk loader).
-- ‡ DuckPGQ's BFS ran for 20 minutes without finishing (DuckDB does not honour the in-process interrupt while its shortest-path operator runs); the run was ended by hand. The same happens on `datagen-7_5-fb`.
-- § Memgraph stores every edge in both directions (128M edge records): the load includes the one-off reverse-edge step (553 s). WCC and CDLP exceed the 31-32 GiB the engine may use in Docker's 32 GB; they fail inside the engine.
-- ¶ ArangoDB's container was killed by the out-of-memory limit (peak 30.6 GiB) during BFS, after PageRank (261.9 s, one timed run) and WCC (106.4 s, one timed run); CDLP hit the 5-minute limit and the AQL LCC query is rejected.
+† remembered original load, ‡ DuckPGQ BFS does not finish, § Memgraph load includes the reverse-edge step, ¶ ArangoDB container ran out of memory, \*\* live heap after GC (process peak not measured): see the detailed page.
 
-Per-system notes, the harness problems found and the raw logs: [`results-graph500-22-w-2026-10-06.md`](results-graph500-22-w-2026-10-06.md).
+### LSQB SF1 (3,947,829 vertices, 17,882,623 edges)
 
-Reproduce: `cd ldbc-native && GRAPHALYTICS_DATASET=graph500-22-w GRAPHALYTICS_SKIP=sssp python3 benchmark.py <vendor>` (add `GRAPHALYTICS_DUMP_DIR=<dir>` to export and validate the outputs, and `--vendor-timeout 5400` for the slow loaders); embedded ArcadeDB: `java ... -Dgraph=graph500-22-w -Dskip.sssp=true -Ddb.path=<dir> ArcadeDBEmbeddedBenchmark`. Docker Desktop needs 32 GB for the in-memory systems.
-
-## Mode 3: LSQB (Labelled Subgraph Query Benchmark)
-
-The [LSQB benchmark](https://github.com/ldbc/lsqb) is a lightweight microbenchmark from the LDBC council that focuses on **subgraph pattern matching** — counting how many times a given labelled graph pattern appears in the dataset. It tests the query optimizer's ability to handle multi-way joins, anti-patterns (NOT EXISTS), and type hierarchy (Message supertype with Post/Comment subtypes).
-
-The benchmark uses the LDBC SNB social network dataset (SF1: ~3.9M vertices, ~17.9M edges) and runs 9 Cypher queries (Q1–Q9) covering patterns from simple 2-hop paths to complex 8-hop chains and triangle patterns.
-
-### Dataset
-
-LSQB datasets come in two formats (both contain the same data):
-
-| Format | Entity CSVs | Relationships | Best for |
-|--------|-------------|---------------|----------|
-| **merged-fk** | ID + FK columns (e.g. `City.csv` has `ispartof_country`) | FKs in entity rows + separate CSVs for M:N | SQL databases (DuckDB, PostgreSQL), ArcadeDB, Neo4j |
-| **projected-fk** | ID only | Every relationship in a separate edge CSV (e.g. `City_isPartOf_Country.csv`) | Graph DB bulk loaders (Kuzu) |
-
-```bash
-# Download LSQB SF1 (both merged-fk and projected-fk formats)
-python3 datasets.py download lsqb-sf1
-
-# Or download only the format you need
-python3 datasets.py download lsqb-sf1 --format merged-fk    # for ArcadeDB, DuckDB, PostgreSQL, Neo4j
-python3 datasets.py download lsqb-sf1 --format projected-fk # for Kuzu
-```
-
-### Run ArcadeDB (Java, embedded)
-
-```bash
-cd lsqb
-LDBC_JAR=../target/graphalytics-platforms-arcadedb-0.1-SNAPSHOT-default.jar
-
-# Compile
-javac -cp "$LDBC_JAR" ArcadeDBEmbeddedLSQB.java
-
-# Run (first run loads data, subsequent runs reuse the database)
-java -Xms4g -Xmx4g --add-modules jdk.incubator.vector -cp ".:$LDBC_JAR" ArcadeDBEmbeddedLSQB
-
-# Force reload from scratch
-java -Xms4g -Xmx4g --add-modules jdk.incubator.vector -cp ".:$LDBC_JAR" ArcadeDBEmbeddedLSQB --reset
-```
-
-### Run DuckDB (Python)
-
-```bash
-pip install -e ".[duckdb]"
-cd lsqb
-python3 lsqb_benchmark.py duckdb
-```
-
-### Run All Systems (Kuzu, DuckDB, Neo4j, FalkorDB, ...)
-
-```bash
-cd lsqb
-python3 lsqb_benchmark.py              # Run all systems
-python3 lsqb_benchmark.py --reset      # Delete all data and reload
-python3 lsqb_benchmark.py kuzu duckdb  # Run specific systems only
-```
-
-### LSQB Queries
-
-| Query | Pattern | Description |
-|-------|---------|-------------|
-| **Q1** | 8-hop chain | Country←City←Person←Forum→Post←Comment→Tag→TagClass |
-| **Q2** | Diamond | Person-KNOWS-Person with Comment→Post creator path |
-| **Q3** | Triangle | 3 Persons in same Country, all connected by KNOWS |
-| **Q4** | Star | Message with Tag, Creator, Likes, and Replies (inner join) |
-| **Q5** | Fork | Message←Reply with different Tags |
-| **Q6** | 2-hop + interest | Person-KNOWS-Person-KNOWS-Person→Tag |
-| **Q7** | Star (optional) | Same as Q4 but with OPTIONAL MATCH for Likes and Replies |
-| **Q8** | Anti-pattern | Like Q5 but Comment must NOT have the parent's Tag |
-| **Q9** | Anti-pattern | Like Q6 but Person1 must NOT know Person3 |
-
-### LSQB Results
-
-Dataset: **LDBC SNB SF1** (3,947,829 vertices, 17,882,623 edges)
-
-*Benchmarks run on a MacBook Pro 16" (2026), Apple M5 Pro, 48GB RAM, 1TB SSD, macOS, AC power. Measured 2026-10-05, one system at a time, 12 GB heap for JVM systems, Docker Desktop with 36 GB. Warm numbers: each query runs once as an untimed warm-up and the reported value is the median of 3 timed runs (a single timed run when the warm-up call took longer than 30 s); the embedded ArcadeDB numbers are the median of 3 JVM launches.*
-
-Systems and versions: see the "Systems and versions" table in the Graphalytics results above (the only place versions are listed).
-
-Seconds. ArcadeDB Embedded (Temurin 25, compact object headers) is shown with the Graph Analytical View (OLAP) and without it (OLTP). Load times are one-off and remembered from the original load of each database; peak memory is in GiB (process RSS for embedded engines, container working set for Docker systems; the JVM rows are dominated by the fixed 12 GB heap).
+Seconds; ArcadeDB embedded is shown with the Graph Analytical View (OLAP) and without it (OLTP). All counts match the official expected output. Queries, run commands and analysis: [detailed page](docs/benchmark-lsqb.md).
 
 | Query | Expected Count | ArcadeDB Embedded OLAP | ArcadeDB Embedded OLTP | ArcadeDB Docker | DuckDB | Kuzu | LadybugDB | Neo4j | PostgreSQL | Memgraph | FalkorDB | Winner |
 |-------|---------------|----------|----------|-----------------|--------|------|-----------|-------|------------|----------|----------|--------|
@@ -405,207 +146,12 @@ Seconds. ArcadeDB Embedded (Temurin 25, compact object headers) is shown with th
 | **Q9** | 1,596,153,418 | 0.30 | 0.87 | 0.33 | 6.03 | 6.39 | **0.07** | 254.29 | 50.62 | timeout | 225.22 | LadybugDB |
 | **Peak memory (GiB)** | — | 4.3 | 12.0 | 12.9 | 0.9 | 5.1 | 8.8 | 13.3 | 0.5 | 3.1 | 2.4 | — |
 
-All counts reported by every system match the [official LSQB expected output](https://github.com/ldbc/lsqb/blob/main/expected-output/expected-output.csv). Kuzu skips Q4/Q5/Q7/Q8 (its driver has no `:Message` supertype support yet; LadybugDB's driver runs each of them as a Post part plus a Comment part and adds the counts, so all nine queries are covered). Memgraph times out (5 min) on Q2, Q3 and Q9. Dgraph and SurrealDB are excluded by default (see below). The embedded ArcadeDB live heap after a full GC is 0.67 GiB (OLAP) and 1.4 GiB (OLTP).
+## More
 
-**Analysis:**
-
-- **DuckDB is the fastest on 4 of 9 queries** (Q2, Q3, Q5, Q8) with the fastest load by far (0.46 s). **ArcadeDB (OLAP) is fastest on 4 of 9** (Q1 0.08 s vs 0.11 s for DuckDB, Q4, Q6 0.07 s vs 0.66 s for LadybugDB and 1.84 s for DuckDB, and Q7), and **LadybugDB on Q9**.
-- **Q9** is the one where LadybugDB is far ahead: 0.07 s against 0.30 s for ArcadeDB with the GAV (0.87 s without it; 1.78 s on 26.10.1 before [#9282](https://github.com/ArcadeData/arcadedb/issues/9282)) and 6.03 s for DuckDB. Q9 is the anti-pattern variant of the two-hop Person-KNOWS query, so LadybugDB's plan for it is much better than Kuzu's (6.39 s) despite sharing the codebase.
-- **ArcadeDB OLAP vs OLTP:** the GAV makes Q1 to Q8 26-157x faster (Q5 11.39 -> 0.17 s, Q6 11.00 -> 0.07 s, Q8 6.91 -> 0.11 s) and, since [#9282](https://github.com/ArcadeData/arcadedb/issues/9282), Q9 too (0.87 -> 0.30 s; on 26.10.1 it was faster without the GAV, 0.90 s vs 1.78 s).
-- **ArcadeDB Docker** is on par with embedded OLAP (within 2.2x on every query) and 9-770x faster than Neo4j on every query.
-- **Neo4j** completes all queries but is 55-3900x slower than the fastest system, with Q9 at 254 s, close to the 5-minute limit.
-- **PostgreSQL** is a solid middle ground: faster than Neo4j on 6 of 9 queries (Q2, Q3, Q5, Q6, Q8, Q9) and faster than Memgraph and FalkorDB on most.
-- **FalkorDB** returns correct counts on all 9 queries but is 40-6900x slower than the fastest system and has the slowest load (659 s).
-- **Memgraph** completes 6 of 9 queries; Q2, Q3 and Q9 time out.
-- **LadybugDB vs Kuzu:** on the five queries both run, the fork is faster on Q1 (0.12 vs 4.61 s), Q2 (0.10 vs 0.15 s), Q6 (0.66 vs 1.38 s) and Q9 (0.07 vs 6.39 s), slower on Q3 (10.44 vs 2.30 s).
-- **Memory:** DuckDB (0.9 GiB) and PostgreSQL (0.5 GiB) need the least; the JVM systems and Neo4j sit at the size of their fixed 12 GB heap (ArcadeDB's live heap is under 1.5 GiB).
-
----
-
-## SurrealDB
-
-SurrealDB is implemented in both benchmark modes but **excluded from default runs** because it scores N/A on every metric — all 6 Graphalytics algorithms and all 9 LSQB queries.
-
-### Why it's excluded
-
-Despite marketing itself as a multi-model database with "graph capabilities," SurrealDB lacks the fundamentals needed for graph benchmarking:
-
-- **No graph algorithms** — zero support for PageRank, WCC, BFS, CDLP, LCC, or SSSP. Every other database in the benchmark ships with at least some of these.
-- **Broken recursive traversal** — the `->edge.{1..N}->node` syntax doesn't actually recurse beyond 1 hop. On the real graph, "BFS" found only 34 nodes (direct neighbors) instead of the expected 633K.
-- **No pattern matching** — no Cypher MATCH, no SQL JOINs, no table aliases. This makes self-joins and multi-table queries impossible. LSQB queries Q3, Q6, Q8, Q9 cannot be expressed at all. Queries Q1, Q2, Q4, Q5, Q7 are implemented using nested subqueries with `$parent` dereferencing and `array::len()` for cross-product counting, but all timeout at 120s — the O(n*m) nested loop execution without index acceleration is too slow for 3.9M vertices / 17.9M edges.
-- **Extremely slow loading** — 34M edges took ~30 minutes via the HTTP API (1MB payload limit forces 3,400 round-trips), compared to seconds for embedded systems.
-- **Stability issues** — OOM crashes (exit 137) during cleanup, connection resets during schema operations, and `{..+collect}` hangs the server indefinitely.
-
-For the full analysis, see [SURREALDB.md](SURREALDB.md).
-
-### How to enable SurrealDB
-
-```bash
-# Start SurrealDB (Docker)
-docker run -d --name surrealdb -p 8000:8000 \
-  -e SURREAL_LOG=warn \
-  -v /tmp/surrealdb_data:/data \
-  surrealdb/surrealdb:v2 start \
-  --user root --pass benchmark \
-  rocksdb:///data/bench.db
-
-# Run Graphalytics benchmark (warning: loading takes ~30 minutes)
-cd ldbc-native
-python3 benchmark.py surrealdb
-
-# Run LSQB benchmark (warning: loading takes ~9 minutes, Q1/Q2/Q4/Q5/Q7 timeout, rest N/A)
-cd lsqb
-python3 lsqb_benchmark.py surrealdb
-```
-
-*Tested with SurrealDB v2.6.4 on March 2026.*
-
----
-
-## Dgraph
-
-Dgraph v25.3.0 is implemented in both benchmark modes but **excluded from default runs**. It scores N/A on all 6 Graphalytics algorithms and answers only 3 of 9 LSQB queries.
-
-### Why it's excluded
-
-Dgraph is a distributed graph database with the DQL query language (formerly GraphQL+-). Unlike Cypher or SQL engines, DQL is a hierarchical traversal language that returns nested JSON — it has no `MATCH` clause, no `JOIN`, no table aliases, and no `NOT EXISTS`. This creates fundamental limitations:
-
-- **No graph algorithms** — Dgraph has no built-in PageRank, WCC, BFS (single-source-all-destinations), LCC, SSSP, or CDLP. The only built-in algorithm is `shortest()`, which is point-to-point (requires both source and target UIDs), not single-source-all-destinations as LDBC Graphalytics requires.
-- **No pattern matching** — DQL traverses the graph from root nodes outward and cannot express arbitrary join conditions between different parts of a pattern. This makes 6 of 9 LSQB queries impossible.
-- **Loading via HTTP mutations** — 34M Graphalytics edges take ~204s via batched RDF N-Quad mutations. LSQB (3.9M vertices, 17.9M edges) takes ~214s.
-
-### What Dgraph CAN do (LSQB Q1, Q4, Q7)
-
-Despite lacking pattern matching, three LSQB queries can be expressed in DQL using creative techniques:
-
-**Q1 (chain traversal)** — DQL value variable propagation. The 8-hop chain Country←City←Person←Forum→Post←Comment→Tag→TagClass is expressed as nested reverse-edge traversals (`~is_part_of`, `~is_located_in`, etc.). At the leaf level, `count(has_type)` counts TagClasses per Tag, then `sum(val())` at each parent level propagates the path count upward — giving the exact Cartesian product count (221,636,419). This works because each level's sum is equivalent to multiplying child path counts, which matches `count(*)` semantics for chain patterns.
-
-**Q4 (star pattern)** — DQL `math()` function. For each Message with tags, likes, and replies, the tuple count equals `tags × likes × replies`. Two `var` blocks compute `math(t * l * r)` separately for Posts (replies via `~reply_of_post`) and Comments (replies via `~reply_of_comment`), then `sum()` aggregates both into the correct total (14,836,038).
-
-**Q7 (optional star)** — Like Q4 but with `OPTIONAL MATCH` semantics. Messages without likes or replies still contribute one row each. Expressed as `math(tags × max(likes, 1) × max(replies, 1))` — the `max(count, 1)` emulates the NULL-becomes-one-row behavior of `OPTIONAL MATCH` (26,190,133).
-
-### Why 6 queries are impossible in DQL
-
-| Query | Limitation |
-|-------|-----------|
-| **Q2** (diamond) | Requires per-row correlation: "Comment created by Person1 replies to Post created by Person2, AND Person1 KNOWS Person2." DQL `var` blocks produce global UID sets, not per-row bindings. |
-| **Q3** (triangle) | Requires self-join on Person (3 different Persons in same Country, all connected by KNOWS). DQL has no self-join. |
-| **Q5** (fork) | Requires cross-reference inequality: `tag1 <> tag2` where tag1 is from the message and tag2 is from the reply. DQL cannot compare values across different nesting levels. |
-| **Q6** (2-hop KNOWS) | Requires per-row inequality: `person1 <> person3`. DQL has no way to exclude specific nodes per-traversal. |
-| **Q8** (anti-pattern) | Requires `NOT EXISTS`: "Comment must NOT have the parent's Tag." DQL has no anti-join operator. |
-| **Q9** (anti-pattern) | Requires both `NOT EXISTS` and per-row inequality — combines Q6 and Q8 limitations. |
-
-### Performance comparison (LSQB)
-
-On the 3 queries Dgraph can answer:
-- **Q1**: Dgraph 2.52s — faster than Kuzu (5.83s), Neo4j (8.25s), PostgreSQL (6.56s), and Memgraph (60.45s), but 11x slower than ArcadeDB (0.23s) and 17x slower than DuckDB (0.15s).
-- **Q4**: Dgraph 8.13s — comparable to Neo4j (7.82s) and PostgreSQL (6.86s), but 400x slower than ArcadeDB (0.02s) and 100x slower than DuckDB (0.08s).
-- **Q7**: Dgraph 5.97s — faster than Neo4j (10.45s) and PostgreSQL (11.22s), but 300x slower than ArcadeDB (0.02s) and 75x slower than DuckDB (0.08s).
-
-### How to enable Dgraph
-
-```bash
-# Start Dgraph (Docker — requires two containers: Zero + Alpha)
-docker network create dgraph-net
-docker run -d --name dgraph-zero --network dgraph-net \
-  -p 5080:5080 -p 6080:6080 \
-  dgraph/dgraph:latest dgraph zero --my=dgraph-zero:5080
-docker run -d --name dgraph-alpha --network dgraph-net \
-  -p 8080:8080 -p 9080:9080 \
-  -v /tmp/dgraph_data:/dgraph \
-  dgraph/dgraph:latest dgraph alpha \
-    --my=dgraph-alpha:7080 \
-    --zero=dgraph-zero:5080 \
-    --cache size-mb=8192 \
-    --badger "compression=none; numgoroutines=8" \
-    --security whitelist=0.0.0.0/0 \
-    --limit "mutations-nquad=5000000; query-edge=10000000"
-
-# Run Graphalytics benchmark (loading ~204s, all algorithms N/A)
-cd ldbc-native
-python3 benchmark.py dgraph
-
-# Run LSQB benchmark (loading ~214s, Q1/Q4/Q7 answered, rest N/A)
-cd lsqb
-python3 lsqb_benchmark.py dgraph
-```
-
-*Tested with Dgraph v25.3.0 on March 2026.*
-
----
-
-## FalkorDB
-
-FalkorDB 6.0.1 (Redis 8.10.2) is a Redis-based graph database that supports a subset of Cypher. It is included in the default Graphalytics and LSQB runs. With this release it returns **correct counts on all 9 LSQB queries** (v4.16.8, tested in April 2026, returned wrong counts on four of them), but it is slow on the multi-hop patterns (3.5-225 s per query, see the LSQB table) and has the slowest LSQB load (659 s through Cypher `UNWIND`/`CREATE` batches).
-
-### Things the harness has to handle
-
-- **Bulk loading** — the Graphalytics graph (68.4M edge records, both directions) loads in 116 s with `falkordb-bulk-insert` (`pip install falkordb-bulk-loader`); creating the same edges with one Cypher write query per 5000 edges runs at about 25k edges/s and took 53 minutes. The LSQB driver still uses Cypher batches.
-- **Snapshots** — with the default Redis save points a background save forks the 20+ GB process during the load, the fork fails and Redis then answers every write with `MISCONF`. The drivers set `save ""` and `stop-writes-on-bgsave-error no` and take one synchronous `SAVE` after the load, so a stopped container comes back with the full graph.
-- **Result sets** — `RESULTSET_SIZE` defaults to 10000 rows and silently truncates full per-vertex outputs (the validation then fails); the Graphalytics driver sets it to unlimited.
-- **Readiness** — the Redis port opens while the server is still loading its snapshot (-LOADING), so the harness probes with `PING` before the driver connects.
-- **Graphalytics** — `algo.pageRank` has no parameters (invalid against the 10-iteration reference), WCC and BFS validate, CDLP finds the reference communities with other label values; no LCC or SSSP.
-
-### How to run FalkorDB (LSQB)
-
-```bash
-# Start FalkorDB (Docker)
-docker run -d --name falkordb-lsqb -p 6379:6379 \
-  -v /tmp/falkordb_lsqb:/var/lib/falkordb/data falkordb/falkordb:latest
-
-# Run LSQB benchmark
-cd lsqb
-python3 lsqb_benchmark.py falkordb
-```
-
-*Tested with FalkorDB 6.0.1 on October 2026.*
-
----
-
-## File Structure
-
-```
-shared/
-  bench_common.py                  # Shared benchmark infrastructure
-
-ldbc-native/
-  ArcadeDBEmbeddedBenchmark.java   # ArcadeDB Graphalytics benchmark (Java, embedded)
-  ArcadeDBEmbeddedLoader.java      # ArcadeDB graph loader (Java, embedded)
-  benchmark.py                     # Kuzu, DuckPGQ, Memgraph, Neo4j, ArangoDB Graphalytics benchmarks (Python)
-
-lsqb/
-  ArcadeDBEmbeddedLSQB.java        # ArcadeDB LSQB benchmark (Java, embedded, Cypher)
-  lsqb_benchmark.py                # Kuzu, DuckDB, Neo4j, FalkorDB LSQB benchmarks (Python)
-  tools/                           # Debug/profiling helpers
-```
-
----
-
-## Architecture
-
-### Graph Analytical View (GAV)
-
-The GAV engine builds a CSR adjacency index from ArcadeDB's OLTP storage:
-
-1. **Pass 1**: Scans all vertices, assigns dense integer IDs, collects edge pairs
-2. **Pass 2**: Computes prefix sums from degree arrays, fills CSR neighbor arrays
-3. **Result**: Packed `int[]` arrays for forward/backward offsets and neighbors, plus columnar edge property storage
-
-All graph algorithms operate directly on these packed arrays with zero object allocation in hot loops.
-
-### Algorithm Execution Modes
-
-- **CSR-accelerated** (default when OLAP enabled): Algorithms run on the GAV's CSR arrays via `GraphAlgorithms.*` methods
-- **OLTP fallback**: If GAV is unavailable, algorithms fall back to ArcadeDB's built-in graph traversal procedures
-
-### JVM Flags
-
-The benchmark runner uses:
-```
--Xms16g -Xmx16g --add-modules jdk.incubator.vector
-```
-
-The `jdk.incubator.vector` module enables SIMD-accelerated operations in the GAV engine.
+- [docs/benchmark-graphalytics-official.md](docs/benchmark-graphalytics-official.md), [docs/benchmark-graphalytics-multivendor.md](docs/benchmark-graphalytics-multivendor.md), [docs/benchmark-graphalytics-graph500-22.md](docs/benchmark-graphalytics-graph500-22.md), [docs/benchmark-lsqb.md](docs/benchmark-lsqb.md): one page per benchmark (how to run, method, full tables, notes).
+- [docs/vendor-notes.md](docs/vendor-notes.md): SurrealDB and Dgraph (excluded from default runs, see also [SURREALDB.md](SURREALDB.md)) and FalkorDB.
+- [docs/architecture.md](docs/architecture.md): file structure, the Graph Analytical View (CSR) engine, execution modes.
+- [ArcadeDB-release-progress.md](ArcadeDB-release-progress.md): ArcadeDB across releases. `results-*.md`: raw results and history of earlier runs. `CLAUDE.md`: benchmark rules for the harness.
 
 ## License
 
