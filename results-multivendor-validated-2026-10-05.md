@@ -2,7 +2,7 @@
 
 Same machine as `results-m5-multivendor-2026-10-03.md` (MacBook Pro 16" 2026, Apple M5 Pro, 48 GB RAM), always on AC power, one process / one container
 at a time, 5-minute limit per operation, JVM systems with `-Xms12g -Xmx12g`. Docker Desktop had 36 GB (the 2026-10-05 runs; HugeGraph was measured with 32 GB).
-ArcadeDB: `26.10.1` (measured on the identical pre-release snapshot JAR built 2026-10-04 14:11; the release was published 2026-10-05), Temurin 25.0.4.1 with `-XX:+UseCompactObjectHeaders`.
+ArcadeDB: the ArcadeDB rows (embedded and Docker) are `26.11.1-SNAPSHOT` (ArcadeDB `main` @ `cbf701d66e`, with the Q9 fix #9282 and the CDLP tie-break #9285), re-measured on 2026-10-06 (raw logs: `weekly-results/20261006-26.11.1/`); the other vendors were measured on 2026-10-04 / 2026-10-05, and the previous ArcadeDB `26.10.1` numbers are in `ArcadeDB-release-progress.md`. Temurin 25.0.4.1 with `-XX:+UseCompactObjectHeaders`.
 
 ## Method
 
@@ -12,15 +12,15 @@ ArcadeDB: `26.10.1` (measured on the identical pre-release snapshot JAR built 20
 - **Validated.** Every Graphalytics output is exported in full (no `LIMIT`) from the exact call that is timed and checked with `scripts/validate_outputs.py`
   against the official reference outputs; every LSQB count is checked against the official expected counts. Cells that fail are marked invalid and not ranked.
 - **Memory.** One sample per second while the timed operations run: the working set of the vendor's containers (`docker stats`) or the RSS of its process.
-  JVM systems run with a fixed 12 GB heap, so their process or container size mostly shows that heap; embedded ArcadeDB also reports its live heap after a full GC (Graphalytics 0.75 GiB, LSQB OLAP 0.67, OLTP 1.4); it was not measured for the other systems.
+  JVM systems run with a fixed 12 GB heap, so their process or container size mostly shows that heap; embedded ArcadeDB also reports its live heap after a full GC (Graphalytics 0.77 GiB, LSQB OLAP 0.67, OLTP 1.4); it was not measured for the other systems.
   Kuzu, DuckDB and LadybugDB size their buffer pools from the machine RAM.
 
 ## Graphalytics, `datagen-7_5-fb` (seconds, warm medians)
 
 | Vendor | Load | PageRank | WCC | BFS | LCC | SSSP | CDLP | Peak memory (GiB) |
 |---|---|---|---|---|---|---|---|---|
-| ArcadeDB embedded | 71.9 | 0.086 | 0.004 | 0.022 | 2.19 | 0.84 | 1.09 invalid | 6.4 process |
-| ArcadeDB Docker | 43.9 | 0.156 | 0.022 | 0.032 | 2.65 | 1.56 | 1.08 invalid | 12.3 container |
+| ArcadeDB embedded | 71.9 | 0.085 | 0.003 | 0.020 | 2.05 | 0.75 | 0.96 | 5.6 process |
+| ArcadeDB Docker | 43.9 | 0.16 | 0.02 | 0.06 | 2.61 | 1.39 | 1.45 | 12.3 container |
 | Neo4j | 657 | 6.98 (two GDS runs, valid) | 0.111 | 0.480 | 15.4 | N/A | N/A | 13.3 container |
 | Kuzu | 28.8 | 1.16 | 0.434 | 0.328 | N/A | N/A | N/A | 0.87 process |
 | LadybugDB | 5.16 | N/A | N/A | 7.89 | N/A | N/A | N/A | 1.0 process |
@@ -34,7 +34,7 @@ Why the invalid and N/A cells cannot be fixed from the driver:
 - Neo4j PageRank is exact but needs two GDS runs. GDS starts every vertex at 1-d, does not normalise and counts the initialisation as the first iteration (`maxIterations 10` is 9 updates, verified to 1e-14 against a simulation). The update is linear, so the reference follows from the scores S10 and S11 of two runs: rank = (20·S11 − 17·S10) / 3 / N (3e-14 against the reference, 100% validation). The timed value is the two compute-only GDS runs (`gds.pageRank.stats`); the validated export streams both score sets and applies the formula.
 - DuckPGQ: `pagerank()` has no iteration or damping parameter (ranks sum to 0.90). BFS exceeds the 5-minute limit because DuckDB does not honour the in-process interrupt while its shortest-path operator runs (the run ends after about 25 minutes).
 - FalkorDB PageRank: `algo.pageRank` has no parameters (14.9% of vertices within 1e-4). CDLP finds the reference communities with other label values.
-- ArcadeDB CDLP: the engine breaks ties and seeds labels with dense ids instead of vertex ids (Mode 1 passes).
+- ArcadeDB CDLP (fixed in 26.11.1-SNAPSHOT): the engine used to break ties by dense index instead of vertex id, so its output differed from the reference on every vertex ([ArcadeData/arcadedb#9285](https://github.com/ArcadeData/arcadedb/issues/9285); a simulation with ties broken by vertex id had matched the reference on all 633,432 vertices). With the tie-break option the embedded (0.96 s) and Docker (1.45 s) outputs validate at 100%. The embedded call gets a precomputed vertex-id rank (built once, outside the timed call); the Docker procedure computes it inside the timed call.
 - ArangoDB CDLP: Pregel label propagation returns dense ids, 0.0% match (254 s). LCC: the AQL query is rejected.
 - LadybugDB: the `algo` extension for macOS arm64 does not load (`libnetworkit.dylib`), so only BFS runs.
 - LCC: no native implementation in Kuzu, LadybugDB, Memgraph (the MAGE image lacks NetworkX) and FalkorDB.
@@ -44,9 +44,9 @@ Why the invalid and N/A cells cannot be fixed from the driver:
 
 | Vendor | Load | Q1 | Q2 | Q3 | Q4 | Q5 | Q6 | Q7 | Q8 | Q9 | Peak memory (GiB) |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| ArcadeDB embedded OLAP (median of 3 JVM launches) | 119.5 | 0.09 | 0.15 | 0.07 | 0.04 | 0.19 | 0.13 | 0.05 | 0.12 | 1.78 | 6.7 process |
-| ArcadeDB embedded OLTP | 159.2 | 2.83 | 4.54 | 3.44 | 1.24 | 13.59 | 12.77 | 1.13 | 8.60 | 0.90 | 10.1 process |
-| ArcadeDB Server (Docker) | 101.7 | 0.14 | 0.19 | 0.08 | 0.05 | 0.27 | 0.18 | 0.06 | 0.13 | 2.32 | 12.4 container |
+| ArcadeDB embedded OLAP (median of 3 JVM launches) | 119.5 | 0.08 | 0.13 | 0.05 | 0.04 | 0.17 | 0.07 | 0.04 | 0.11 | 0.30 | 4.3 process |
+| ArcadeDB embedded OLTP | 159.2 | 2.45 | 4.40 | 3.17 | 1.06 | 11.39 | 11.00 | 1.07 | 6.91 | 0.87 | 12.0 process |
+| ArcadeDB Server (Docker) | 99.4 | 0.17 | 0.17 | 0.06 | 0.05 | 0.25 | 0.13 | 0.06 | 0.14 | 0.33 | 12.9 container |
 | DuckDB | 0.46 | 0.11 | 0.01 | 0.04 | 0.06 | 0.04 | 1.84 | 0.07 | 0.07 | 6.03 | 0.9 process |
 | Kuzu | 2.44 | 4.61 | 0.15 | 2.30 | N/A | N/A | 1.38 | N/A | N/A | 6.39 | 5.1 process |
 | LadybugDB | 2.95 | 0.12 | 0.10 | 10.44 | 0.17 | 0.18 | 0.66 | 0.41 | 0.32 | 0.07 | 8.8 process |

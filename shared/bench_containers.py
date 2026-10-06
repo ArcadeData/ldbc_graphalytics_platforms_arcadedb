@@ -192,7 +192,7 @@ def _specs():
     arango_image = os.environ.get("ARANGODB_IMAGE", "arangodb/arangodb:3.11.14")
     falkor_image = os.environ.get("FALKORDB_IMAGE", "falkordb/falkordb:latest")
     pg_image = os.environ.get("POSTGRES_IMAGE", "postgres:18")
-    arcade_image = os.environ.get("ARCADEDB_IMAGE", "arcadedata/arcadedb:26.10.1")
+    arcade_image = os.environ.get("ARCADEDB_IMAGE", "arcadedata/arcadedb:26.11.1-SNAPSHOT")
     return {
         ("graphalytics", "neo4j"): Spec(
             "neo4j-gds", neo4j_image, ["7688:7687", "7476:7474"],

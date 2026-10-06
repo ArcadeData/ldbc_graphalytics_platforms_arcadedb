@@ -41,9 +41,15 @@ def _dump_all(cmd):
         dist[6] = 0.0
         bench_common.dump_rows("arcadedb", "SSSP", ((i, dist.get(i, "infinity")) for i in all_ids()))
     bench_common.dump_safely("arcadedb", "SSSP", sssp)
-    bench_common.dump_safely("arcadedb", "CDLP", lambda: bench_common.dump_rows("arcadedb", "CDLP", rows(
-        "CALL algo.labelPropagation({maxIterations: 10}) YIELD node, communityId "
-        "RETURN node.VID AS id, communityId", "id", "communityId")))
+    def cdlp():
+        # communityId is the dense index of the vertex whose label was adopted, and the procedure emits its rows in dense
+        # order, so the label of vertex i is the id found in row communityId.
+        got = list(rows(
+            "CALL algo.labelPropagation({maxIterations: 10, tieBreakProperty: 'VID'}) YIELD node, communityId "
+            "RETURN node.VID AS id, communityId", "id", "communityId"))
+        ids = [i for i, _ in got]
+        bench_common.dump_rows("arcadedb", "CDLP", ((i, ids[c]) for i, c in got))
+    bench_common.dump_safely("arcadedb", "CDLP", cdlp)
 
 
 def run_benchmark():
@@ -207,7 +213,7 @@ public class ArcadeDBEmbeddedLoader {
         "-e", "JAVA_OPTS=--add-modules jdk.incubator.vector -Darcadedb.server.rootPassword=benchmark",
         "-v", f"{data_root}:/home/arcadedb/databases",
         "-v", f"{log_root}:/home/arcadedb/log",
-        os.environ.get("ARCADEDB_IMAGE", "arcadedata/arcadedb:26.10.1")
+        os.environ.get("ARCADEDB_IMAGE", "arcadedata/arcadedb:26.11.1-SNAPSHOT")
     ], check=True)
 
     # Wait for server + GAV auto-restore (CSR build takes ~60-90s)
@@ -299,7 +305,7 @@ public class ArcadeDBEmbeddedLoader {
 
     # --- CDLP (Label Propagation) ---
     run_algo("cdlp",
-             "CALL algo.labelPropagation({maxIterations: 10}) YIELD communityId RETURN count(*) AS cnt")
+             "CALL algo.labelPropagation({maxIterations: 10, tieBreakProperty: 'VID'}) YIELD communityId RETURN count(*) AS cnt")
 
     _dump_all(cmd)
     bench_common.cleanup_docker("arcadedb")

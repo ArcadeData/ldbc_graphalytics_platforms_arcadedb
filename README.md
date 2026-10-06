@@ -219,8 +219,8 @@ The official-framework (Mode 1) numbers per ArcadeDB release, Mode 2 and LSQB (2
 
 | System | Version | Edition | License | Mode | Overhead | Used in |
 |--------|---------|---------|---------|------|----------|---------|
-| **ArcadeDB** (embedded) | 26.10.1 | Open Source | Apache 2.0 | Embedded (in-process, Temurin 25) | None | Graphalytics, LSQB |
-| **ArcadeDB** (Docker) | 26.10.1 | Open Source | Apache 2.0 | Server (Docker, HTTP API) | Network + Docker | Graphalytics, LSQB |
+| **ArcadeDB** (embedded) | 26.11.1-SNAPSHOT | Open Source | Apache 2.0 | Embedded (in-process, Temurin 25) | None | Graphalytics, LSQB |
+| **ArcadeDB** (Docker) | 26.11.1-SNAPSHOT | Open Source | Apache 2.0 | Server (Docker, HTTP API) | Network + Docker | Graphalytics, LSQB |
 | **Neo4j** | 2026.09.0 | Community | GPL 3.0 | Server (Docker, Bolt protocol, GDS) | Network + Docker | Graphalytics, LSQB |
 | **Kuzu** | 0.11.3 (archived project) | Open Source | MIT | Embedded (in-process, C++ via Python) | None | Graphalytics, LSQB |
 | **LadybugDB** (Kuzu fork) | 0.21.2 | Open Source | MIT | Embedded (in-process, C++ via Python) | None | Graphalytics, LSQB |
@@ -244,7 +244,7 @@ warmed. One system at a time, 5-minute limit per operation, AC power only, 12 GB
 
 **Memory** is sampled once per second while the timed operations run: the working set of the vendor's Docker containers (`docker stats`) or the
 resident memory (RSS) of the vendor's process for embedded engines. Read it with care: JVM systems (ArcadeDB, Neo4j) run with a fixed 12 GB heap, so their
-process or container size mostly shows that heap (the embedded ArcadeDB benchmark also prints its live heap after a full GC, 0.75 GiB for Graphalytics, 0.67 GiB for LSQB OLAP and 1.4 GiB for OLTP; this was not measured for Neo4j or the other systems, so it is not in the tables); Kuzu, LadybugDB and DuckDB
+process or container size mostly shows that heap (the embedded ArcadeDB benchmark also prints its live heap after a full GC, 0.77 GiB for Graphalytics, 0.67 GiB for LSQB OLAP and 1.4 GiB for OLTP; this was not measured for Neo4j or the other systems, so it is not in the tables); Kuzu, LadybugDB and DuckDB
 size their buffer pools from the machine's RAM. The only exception to the warm protocol is Mode 1 (the official LDBC framework), which runs each algorithm once after its own load.
 
 #### All Systems Comparison
@@ -256,20 +256,20 @@ Seconds (warm medians), `datagen-7_5-fb`, last row peak memory in GiB. ArcadeDB 
 | Algorithm | ArcadeDB | ArcadeDB Docker | Neo4j | Kuzu | LadybugDB | DuckPGQ | Memgraph | ArangoDB \* | FalkorDB | HugeGraph |
 |-----------|----------|----------------|-------|------|-----------|---------|----------|------------------|----------|-----------|
 | **Load** | 71.9 | 43.9 | 657 | 28.8 | 5.16 | 0.85 | 437 | 726 | 116 | 34.7 |
-| **PageRank** | **0.086** | 0.156 | 6.98 § | 1.16 | N/A | 1.51 ✗ | 5.49 | 93.0 | 2.67 ✗ | 2.41 |
-| **WCC** | **0.004** | 0.022 | 0.111 | 0.434 | N/A | 2.00 | 189 | 40.9 | 2.50 | 0.293 |
-| **BFS** | **0.022** | 0.032 | 0.480 ‡ | 0.328 | 7.89 | timeout ¶ | 3.85 | 38.4 | 0.057 | 0.195 |
-| **LCC** | **2.19** | 2.65 | 15.4 | N/A | N/A | 49.3 | N/A | N/A | N/A | 110 |
-| **SSSP** | **0.84** | 1.56 | N/A | N/A | N/A | N/A | 75.9 | 173 | N/A | N/A |
-| **CDLP** | 1.09 ✗ | 1.08 ✗ | N/A | N/A | N/A | N/A | timeout | 254 ✗ | 10.6 ✗ | 22.3 ✗ |
-| **Peak memory (GiB)** | 6.4 | 12.3 | 13.3 | 0.87 | 1.0 | 8.3 | 25.1 | 23.2 | 8.4 | 3.2 |
+| **PageRank** | **0.085** | 0.16 | 6.98 § | 1.16 | N/A | 1.51 ✗ | 5.49 | 93.0 | 2.67 ✗ | 2.41 |
+| **WCC** | **0.003** | 0.02 | 0.111 | 0.434 | N/A | 2.00 | 189 | 40.9 | 2.50 | 0.293 |
+| **BFS** | **0.020** | 0.06 | 0.480 ‡ | 0.328 | 7.89 | timeout ¶ | 3.85 | 38.4 | 0.057 | 0.195 |
+| **LCC** | **2.05** | 2.61 | 15.4 | N/A | N/A | 49.3 | N/A | N/A | N/A | 110 |
+| **SSSP** | **0.75** | 1.39 | N/A | N/A | N/A | N/A | 75.9 | 173 | N/A | N/A |
+| **CDLP** | **0.96** | 1.45 | N/A | N/A | N/A | N/A | timeout | 254 ✗ | 10.6 ✗ | 22.3 ✗ |
+| **Peak memory (GiB)** | 5.6 | 12.3 | 13.3 | 0.87 | 1.0 | 8.3 | 25.1 | 23.2 | 8.4 | 3.2 |
 
-- **ArcadeDB** (embedded and Docker) is valid for PageRank, WCC, BFS, LCC and SSSP. Its CDLP fails validation: the engine's `algo.labelPropagation` breaks ties and seeds labels with dense node ids instead of vertex ids, so the labels differ from the reference (the official Mode 1 framework has its own vertex-id based CDLP and passes).
+- **ArcadeDB** (embedded and Docker) is valid for all six algorithms. CDLP used to fail validation because the engine broke ties by dense node index instead of vertex id ([ArcadeData/arcadedb#9285](https://github.com/ArcadeData/arcadedb/issues/9285)); from 26.11.1-SNAPSHOT `algo.labelPropagation` takes a `tieBreakProperty` (the Docker driver passes `VID`) and the embedded kernel takes a tie-break rank, and the output matches the reference exactly. The embedded benchmark builds the vertex-id rank once, outside the timed call (like the node mapping); the Docker call computes it inside the timed procedure, which is part of why it is slower (1.45 s against 0.96 s).
 - **Load** times are not like for like: ArcadeDB loads with its embedded Java loader (and, for Docker, serves over HTTP afterwards), the other server systems load through Python batches over the network. Systems whose algorithms follow the stored edge direction (Memgraph, FalkorDB, ArangoDB; HugeGraph for PageRank/BFS) load every edge in both directions, and that cost is part of their load time. FalkorDB loads with its bulk loader (`falkordb-bulk-insert`, 116 s for the 68.4M edge records; the per-query path took 53 minutes). The ArcadeDB Docker load is the time of its original load; later runs reuse the data.
 - ‡ **Neo4j BFS** returns only the reached vertices (no distances), so it is checked as a reachable set, which matches the reference.
 - § **Neo4j PageRank** is exact but needs two GDS runs: GDS starts every vertex at 1-d, does not normalise and counts the initialisation as the first iteration, so its scores differ from the Graphalytics reference by 0.85·A¹⁰·1. The update is linear, so the reference follows from the scores of two runs (10 and 11 iterations): rank = (20·S11 − 17·S10) / 3 / N (verified against a simulation to 3e-14, and the output validates at 100%). The timed value is those two compute-only GDS runs; the validated export streams both score sets and applies the formula.
 - ¶ **DuckPGQ BFS** (undirected shortest paths from vertex 6) does not finish within the 5-minute limit: DuckDB does not honour the in-process interrupt while its shortest-path operator runs, so the run only ends after about 25 minutes.
-- ✗ reasons: **PageRank** of DuckPGQ (`pagerank()` takes no iteration or damping parameter; its ranks sum to 0.90) and FalkorDB (`algo.pageRank` has no parameters; 14.9% of the vertices within 1e-4) cannot be made to run the 10-iteration Graphalytics PageRank. **CDLP**: the ArcadeDB engine breaks ties and seeds labels with dense ids (see above); ArangoDB's label propagation returns dense ids and does not match; FalkorDB and HugeGraph find the same communities as the reference but with other label values, which the exact-match rule rejects. Memgraph's `community_detection` exceeds the 5-minute limit.
+- ✗ reasons: **PageRank** of DuckPGQ (`pagerank()` takes no iteration or damping parameter; its ranks sum to 0.90) and FalkorDB (`algo.pageRank` has no parameters; 14.9% of the vertices within 1e-4) cannot be made to run the 10-iteration Graphalytics PageRank. **CDLP**: ArangoDB's label propagation returns dense ids and does not match; FalkorDB and HugeGraph find the same communities as the reference but with other label values, which the exact-match rule rejects. Memgraph's `community_detection` exceeds the 5-minute limit.
 - Direction handling (all drivers compute on the undirected graph, as the reference does): Kuzu and LadybugDB add a reversed edge table, Memgraph, FalkorDB and ArangoDB store both directions, HugeGraph runs PageRank and BFS on a second graph loaded from a both-direction copy of the edge file, DuckPGQ uses a symmetric edge table, Neo4j projects an undirected GDS graph. Every timed call is the exact call that is exported and validated (full per-vertex output, no `LIMIT`), except Neo4j PageRank (see §). PageRank settings that matter: Kuzu `maxIterations 11` and ArangoDB Pregel `maxGSS 11` (the initialisation counts as the first iteration), Memgraph 10 iterations, Vermeer `compute.max_step 10` with no convergence threshold.
 - N/A means the engine has no implementation: LCC in Kuzu, LadybugDB, Memgraph (only a NetworkX procedure that is not installed in the MAGE image), FalkorDB and ArangoDB (the AQL query is rejected); SSSP and CDLP in most systems; HugeGraph/Vermeer SSSP is unweighted only (ArangoDB's weighted SSSP is an AQL weighted traversal, since Pregel's is unweighted). **LadybugDB**: only BFS runs, because the downloaded `algo` extension (0.21.0) for macOS arm64 fails to load (`Library not loaded: @rpath/libnetworkit.dylib`; upstream packaging bug).
 
@@ -280,7 +280,7 @@ Notes:
 - \* **ArangoDB** is run on 3.11.14, not the latest release, because the driver runs PageRank, WCC, SSSP and CDLP through Pregel, which ArangoDB 3.12 and later no longer provide (only BFS works there). PageRank, SSSP and CDLP are a single timed run after the warm-up call (each warm-up exceeded 60 s); the run was done alone on a quiet machine on 2026-10-05.
 - Neo4j and ArcadeDB use a 12 GB heap; Docker Desktop has 32 GB. ArcadeDB Docker loads through the embedded loader first, then serves queries over HTTP (see † for the first call after a restart).
 - None of the competing systems have official LDBC Graphalytics platform drivers. Only ArcadeDB has an official LDBC Graphalytics platform implementation.
-- Systems and versions are listed in the table above; ArcadeDB is the official 26.10.1 release (measured on the identical pre-release snapshot built on 2026-10-04). Raw logs, the harness fixes and the remaining history are in `results-multivendor-validated-2026-10-05.md` and `ArcadeDB-release-progress.md`.
+- Systems and versions are listed in the table above; the ArcadeDB rows were re-measured on 2026-10-06 on `26.11.1-SNAPSHOT` (ArcadeDB `main` @ `cbf701d66e`, which contains the Q9 fix [#9282](https://github.com/ArcadeData/arcadedb/issues/9282) and the CDLP tie-break [#9285](https://github.com/ArcadeData/arcadedb/issues/9285)); the other systems were measured on 2026-10-03 to 2026-10-05, and ArcadeDB 26.10.1 numbers are in `ArcadeDB-release-progress.md`. Raw logs, the harness fixes and the remaining history are in `results-multivendor-validated-2026-10-05.md` and `ArcadeDB-release-progress.md`.
 
 ## Mode 3: LSQB (Labelled Subgraph Query Benchmark)
 
@@ -365,26 +365,26 @@ Seconds. ArcadeDB Embedded (Temurin 25, compact object headers) is shown with th
 
 | Query | Expected Count | ArcadeDB Embedded OLAP | ArcadeDB Embedded OLTP | ArcadeDB Docker | DuckDB | Kuzu | LadybugDB | Neo4j | PostgreSQL | Memgraph | FalkorDB | Winner |
 |-------|---------------|----------|----------|-----------------|--------|------|-----------|-------|------------|----------|----------|--------|
-| **Load** | — | 119.5 | 159.2 | 101.7 | **0.46** | 2.44 | 2.95 | 252.0 | 15.1 | 222.2 | 659.3 | DuckDB |
-| **Q1** | 221,636,419 | **0.09** | 2.83 | 0.14 | 0.11 | 4.61 | 0.12 | 4.99 | 9.17 | 58.06 | 36.43 | ArcadeDB |
-| **Q2** | 1,085,627 | 0.15 | 4.54 | 0.19 | **0.01** | 0.15 | 0.10 | 1.63 | 0.65 | timeout | 53.78 | DuckDB |
-| **Q3** | 753,570 | 0.07 | 3.44 | 0.08 | **0.04** | 2.30 | 10.44 | 10.76 | 1.60 | timeout | 4.59 | DuckDB |
-| **Q4** | 14,836,038 | **0.04** | 1.24 | 0.05 | 0.06 | N/A | 0.17 | 6.28 | 6.35 | 4.30 | 3.53 | ArcadeDB |
-| **Q5** | 13,824,510 | 0.19 | 13.59 | 0.27 | **0.04** | N/A | 0.18 | 5.66 | 2.17 | 3.54 | 3.93 | DuckDB |
-| **Q6** | 1,668,134,320 | **0.13** | 12.77 | 0.18 | 1.84 | 1.38 | 0.66 | 28.49 | 15.50 | 121.15 | 40.93 | ArcadeDB |
-| **Q7** | 26,190,133 | **0.05** | 1.13 | 0.06 | 0.07 | N/A | 0.41 | 8.04 | 11.16 | 4.92 | 47.96 | ArcadeDB |
-| **Q8** | 6,907,213 | 0.12 | 8.60 | 0.13 | **0.07** | N/A | 0.32 | 12.39 | 3.39 | 3.02 | 4.90 | DuckDB |
-| **Q9** | 1,596,153,418 | 1.78 | 0.90 | 2.32 | 6.03 | 6.39 | **0.07** | 254.29 | 50.62 | timeout | 225.22 | LadybugDB |
-| **Peak memory (GiB)** | — | 6.7 | 10.1 | 12.4 | 0.9 | 5.1 | 8.8 | 13.3 | 0.5 | 3.1 | 2.4 | — |
+| **Load** | — | 119.5 | 159.2 | 99.4 | **0.46** | 2.44 | 2.95 | 252.0 | 15.1 | 222.2 | 659.3 | DuckDB |
+| **Q1** | 221,636,419 | **0.08** | 2.45 | 0.17 | 0.11 | 4.61 | 0.12 | 4.99 | 9.17 | 58.06 | 36.43 | ArcadeDB |
+| **Q2** | 1,085,627 | 0.13 | 4.40 | 0.17 | **0.01** | 0.15 | 0.10 | 1.63 | 0.65 | timeout | 53.78 | DuckDB |
+| **Q3** | 753,570 | 0.05 | 3.17 | 0.06 | **0.04** | 2.30 | 10.44 | 10.76 | 1.60 | timeout | 4.59 | DuckDB |
+| **Q4** | 14,836,038 | **0.04** | 1.06 | 0.05 | 0.06 | N/A | 0.17 | 6.28 | 6.35 | 4.30 | 3.53 | ArcadeDB |
+| **Q5** | 13,824,510 | 0.17 | 11.39 | 0.25 | **0.04** | N/A | 0.18 | 5.66 | 2.17 | 3.54 | 3.93 | DuckDB |
+| **Q6** | 1,668,134,320 | **0.07** | 11.00 | 0.13 | 1.84 | 1.38 | 0.66 | 28.49 | 15.50 | 121.15 | 40.93 | ArcadeDB |
+| **Q7** | 26,190,133 | **0.04** | 1.07 | 0.06 | 0.07 | N/A | 0.41 | 8.04 | 11.16 | 4.92 | 47.96 | ArcadeDB |
+| **Q8** | 6,907,213 | 0.11 | 6.91 | 0.14 | **0.07** | N/A | 0.32 | 12.39 | 3.39 | 3.02 | 4.90 | DuckDB |
+| **Q9** | 1,596,153,418 | 0.30 | 0.87 | 0.33 | 6.03 | 6.39 | **0.07** | 254.29 | 50.62 | timeout | 225.22 | LadybugDB |
+| **Peak memory (GiB)** | — | 4.3 | 12.0 | 12.9 | 0.9 | 5.1 | 8.8 | 13.3 | 0.5 | 3.1 | 2.4 | — |
 
 All counts reported by every system match the [official LSQB expected output](https://github.com/ldbc/lsqb/blob/main/expected-output/expected-output.csv). Kuzu skips Q4/Q5/Q7/Q8 (its driver has no `:Message` supertype support yet; LadybugDB's driver runs each of them as a Post part plus a Comment part and adds the counts, so all nine queries are covered). Memgraph times out (5 min) on Q2, Q3 and Q9. Dgraph and SurrealDB are excluded by default (see below). The embedded ArcadeDB live heap after a full GC is 0.67 GiB (OLAP) and 1.4 GiB (OLTP).
 
 **Analysis:**
 
-- **DuckDB is the fastest on 4 of 9 queries** (Q2, Q3, Q5, Q8) with the fastest load by far (0.46 s). **ArcadeDB (OLAP) is fastest on 4 of 9** (Q1 0.09 s vs 0.11 s for DuckDB, Q4, Q6 0.13 s vs 0.66 s for LadybugDB and 1.84 s for DuckDB, and Q7), and **LadybugDB on Q9**.
-- **Q9** is the one where LadybugDB is far ahead: 0.07 s against 1.78 s for ArcadeDB with the GAV (0.90 s without it) and 6.03 s for DuckDB. Q9 is the anti-pattern variant of the two-hop Person-KNOWS query, so LadybugDB's plan for it is much better than Kuzu's (6.39 s) despite sharing the codebase.
-- **ArcadeDB OLAP vs OLTP:** the GAV makes Q1 to Q8 23-98x faster (Q5 13.59 -> 0.19 s, Q6 12.77 -> 0.13 s, Q8 8.60 -> 0.12 s), but Q9 is faster without it (0.90 s vs 1.78 s).
-- **ArcadeDB Docker** is on par with embedded OLAP (within 1.5x on every query) and 8-160x faster than Neo4j on every query.
+- **DuckDB is the fastest on 4 of 9 queries** (Q2, Q3, Q5, Q8) with the fastest load by far (0.46 s). **ArcadeDB (OLAP) is fastest on 4 of 9** (Q1 0.08 s vs 0.11 s for DuckDB, Q4, Q6 0.07 s vs 0.66 s for LadybugDB and 1.84 s for DuckDB, and Q7), and **LadybugDB on Q9**.
+- **Q9** is the one where LadybugDB is far ahead: 0.07 s against 0.30 s for ArcadeDB with the GAV (0.87 s without it; 1.78 s on 26.10.1 before [#9282](https://github.com/ArcadeData/arcadedb/issues/9282)) and 6.03 s for DuckDB. Q9 is the anti-pattern variant of the two-hop Person-KNOWS query, so LadybugDB's plan for it is much better than Kuzu's (6.39 s) despite sharing the codebase.
+- **ArcadeDB OLAP vs OLTP:** the GAV makes Q1 to Q8 26-157x faster (Q5 11.39 -> 0.17 s, Q6 11.00 -> 0.07 s, Q8 6.91 -> 0.11 s) and, since [#9282](https://github.com/ArcadeData/arcadedb/issues/9282), Q9 too (0.87 -> 0.30 s; on 26.10.1 it was faster without the GAV, 0.90 s vs 1.78 s).
+- **ArcadeDB Docker** is on par with embedded OLAP (within 2.2x on every query) and 9-770x faster than Neo4j on every query.
 - **Neo4j** completes all queries but is 55-3900x slower than the fastest system, with Q9 at 254 s, close to the 5-minute limit.
 - **PostgreSQL** is a solid middle ground: faster than Neo4j on 6 of 9 queries (Q2, Q3, Q5, Q6, Q8, Q9) and faster than Memgraph and FalkorDB on most.
 - **FalkorDB** returns correct counts on all 9 queries but is 40-6900x slower than the fastest system and has the slowest load (659 s).

@@ -6,6 +6,7 @@ import com.arcadedb.graph.GraphBatch;
 import com.arcadedb.graph.Vertex;
 import com.arcadedb.graph.olap.GraphAlgorithms;
 import com.arcadedb.graph.olap.GraphAnalyticalView;
+import com.arcadedb.graph.olap.WorkCheckpoint;
 import com.arcadedb.schema.Schema;
 import com.arcadedb.schema.Type;
 
@@ -246,13 +247,28 @@ public class ArcadeDBEmbeddedBenchmark {
     System.out.println("  Reached: " + ssspReached + " nodes");
     System.out.println("  SSSP time: " + ssspTime + "s");
 
-    // CDLP
-    System.out.println("\n[ArcadeDB] Running CDLP (max_iter=10)...");
+    // CDLP: LDBC Graphalytics breaks ties by the smallest vertex id, so the kernel gets the rank of every dense node in
+    // vertex-id order (built once, outside the timed call, like the node mapping itself).
+    final long[] vids = new long[n];
+    db.begin();
+    try {
+      var vit = db.iterateType(VERTEX_TYPE, false);
+      while (vit.hasNext()) {
+        Vertex v = vit.next().asVertex();
+        int gid = gav.getNodeMapping().getGlobalId(v.getIdentity());
+        if (gid >= 0 && gid < n)
+          vids[gid] = ((Number) v.get(ID_PROP)).longValue();
+      }
+    } finally {
+      db.rollback();
+    }
+    final int[] tieRank = rankByValue(vids);
+    System.out.println("\n[ArcadeDB] Running CDLP (max_iter=10, ties broken by vertex id)...");
     start = System.currentTimeMillis();
-    int[] cdlp = GraphAlgorithms.labelPropagation(gav, 10, EDGE_TYPE);
+    int[] cdlp = GraphAlgorithms.labelPropagation(gav, 10, tieRank, WorkCheckpoint.NONE, EDGE_TYPE);
     double cdlpTime = (System.currentTimeMillis() - start) / 1000.0;
     results.put("CDLP", cdlpTime);
-    warm(results, "CDLP", warmReps, () -> GraphAlgorithms.labelPropagation(g, 10, EDGE_TYPE));
+    warm(results, "CDLP", warmReps, () -> GraphAlgorithms.labelPropagation(g, 10, tieRank, WorkCheckpoint.NONE, EDGE_TYPE));
     System.out.println("  CDLP time: " + cdlpTime + "s");
 
     // Live heap after a full GC (the graph analytical view, the loaded data and the result arrays): what the engine
@@ -265,19 +281,6 @@ public class ArcadeDBEmbeddedBenchmark {
     final String dumpDir = System.getProperty("dump.dir");
     if (dumpDir != null) {
       new java.io.File(dumpDir).mkdirs();
-      final long[] vids = new long[n];
-      db.begin();
-      try {
-        var vit = db.iterateType(VERTEX_TYPE, false);
-        while (vit.hasNext()) {
-          Vertex v = vit.next().asVertex();
-          int gid = gav.getNodeMapping().getGlobalId(v.getIdentity());
-          if (gid >= 0 && gid < n)
-            vids[gid] = ((Number) v.get(ID_PROP)).longValue();
-        }
-      } finally {
-        db.rollback();
-      }
       dumpDoubles(dumpDir, "PR", vids, pr);
       dumpInts(dumpDir, "WCC", vids, wcc, false);
       dumpDoubles(dumpDir, "LCC", vids, lcc);
@@ -336,6 +339,18 @@ public class ArcadeDBEmbeddedBenchmark {
       }
     }
     System.out.println("  [dump] " + algo);
+  }
+
+  /** rank[i] = position of values[i] in ascending order (a permutation of 0..n-1). */
+  static int[] rankByValue(long[] values) {
+    final Integer[] order = new Integer[values.length];
+    for (int i = 0; i < order.length; i++)
+      order[i] = i;
+    java.util.Arrays.sort(order, (a, b) -> Long.compare(values[a], values[b]));
+    final int[] rank = new int[values.length];
+    for (int r = 0; r < order.length; r++)
+      rank[order[r]] = r;
+    return rank;
   }
 
   static int[] topK(double[] arr, int k) {

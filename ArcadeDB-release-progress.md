@@ -76,3 +76,27 @@ The earlier cold single-run numbers of 2026-10-02 to 2026-10-04 are superseded.
 Memory: embedded Graphalytics process peak 6.4 GiB with a 0.75 GiB live heap after GC (fixed 12 GB heap); Docker container 12.3 GiB.
 
 Full tables and the other vendors: [results-multivendor-validated-2026-10-05.md](results-multivendor-validated-2026-10-05.md).
+
+## 26.11.1-SNAPSHOT, warm runs of 2026-10-06
+
+ArcadeDB `main` @ `cbf701d66e` (`26.11.1-SNAPSHOT`, engine installed locally and Docker image `arcadedata/arcadedb:26.11.1-SNAPSHOT`, image id `b216d25c81e1`), which adds
+[#9282](https://github.com/ArcadeData/arcadedb/issues/9282) (LSQB Q9 with the anti-pattern) and
+[#9285](https://github.com/ArcadeData/arcadedb/issues/9285) (CDLP tie-break by vertex id). Same machine and method as the section above (Temurin 25.0.4.1, compact object
+headers, AC power, swap 2 GB, warm medians; raw logs in `weekly-results/20261006-26.11.1/`). Every Graphalytics output validates at 100% against the reference (all six
+algorithms, embedded and Docker) and all nine LSQB counts equal the official expected counts (embedded OLAP, OLTP and Docker).
+
+| Variant | Load | PR | WCC | BFS | LCC | SSSP | CDLP |
+|---|---|---|---|---|---|---|---|
+| Embedded Graphalytics (`datagen-7_5-fb`) | 71.9 | 0.085 | 0.003 | 0.020 | 2.05 | 0.75 | 0.96 (was 1.09, invalid) |
+| Docker Graphalytics | 43.9 | 0.16 | 0.02 | 0.06 | 2.61 | 1.39 | 1.45 (was 1.08, invalid) |
+
+| LSQB SF1 | Load | Q1 | Q2 | Q3 | Q4 | Q5 | Q6 | Q7 | Q8 | Q9 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Embedded OLAP (GAV) | 119.5 | 0.08 | 0.13 | 0.05 | 0.04 | 0.17 | 0.07 | 0.04 | 0.11 | 0.30 (was 1.78) |
+| Embedded OLTP | 159.2 | 2.45 | 4.40 | 3.17 | 1.06 | 11.39 | 11.00 | 1.07 | 6.91 | 0.87 |
+| Server (Docker) | 99.4 | 0.17 | 0.17 | 0.06 | 0.05 | 0.25 | 0.13 | 0.06 | 0.14 | 0.33 (was 2.32) |
+
+Load times: the embedded Graphalytics, Docker Graphalytics and embedded LSQB databases were reused, so their load times are the remembered original loads (made with 26.10.1); only the Docker LSQB database was loaded fresh on the new image (99.4 s).
+Memory: embedded Graphalytics process peak 5.6 GiB (live heap 0.77 GiB after GC), LSQB OLAP 4.3 GiB (0.67), OLTP 12.0 GiB (1.4); Docker 12.3 GiB (Graphalytics), 12.9 GiB (LSQB).
+Q9 is now 5.9x faster embedded and 7x faster in Docker, and the GAV is faster than the OLTP path on all nine queries. The other LSQB queries and algorithms are unchanged within run-to-run noise.
+The Docker CDLP time includes computing the vertex-id tie-break rank inside the procedure; the embedded kernel gets a precomputed rank.
