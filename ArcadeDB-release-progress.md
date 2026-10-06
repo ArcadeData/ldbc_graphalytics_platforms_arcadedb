@@ -119,6 +119,30 @@ OLAP BFS runs after four other algorithms and still takes 9.1 s, so the bulk-UPD
 
 **OLTP PR, WCC and LCC: noise, not a regression.** The first run was slower than the 26.10.1 column for these three (PR 90.1, WCC 113.9, LCC 320). A repeat of exactly these three on the same build and machine (AC power, fresh load, validated, 2026-10-06 12:52) gave PR 36.1, WCC 68.1, LCC 149.6, at or below the 26.10.1 column (45.8, 75.8, 177). The same build therefore varies 2.5x (PR), 1.7x (WCC) and 2.1x (LCC) between two runs, and between the 26.10.1 release and this build only 6 engine files changed (none on the no-view PR/WCC/LCC path). Read OLTP differences below about 2.5x as noise; the table above keeps the first run, the repeat is in the text.
 
+## ArcadeDB Docker: Bolt against the HTTP API (image 26.11.1-SNAPSHOT `b216d25c81e1`, 2026-10-06, AC power)
+
+The Docker drivers now send the timed calls over Bolt (the earlier tables were measured over HTTP). To see what the protocol changes, the same image and cached data were run twice per protocol in opposite orders (Bolt, HTTP, then HTTP, Bolt); every result valid (LSQB counts equal the official ones, Graphalytics outputs equal the reference). Seconds, mean of the two rounds; the last column is the largest difference between the two rounds of one protocol.
+
+| | Bolt | HTTP | Bolt vs HTTP | spread within a protocol |
+|---|---|---|---|---|
+| LSQB Q1 | 0.139 | 0.139 | +0.1% | 9% |
+| Q2 | 0.148 | 0.132 | +12% | 10% |
+| Q3 | 0.058 | 0.064 | -10% | 15% |
+| Q4 | 0.049 | 0.052 | -6% | 7% |
+| Q5 | 0.206 | 0.228 | -10% | 10% |
+| Q6 | 0.084 | 0.100 | -16% | 20% |
+| Q7 | 0.051 | 0.053 | -4% | 13% |
+| Q8 | 0.124 | 0.125 | -1% | 14% |
+| Q9 | 0.303 | 0.299 | +1% | 1% |
+| Graphalytics PageRank | 0.135 | 0.134 | +1% | 16% |
+| WCC | 0.019 | 0.022 | -12% | 13% |
+| BFS | 0.036 | 0.042 | -14% | 19% |
+| LCC | 2.414 | 2.374 | +2% | 3% |
+| SSSP | 1.372 | 1.368 | +0% | 3% |
+| CDLP | 1.388 | 1.400 | -1% | 6% |
+
+Every difference is within the spread between two runs of the same protocol, so Bolt and HTTP are indistinguishable here. That is expected: each timed call returns one row (`count(*)`), so the protocol adds only per-request overhead. The protocol would matter for calls that return many rows (the per-vertex exports are not timed). Container memory peaks are the same (12.5-12.8 GiB, the fixed heap).
+
 ## The three 26.8.1 to 26.10.1 regressions: status on 26.11.1-SNAPSHOT
 
 Details and root causes: [fix-plan-26.10.1-regressions.md](fix-plan-26.10.1-regressions.md). Verdicts from the warm runs above plus the bulk UPDATE reproducer (`scripts/bulk_update_repro.py`, AC power, Temurin 25).
@@ -129,7 +153,7 @@ Details and root causes: [fix-plan-26.10.1-regressions.md](fix-plan-26.10.1-regr
 | 2 | Star-join push-down declined for labelled arms (LSQB Q4/Q7 OLAP 0.01 s to 5-12 s) | `6e54555ea0` (#6337) | OLAP Q4 0.04 s, Q7 0.04 s; OLTP 1.06 s, 1.07 s |
 | 3 | Q5 push-down declined (OLAP 0.2 s to ~3.5 s) | not identified | OLAP Q5 0.17 s |
 
-**LSQB Q8 after #9290.** The 0.11 s OLAP time of Q8 in the 26.11.1-SNAPSHOT column came from an operator fast path that ignored the labels of `t1` and `t2` and was wrong with parallel edges. [#9290](https://github.com/ArcadeData/arcadedb/issues/9290) (merged after that build) made the push-down decline the shape, so Q8 fell back to the row pipeline: 3.9 s with the analytical view and 9.2 s without (battery, relative measurement, same count 6,907,213). [#9354](https://github.com/ArcadeData/arcadedb/pull/9354) (merged 2026-10-06) counts the shape exactly on both paths and brings it back to 0.09 s and 1.2 s. Seconds on AC power for the merged build are still to be measured.
+**LSQB Q8 after #9290.** The 0.11 s OLAP time of Q8 in the 26.11.1-SNAPSHOT column came from an operator fast path that ignored the labels of `t1` and `t2` and was wrong with parallel edges. [#9290](https://github.com/ArcadeData/arcadedb/issues/9290) (merged after that build) made the push-down decline the shape, so Q8 fell back to the row pipeline: 3.9 s with the analytical view and 9.2 s without (battery, relative measurement, same count 6,907,213). [#9354](https://github.com/ArcadeData/arcadedb/pull/9354) (merged 2026-10-06) counts the shape exactly on both paths and brings it back to 0.09 s and 1.2 s. Measured on AC power (embedded LSQB SF1, median of 7 warm runs, two interleaved rounds, same count 6,907,213 in all eight runs): OLAP 3.82 s and 3.84 s before, 0.084 s and 0.090 s after (about 44x); OLTP 9.31 s and 9.31 s before, 1.36 s and 1.28 s after (about 7x). Builds: `9c7da2c230` (before) and `246821a605` (the #9354 merge); raw logs in `weekly-results/20261006-ab-bolt-q8/`.
 
 Still to measure on the final build: Mode 1 in the default algorithm order (BFS after other algorithms had written results), 3 repetitions.
 The guard against a repeat is the `bulk-update` step and the previous-run comparison in `weekend.py` (`scripts/check_regressions.py`).
