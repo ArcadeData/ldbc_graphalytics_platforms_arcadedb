@@ -16,6 +16,7 @@ import socket
 import subprocess
 import time
 
+import bench_bolt
 import bench_state
 
 HEAP = "12g"  # CLAUDE.md rule: same JVM heap for every JVM-based vendor
@@ -226,9 +227,9 @@ def _specs():
             [("data", "/var/lib/falkordb/data")], ready_port=6379, settle=5,
             ready_timeout=1800, ready_probe=redis_ready),
         ("lsqb", "arcadedb"): Spec(
-            "arcadedb-lsqb", arcade_image, ["2480:2480"],
+            "arcadedb-lsqb", arcade_image, ["2480:2480", f"{bench_bolt.bolt_port()}:7687"],
             {"JAVA_OPTS": "-Darcadedb.server.rootPassword=benchmark "
-                          "-Darcadedb.server.httpBodyContentMaxSize=4294967296",
+                          "-Darcadedb.server.httpBodyContentMaxSize=4294967296 " + bench_bolt.BOLT_PLUGIN_OPT,
              "ARCADEDB_OPTS_MEMORY": f"-Xms{HEAP} -Xmx{HEAP}"},
             [("data", "/home/arcadedb/databases")], ready_port=2480, settle=10),
     }

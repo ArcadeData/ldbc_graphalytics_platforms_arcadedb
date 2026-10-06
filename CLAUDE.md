@@ -312,7 +312,7 @@ curl -X POST "http://localhost:6688/api/v1/admin/workers/group/\$/$WORKER"
 
 - **Memgraph**: Loading 34M edges via Cypher MATCH+CREATE is extremely slow. The load phase WILL timeout at 5 minutes. This is expected — record as "timeout" and move on.
 - **Neo4j**: The benchmark script auto-starts its own Docker container if not running. Still clean up after.
-- **ArcadeDB Docker**: Uses a two-phase approach — embedded Java loader for fast data loading, then Docker for algorithm execution via HTTP API. After loading, must wait for GAV (CSR) to build (~60-90s).
+- **ArcadeDB Docker**: Uses a two-phase approach — embedded Java loader for fast data loading, then Docker for algorithm execution over **Bolt** (like Neo4j and Memgraph; `shared/bench_bolt.py`, the Bolt plugin is enabled with `-Darcadedb.server.plugins=Bolt:com.arcadedb.bolt.BoltProtocolPlugin` and port 7687 is published; setup such as the GAV create/rebuild and the LSQB bulk load stays on HTTP; `ARCADEDB_BENCH_PROTOCOL=http` runs the timed calls over HTTP for an A/B on one image; numbers published up to 2026-10-06 were measured over HTTP). After loading, must wait for GAV (CSR) to build (~60-90s).
 - **HugeGraph/Vermeer**: Requires a Docker network with master + worker containers. Worker must be assigned to the `$` pool before running.
 - **Kuzu, DuckPGQ**: Embedded (no Docker). Clean up their temp database dirs after.
 

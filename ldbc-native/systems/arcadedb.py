@@ -4,14 +4,18 @@ import time
 import os
 import shutil
 
+import bench_bolt
 from ._common import VERTEX_FILE, EDGE_FILE, bench_common
 
 
-def _dump_all(cmd):
+def _dump_all(cmd, bolt=None):
     """Full per-vertex outputs of the exact procedure calls the benchmark times (see bench_common.dump_*)."""
     if not bench_common.dump_enabled():
         return
     def rows(q, *cols):
+        if bolt is not None:
+            yield from bolt.rows(q, *cols)
+            return
         r = cmd(q, language="opencypher", timeout=900)
         if r.status_code != 200:
             raise RuntimeError(r.text[:200])
@@ -55,12 +59,13 @@ def _dump_all(cmd):
 
 def run_benchmark():
     """
-    ArcadeDB benchmark via Docker (HTTP API) — same network overhead as
-    Neo4j/Memgraph/FalkorDB/HugeGraph benchmarks for fair comparison.
+    ArcadeDB benchmark via Docker. The timed algorithm calls and the exports go over Bolt, like Neo4j and Memgraph
+    (ARCADEDB_BENCH_PROTOCOL=http keeps the HTTP API for an A/B); the setup (GAV create/rebuild) stays on HTTP.
 
     Setup:
-      docker run -d --name arcadedb -p 2480:2480 -p 2424:2424 \
-        -e JAVA_OPTS="-Darcadedb.server.rootPassword=benchmark -Xms12g -Xmx12g --add-modules jdk.incubator.vector" \
+      docker run -d --name arcadedb -p 2480:2480 -p 2424:2424 -p 7687:7687 \
+        -e JAVA_OPTS="-Darcadedb.server.rootPassword=benchmark -Xms12g -Xmx12g --add-modules jdk.incubator.vector \
+                      -Darcadedb.server.plugins=Bolt:com.arcadedb.bolt.BoltProtocolPlugin" \
         -v "$(cd ../datasets && pwd)":/data/graphs:ro \
         -v /tmp/arcadedb-docker-data:/home/arcadedb/databases \
         arcadedata/arcadedb:latest
@@ -75,6 +80,7 @@ def run_benchmark():
     # Host ports are configurable so that the benchmark can run next to another ArcadeDB on the default ports
     http_port = os.environ.get("ARCADEDB_BENCH_HTTP_PORT", "2480")
     binary_port = os.environ.get("ARCADEDB_BENCH_BINARY_PORT", "2424")
+    bolt_port = bench_bolt.bolt_port()
     base = f"http://localhost:{http_port}/api/v1"
     auth = ("root", "benchmark")
     db = "bench"
@@ -209,10 +215,11 @@ public class ArcadeDBEmbeddedLoader {
     _sp.run(["docker", "rm", "-f", "arcadedb"], capture_output=True)
     _sp.run([
         "docker", "run", "-d", "--name", "arcadedb",
-        "-p", f"{http_port}:2480", "-p", f"{binary_port}:2424",
+        "-p", f"{http_port}:2480", "-p", f"{binary_port}:2424", "-p", f"{bolt_port}:7687",
         "-e", "ARCADEDB_OPTS_MEMORY=-Xms12g -Xmx12g",
         "-e", "JAVA_OPTS=--add-modules jdk.incubator.vector -Darcadedb.server.rootPassword=benchmark "
-                 "-Darcadedb.server.httpQueryMaxResultRows=5000000",   # full per-vertex export of graph500-22 (2.4M rows)
+                 "-Darcadedb.server.httpQueryMaxResultRows=5000000 "   # full per-vertex export of graph500-22 (2.4M rows) over HTTP
+                 + bench_bolt.BOLT_PLUGIN_OPT,
         "-v", f"{data_root}:/home/arcadedb/databases",
         "-v", f"{log_root}:/home/arcadedb/log",
         os.environ.get("ARCADEDB_IMAGE", "arcadedata/arcadedb:26.11.1-SNAPSHOT")
@@ -263,10 +270,23 @@ public class ArcadeDBEmbeddedLoader {
     # Give the async CSR build time to complete
     time.sleep(5)
 
+    results["_protocol"] = bench_bolt.protocol()
+    bolt = None
+    if bench_bolt.use_bolt():
+        try:
+            bolt = bench_bolt.ArcadeBolt(db)
+            print(f"\n[ArcadeDB] Algorithm calls over Bolt ({bolt.uri}, database {db})")
+        except Exception as e:
+            print(f"  Bolt connection failed: {e}")
+            bench_common.cleanup_docker("arcadedb")
+            return {"error": f"Bolt: {e}"}
+
     # Helper to run an algorithm via OpenCypher
     def run_algo(name, cypher_cmd, timeout=300):
         print(f"\n[ArcadeDB] Running {name}...")
         def _run():
+            if bolt is not None:
+                return bolt.run(cypher_cmd)
             r = cmd(cypher_cmd, language="opencypher", timeout=timeout)
             if r.status_code != 200:
                 raise RuntimeError(r.text[:200])
@@ -309,7 +329,9 @@ public class ArcadeDBEmbeddedLoader {
     run_algo("cdlp",
              "CALL algo.labelPropagation({maxIterations: 10, tieBreakProperty: 'VID'}) YIELD communityId RETURN count(*) AS cnt")
 
-    _dump_all(cmd)
+    _dump_all(cmd, bolt)
+    if bolt is not None:
+        bolt.close()
     bench_common.cleanup_docker("arcadedb")
     return results
 
