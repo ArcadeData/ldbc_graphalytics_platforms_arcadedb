@@ -95,3 +95,4 @@ Acceptance: LSQB Q5 OLAP back to ~0.2s.
 
 - This repo's daily benchmark workflow should fail or alert when any ArcadeDB number regresses > 2x versus the previous run (LSQB Q1-Q9 OLAP/OLTP, Mode 2 algorithms, Mode 1 full sequence **in the default algorithm order**, since BFS only regressed after other algorithms had written results).
 - Add a push-down eligibility test in the engine that fails when Q1-Q9 stop using their count push-down ops.
+  Written 2026-10-06 in the engine checkout (not yet committed/PR'd there): `engine/src/test/java/com/arcadedb/query/opencypher/LsqbCountPushDownEligibilityTest.java`, the official Q1-Q7 and Q9 texts must show `Using Count Push-Down` and their operator (CHAIN PATHS, PAIR JOIN, TRIANGLES, STAR JOIN, ANTI-JOIN CHAIN); Q8 has no push-down today and is left out. Checked that it fails when a marker changes. `GAVEligibilityTest` only asserts `Cost-Based`, which is also printed when the push-down is declined.
