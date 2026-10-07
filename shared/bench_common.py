@@ -296,10 +296,12 @@ def measure_server_time(vendor, algo, fn, reps=None):
     seconds; one warm-up call, then the median of `reps` calls (a single call when the warm-up took more than WARM_SLOW)."""
     timer = ServerTimer()
     try:
+        print(f"  [server-time] {vendor} {algo}: measuring ...", flush=True)   # keeps the orchestrator's idle watchdog quiet
         t0 = time.perf_counter()
         timer.add(fn())
         slow = time.perf_counter() - t0 > WARM_SLOW
         for _ in range(1 if slow else (reps or GRAPHALYTICS_REPS)):
+            print(f"  [server-time] {vendor} {algo}: timed call ...", flush=True)
             timer.add(fn())
     except Exception as e:  # noqa: BLE001
         print(f"  [server-time] {vendor} {algo}: failed: {str(e)[:120]}", flush=True)

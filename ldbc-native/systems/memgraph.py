@@ -233,9 +233,14 @@ def run_benchmark():
 
         def _profile():   # engine-reported time of the procedure call / expansion operator (PROFILE, absolute time in ms)
             import re
-            cursor.execute("PROFILE " + q)
+            pconn = mgclient.connect(host='127.0.0.1', port=7687, sslmode=mgclient.MG_SSLMODE_DISABLE)
+            pconn.autocommit = True   # PROFILE is not allowed inside the multicommand transaction of the benchmark connection
+            pcur = pconn.cursor()
+            pcur.execute("PROFILE " + q)
             best = 0.0
-            for row in cursor.fetchall():
+            rows_ = pcur.fetchall()
+            pconn.close()
+            for row in rows_:
                 op, absolute = str(row[0]), str(row[-1])
                 m = re.search(r"([0-9.]+)\s*ms", absolute)
                 if m and ("CallProcedure" in op or "Expand" in op or "BFS" in op or "ShortestPath" in op or "WeightedShortestPath" in op):
