@@ -21,6 +21,21 @@ CDLP_Q = ("CALL algo.labelPropagation({maxIterations: 10, tieBreakProperty: 'VID
           "RETURN node.VID AS id, communityId")
 
 
+# Compute-only variants (GRAPHALYTICS_OUTPUT=count, the default): the same procedure call, but the server reduces the output to a
+# summary that depends on every value, so only one row travels. check_summary() compares it with the reference output.
+COUNT_AGG = {"pagerank": ("score", "sum(score)"), "wcc": ("componentId", "count(DISTINCT componentId)"), "bfs": ("depth", "max(depth)"),
+             "lcc": ("localClusteringCoefficient", "sum(localClusteringCoefficient)"), "sssp": ("cost", "max(cost)"),
+             "cdlp": ("communityId", "count(DISTINCT communityId)")}
+
+
+def _count_query(name, full):
+    """The WITH clause is required: an aggregate directly after CALL ... YIELD returns 0 / null for sum, max and count(DISTINCT)
+    on 26.11.1-SNAPSHOT (only count(*) is right), see DECISIONS-2026-10-07.md."""
+    col, agg = COUNT_AGG[name]
+    head = full[:full.rindex(" RETURN ")]
+    return f"{head} WITH node, {col} RETURN count(*) AS n, {agg} AS agg"
+
+
 def _dump_all(cmd):
     """Full per-vertex outputs of the exact procedure calls the benchmark times (see bench_common.dump_*)."""
     if not bench_common.dump_enabled():
@@ -273,19 +288,25 @@ public class ArcadeDBEmbeddedLoader {
     # Give the async CSR build time to complete
     time.sleep(5)
 
-    # Helper to run an algorithm via OpenCypher. The call returns the full per-vertex output, like every other vendor: the
-    # whole JSON result is parsed inside the timed call.
-    def run_algo(name, cypher_cmd, timeout=300):
+    # Helper to run an algorithm via OpenCypher. GRAPHALYTICS_OUTPUT=count (default): compute only, the call returns one summary row;
+    # =full: the call returns the full per-vertex output and the whole JSON result is parsed inside the timed call.
+    def run_algo(name, full_query, timeout=300):
         print(f"\n[ArcadeDB] Running {name}...")
+        query = _count_query(name, full_query) if bench_common.compute_only() else full_query
         def _run():
-            r = cmd(cypher_cmd, language="opencypher", timeout=timeout)
+            r = cmd(query, language="opencypher", timeout=timeout)
             if r.status_code != 200:
                 raise RuntimeError(r.text[:200])
-            return len(r.json()["result"])
-        elapsed, rows = bench_common.run_timed_warm(name, _run, timeout=timeout)
+            rows = r.json()["result"]
+            return (rows[0]["n"], rows[0]["agg"]) if bench_common.compute_only() else (len(rows), None)
+        elapsed, summary = bench_common.run_timed_warm(name, _run, timeout=timeout)
         results[name] = elapsed
         if isinstance(elapsed, (int, float)):
-            print(f"  {name} time: {elapsed:.2f}s  ({rows} rows returned)")
+            print(f"  {name} time: {elapsed:.2f}s  (summary {summary})")
+            if bench_common.compute_only():
+                n, agg = summary
+                # algo.bfs and the Dijkstra procedure do not emit the source itself (the export adds it with distance 0)
+                bench_common.check_summary("arcadedb", name, n + 1 if name in ("bfs", "sssp") else n, agg)
 
     # Graphalytics PageRank: undirected (BOTH), exactly 10 iterations, no early stop. The procedure's
     # defaults (direction OUT, 20 iterations, tolerance 1e-4) compute a different, directed PageRank.
@@ -296,6 +317,8 @@ public class ArcadeDBEmbeddedLoader {
     # The SSSP procedure defaults to direction OUT; the undirected Graphalytics SSSP needs BOTH (in SSSP_Q).
     run_algo("sssp", SSSP_Q)
     run_algo("cdlp", CDLP_Q)
+    results["_summary"] = dict(bench_common.SUMMARY_CHECKS)
+    results["_output"] = bench_common.OUTPUT_MODE
 
     _dump_all(cmd)
     bench_common.cleanup_docker("arcadedb")

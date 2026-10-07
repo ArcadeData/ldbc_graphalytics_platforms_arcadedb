@@ -185,6 +185,74 @@ ALGORITHM_METRICS = {"pagerank", "wcc", "lcc", "bfs", "sssp", "cdlp",
                      "q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9"}
 
 
+# ------------------------------------------------------------ what the timed call returns
+#
+# GRAPHALYTICS_OUTPUT=count (default): COMPUTE ONLY. The timed call runs the whole algorithm server-side and returns a small
+# summary (row count plus one aggregate that depends on every output value), so no vendor pays for moving or serialising the
+# per-vertex output and no vendor can skip the work (the aggregate needs every value). The untimed export (GRAPHALYTICS_DUMP_DIR)
+# still writes the full per-vertex output of the same algorithm for the official validation.
+# GRAPHALYTICS_OUTPUT=full: the timed call returns the full per-vertex output (the fallback if a compute-only call is optimised away).
+OUTPUT_MODE = os.environ.get("GRAPHALYTICS_OUTPUT", "count").lower()
+if OUTPUT_MODE not in ("count", "full"):
+    raise SystemExit("GRAPHALYTICS_OUTPUT must be 'count' or 'full'")
+SUMMARY_CHECKS = {}      # algorithm -> "ok" | "MISMATCH ..." (compared with the official reference output)
+_REF_SUMMARY = {}
+_UNREACHABLE = 9223372036854775807
+SUMMARY_NAMES = {"pagerank": "PR", "pr": "PR", "wcc": "WCC", "bfs": "BFS", "lcc": "LCC", "sssp": "SSSP", "cdlp": "CDLP"}
+
+
+def compute_only():
+    return OUTPUT_MODE == "count"
+
+
+def reference_summary(algo):
+    """Summary of the official reference output of the current dataset (graph500-22-w uses graph500-22; the summaries do not
+    depend on the swapped ids):  PR/LCC (n, sum), WCC/CDLP (n, distinct values), BFS/SSSP (reached vertices, max distance)."""
+    algo = SUMMARY_NAMES[algo.lower()]
+    if algo in _REF_SUMMARY:
+        return _REF_SUMMARY[algo]
+    graph = "graph500-22" if GRAPHALYTICS_DATASET == "graph500-22-w" else GRAPHALYTICS_DATASET
+    path = os.path.join(GRAPHS_DIR, graph, f"{graph}-{algo}")
+    n, total, distinct, mx = 0, 0.0, set(), None
+    with open(path) as f:
+        for line in f:
+            _, v = line.split()
+            if algo in ("PR", "LCC"):
+                total += float(v)
+            elif algo in ("WCC", "CDLP"):
+                distinct.add(v)
+            else:
+                if v in ("infinity", "inf", str(_UNREACHABLE)):
+                    continue
+                x = float(v)
+                mx = x if mx is None else max(mx, x)
+            n += 1
+    if algo in ("PR", "LCC"):
+        ref = (n, total)
+    elif algo in ("WCC", "CDLP"):
+        ref = (n, len(distinct))
+    else:
+        reached = sum(1 for _ in open(path) if _.split()[1] not in ("infinity", "inf", str(_UNREACHABLE)))
+        ref = (reached, mx)
+    _REF_SUMMARY[algo] = ref
+    return ref
+
+
+def check_summary(vendor, algo, n, agg):
+    """Compare the compute-only summary of a timed call with the reference output. Never raises; the verdict goes to
+    SUMMARY_CHECKS (a mismatch means the timed call did not compute what the benchmark defines, so its time is not ranked)."""
+    try:
+        key = SUMMARY_NAMES[algo.lower()]
+        rn, ragg = reference_summary(algo)
+        ok = int(n) == int(rn) and (agg is None or abs(float(agg) - float(ragg)) <= 1e-4 * max(1.0, abs(float(ragg))))
+        verdict = "ok" if ok else f"MISMATCH got ({n}, {agg}) expected ({rn}, {ragg})"
+    except Exception as e:  # noqa: BLE001
+        key, verdict = algo.upper(), f"check failed: {str(e)[:120]}"
+    SUMMARY_CHECKS[key] = verdict
+    print(f"  [summary] {vendor} {key}: {verdict}", flush=True)
+    return verdict == "ok"
+
+
 def dump_dir():
     return os.environ.get("GRAPHALYTICS_DUMP_DIR")
 

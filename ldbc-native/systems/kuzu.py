@@ -19,6 +19,16 @@ LCC_QUERY = "CALL local_clustering_coefficient('pg') RETURN node.id, coefficient
 BFS_QUERY = "MATCH (a:Node {id: 6})-[e:Edge* SHORTEST 1..30]-(b:Node) RETURN b.id, length(e)"
 
 
+# Compute-only variants (GRAPHALYTICS_OUTPUT=count, the default): same call, the output reduced to (rows, aggregate over every value).
+COUNT_QUERIES = {
+    "PageRank": ("CALL page_rank('pg', dampingFactor := 0.85, maxIterations := 11, tolerance := 0.0) "
+                 "RETURN count(*) AS n, sum(rank) AS agg"),
+    "WCC": "CALL weakly_connected_components('pg') RETURN count(*) AS n, count(DISTINCT group_id) AS agg",
+    "LCC": "CALL local_clustering_coefficient('pg') RETURN count(*) AS n, sum(coefficient) AS agg",
+    "BFS": "MATCH (a:Node {id: 6})-[e:Edge* SHORTEST 1..30]-(b:Node) RETURN count(*) AS n, max(length(e)) AS agg",
+}
+
+
 def _reverse_edges(src, dst):
     """Write `dst src weight` for every `src dst weight` line (the other direction of each edge)."""
     subprocess.run(["awk", "-F", " ", "{print $2\" \"$1\" \"$3}", src], stdout=open(dst, "w"), check=True)
@@ -130,25 +140,35 @@ def run_benchmark():
 
     def timed(name, label, query, key):
         print(f"\n[Kuzu] Running {label}...")
+        count_only = bench_common.compute_only()
+        if count_only:
+            query = COUNT_QUERIES[name]
         def _run():
             r = conn.execute(query)
+            if count_only:
+                n, agg = r.get_next()
+                return n, agg
             count = 0
             while r.has_next():
                 r.get_next()
                 count += 1
-            print(f"  {label}: {count} rows")
-            return count
-        elapsed, _ = bench_common.run_timed_warm(name, _run)
+            return count, None
+        elapsed, summary = bench_common.run_timed_warm(name, _run)
         results[key] = elapsed
         if isinstance(elapsed, (int, float)):
-            print(f"  {label} time: {elapsed:.2f}s")
+            print(f"  {label} time: {elapsed:.2f}s  (summary {summary})")
+            if count_only:
+                n, agg = summary
+                bench_common.check_summary("kuzu", name, n + 1 if name == "BFS" else n, agg)   # the source is not a result row
 
-    # Every timed call is the exact query that _dump_all exports and the validator checks: full output, no LIMIT.
+    # GRAPHALYTICS_OUTPUT=full: every timed call is the exact query that _dump_all exports and the validator checks (full output, no LIMIT).
     timed("PageRank", "PageRank", PAGERANK_QUERY, "pagerank")
     timed("WCC", "WCC", WCC_QUERY, "wcc")
     timed("LCC", "LCC", LCC_QUERY, "lcc")
     timed("BFS", "BFS (undirected shortest paths from vertex 6)", BFS_QUERY, "bfs")
 
+    results["_summary"] = dict(bench_common.SUMMARY_CHECKS)
+    results["_output"] = bench_common.OUTPUT_MODE
     _dump_all(conn)
 
     # The database stays for the next run (load once); --reset deletes it.

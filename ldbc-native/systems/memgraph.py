@@ -21,6 +21,18 @@ SSSP_QUERY = ("MATCH (a:Node {id: 6})-[e:EDGE *wShortest (e, n | e.weight)]->(b:
               "RETURN b.id, reduce(w = 0.0, x IN e | w + x.weight) AS dist")
 
 
+# Compute-only variants (GRAPHALYTICS_OUTPUT=count, the default): same call, reduced to (rows, aggregate over every value).
+COUNT_QUERIES = {
+    "PageRank": (f"CALL pagerank.get({PAGERANK_ITERATIONS}, 0.85, 0.0) YIELD node, rank RETURN count(*) AS n, sum(rank) AS agg"),
+    "WCC": "CALL weakly_connected_components.get() YIELD node, component_id RETURN count(*) AS n, count(DISTINCT component_id) AS agg",
+    "CDLP": "CALL community_detection.get() YIELD node, community_id RETURN count(*) AS n, count(DISTINCT community_id) AS agg",
+    "BFS": "MATCH (a:Node {id: 6})-[e:EDGE *BFS]->(b:Node) RETURN count(*) AS n, max(size(e)) AS agg",
+    "SSSP": ("MATCH (a:Node {id: 6})-[e:EDGE *wShortest (e, n | e.weight)]->(b:Node) "
+             "RETURN count(*) AS n, max(reduce(w = 0.0, x IN e | w + x.weight)) AS agg"),
+}
+FULL_QUERIES = {}   # filled below once the query constants exist
+
+
 def _add_reverse_edges(conn, cursor, batch_size=50000):
     """Create the opposite direction of every imported edge (separate step so that a loaded database is reused)."""
     conn.commit()
@@ -44,6 +56,9 @@ def _add_reverse_edges(conn, cursor, batch_size=50000):
                 CREATE (a)-[:EDGE {weight: e.weight, rev: true}]->(b)
             """, {"edges": batch})
             conn.commit()
+
+
+FULL_QUERIES.update({"PageRank": PAGERANK_QUERY, "WCC": WCC_QUERY, "CDLP": CDLP_QUERY, "BFS": BFS_QUERY, "SSSP": SSSP_QUERY})
 
 
 def _dump_all(cursor, skip_cdlp=False):
@@ -201,68 +216,38 @@ def run_benchmark():
         bench_common.cleanup_docker("memgraph")
         return results
 
-    # --- BFS ---
-    print("\n[Memgraph] Running BFS...")
-    def _run_bfs():
-        cursor.execute(BFS_QUERY)
-        rows = cursor.fetchall()
-        return rows
-    elapsed, result = bench_common.run_timed_warm("BFS", _run_bfs)
-    results["bfs"] = elapsed
-    if isinstance(elapsed, (int, float)):
-        print(f"  BFS time: {elapsed:.2f}s (reached {len(result)} nodes)")
+    # The timed call is the same procedure call as the export; GRAPHALYTICS_OUTPUT=count (default) reduces it to a summary row,
+    # =full returns every row.
+    def timed(name, key):
+        print(f"\n[Memgraph] Running {name}...")
+        count_only = bench_common.compute_only()
+        q = (COUNT_QUERIES if count_only else FULL_QUERIES)[name]
+        def _run():
+            cursor.execute(q)
+            rows = cursor.fetchall()
+            return rows[0] if count_only else (len(rows), None)
+        elapsed, summary = bench_common.run_timed_warm(name, _run)
+        results[key] = elapsed
+        if isinstance(elapsed, (int, float)):
+            print(f"  {name} time: {elapsed:.2f}s  (summary {summary})")
+            if count_only:
+                n, agg = summary
+                # BFS/SSSP: the source vertex is not an expansion result row (the export adds it)
+                bench_common.check_summary("memgraph", name, n + 1 if name in ("BFS", "SSSP") else n, agg)
 
-    # --- PageRank ---
-    print("\n[Memgraph] Running PageRank...")
-    def _run_pagerank():
-        cursor.execute(PAGERANK_QUERY)
-        rows = cursor.fetchall()
-        print(f"  PageRank: {len(rows)} rows")
-        return rows
-    elapsed, result = bench_common.run_timed_warm("PageRank", _run_pagerank)
-    results["pagerank"] = elapsed
-    if isinstance(elapsed, (int, float)):
-        print(f"  PageRank time: {elapsed:.2f}s")
-
-    # --- WCC ---
-    print("\n[Memgraph] Running WCC...")
-    def _run_wcc():
-        cursor.execute(WCC_QUERY)
-        rows = cursor.fetchall()
-        print(f"  WCC: {len(rows)} rows")
-        return rows
-    elapsed, result = bench_common.run_timed_warm("WCC", _run_wcc)
-    results["wcc"] = elapsed
-    if isinstance(elapsed, (int, float)):
-        print(f"  WCC time: {elapsed:.2f}s")
+    timed("BFS", "bfs")
+    timed("PageRank", "pagerank")
+    timed("WCC", "wcc")
 
     # --- LCC ---
     # MAGE only ships nxalg.clustering (NetworkX, pure Python, not installed in the image). A failed procedure call
     # also kills the Bolt session, so the call is not attempted: LCC stays N/A for Memgraph.
     print("\n[Memgraph] LCC: no native procedure in the MAGE image, skipped (N/A)")
 
-    # --- SSSP ---
-    print("\n[Memgraph] Running SSSP...")
-    def _run_sssp():
-        cursor.execute(SSSP_QUERY)
-        rows = cursor.fetchall()
-        return rows
-    elapsed, result = bench_common.run_timed_warm("SSSP", _run_sssp)
-    results["sssp"] = elapsed
-    if isinstance(elapsed, (int, float)):
-        print(f"  SSSP time: {elapsed:.2f}s (reached {len(result)} nodes)")
-
-    # --- CDLP ---
-    print("\n[Memgraph] Running CDLP...")
-    def _run_cdlp():
-        cursor.execute(CDLP_QUERY)
-        rows = cursor.fetchall()
-        print(f"  CDLP: {len(rows)} rows")
-        return rows
-    elapsed, result = bench_common.run_timed_warm("CDLP", _run_cdlp)
-    results["cdlp"] = elapsed
-    if isinstance(elapsed, (int, float)):
-        print(f"  CDLP time: {elapsed:.2f}s")
+    timed("SSSP", "sssp")
+    timed("CDLP", "cdlp")
+    results["_summary"] = dict(bench_common.SUMMARY_CHECKS)
+    results["_output"] = bench_common.OUTPUT_MODE
 
     if results.get("cdlp") == "timeout":  # the server may still be busy with the abandoned query: new session
         conn.close()

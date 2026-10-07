@@ -8,6 +8,12 @@ from ._common import VERTEX_FILE, EDGE_FILE, bench_common
 # Pregel counts the initialisation as the first superstep: the reference's 10 PageRank iterations are 11 supersteps
 # (verified: output equals the reference within 1e-4 for every vertex; 10 and 12 do not).
 PAGERANK_SUPERSTEPS = 11
+SSSP_COUNT_QUERY = """
+    FOR v, e, p IN 0..100 OUTBOUND 'nodes/6' GRAPH 'bench'
+        OPTIONS {order: 'weighted', weightAttribute: 'weight', uniqueVertices: 'global'}
+        COLLECT AGGREGATE n = COUNT(1), m = MAX(LAST(p.weights))
+        RETURN {n: n, agg: m}
+"""
 # Pregel's sssp is unweighted (hop count); the weighted single-source distances come from a weighted AQL traversal
 SSSP_QUERY = """
     FOR v, e, p IN 0..100 OUTBOUND 'nodes/6' GRAPH 'bench'
@@ -258,29 +264,32 @@ def run_benchmark():
                 )
                 LET tri = LENGTH(triangles)
                 LET lcc = tri > 0 ? (2.0 * tri) / (deg * (deg - 1)) : 0
-                SORT lcc DESC
-                LIMIT 10
-                RETURN {id: v.vid, lcc: lcc}
+                COLLECT AGGREGATE n = COUNT(1), total = SUM(lcc)
+                RETURN {n: n, agg: total}
         """, ttl=300, max_runtime=300)
-        rows = list(cursor)
-        for row in rows[:3]:
-            print(f"    Top LCC: node={row['id']}, coeff={row['lcc']:.6f}")
-        return rows
-    elapsed, _ = bench_common.run_timed_warm("LCC", _run_lcc)
+        row = list(cursor)[0]
+        return row["n"], row["agg"]
+    elapsed, summary = bench_common.run_timed_warm("LCC", _run_lcc)
     results["lcc"] = elapsed
     if isinstance(elapsed, (int, float)):
-        print(f"  LCC time: {elapsed:.2f}s")
+        print(f"  LCC time: {elapsed:.2f}s  (summary {summary})")
+        # the query skips vertices of degree < 2 (their coefficient is 0): n is the vertex count, the sum is over all values
+        bench_common.check_summary("arangodb", "LCC", db.collection('nodes').count(), summary[1])
 
     # --- SSSP (Pregel) ---
     print("\n[ArangoDB] Running SSSP from vertex 6...")
     def _run_sssp():
+        if bench_common.compute_only():
+            row = list(_long_db(300).aql.execute(SSSP_COUNT_QUERY, ttl=300, max_runtime=300))[0]
+            return row["n"], row["agg"]
         rows = list(_long_db(300).aql.execute(SSSP_QUERY, ttl=300, batch_size=100000, max_runtime=300))
-        print(f"  SSSP: {len(rows)} rows")
-        return rows
-    elapsed, _ = bench_common.run_timed_warm("SSSP", _run_sssp)
+        return len(rows), None
+    elapsed, summary = bench_common.run_timed_warm("SSSP", _run_sssp)
     results["sssp"] = elapsed
     if isinstance(elapsed, (int, float)):
-        print(f"  SSSP time: {elapsed:.2f}s")
+        print(f"  SSSP time: {elapsed:.2f}s  (summary {summary})")
+        if bench_common.compute_only():
+            bench_common.check_summary("arangodb", "SSSP", *summary)
 
     # --- CDLP (Label Propagation via Pregel) ---
     print("\n[ArangoDB] Running CDLP...")
@@ -305,15 +314,18 @@ def run_benchmark():
                 COLLECT depth = LENGTH(p.edges) WITH COUNT INTO cnt
                 RETURN {depth: depth, count: cnt}
         """, ttl=300, max_runtime=300)
-        rows = list(cursor)
-        total_reached = sum(r['count'] for r in rows)
-        print(f"  BFS reached {total_reached} nodes")
-        return rows
-    elapsed, _ = bench_common.run_timed_warm("BFS", _run_bfs)
+        rows = list(cursor)   # grouped by depth on the server: a handful of rows, already compute only
+        return sum(r['count'] for r in rows), max(r['depth'] for r in rows)
+    elapsed, summary = bench_common.run_timed_warm("BFS", _run_bfs)
     results["bfs"] = elapsed
     if isinstance(elapsed, (int, float)):
-        print(f"  BFS time: {elapsed:.2f}s")
+        print(f"  BFS time: {elapsed:.2f}s  (summary {summary})")
+        bench_common.check_summary("arangodb", "BFS", *summary)
 
+    # PageRank, WCC and CDLP are Pregel jobs with store=False: the whole computation runs, nothing is stored or returned (no
+    # summary to check; their outputs are validated through the untimed export).
+    results["_summary"] = dict(bench_common.SUMMARY_CHECKS)
+    results["_output"] = bench_common.OUTPUT_MODE
     _dump_all(db, run_pregel)
 
     # The loaded graph is kept (persisted data directory, reused by the next run; --reset wipes it).

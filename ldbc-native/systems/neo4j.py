@@ -223,24 +223,21 @@ def run_benchmark():
     if isinstance(elapsed, (int, float)):
         print(f"  PageRank time: {elapsed:.2f}s")
 
-    # --- WCC ---
+    # --- WCC ---  (compute only: the stream is reduced to a summary on the server; no asNode lookup, nothing shipped)
     print("\n[Neo4j] Running WCC...")
     def _run_wcc():
         with driver.session() as session:
-            r = session.run("""
+            row = session.run("""
                 CALL gds.wcc.stream('bench')
                 YIELD nodeId, componentId
-                RETURN componentId, count(*) AS size
-                ORDER BY size DESC LIMIT 10
-            """)
-            rows = list(r)
-            for row in rows[:3]:
-                print(f"    Component: id={row['componentId']}, size={row['size']}")
-        return rows
-    elapsed, _ = bench_common.run_timed_warm("WCC", _run_wcc)
+                RETURN count(*) AS n, count(DISTINCT componentId) AS agg
+            """).single()
+        return row["n"], row["agg"]
+    elapsed, summary = bench_common.run_timed_warm("WCC", _run_wcc)
     results["wcc"] = elapsed
     if isinstance(elapsed, (int, float)):
-        print(f"  WCC time: {elapsed:.2f}s")
+        print(f"  WCC time: {elapsed:.2f}s  (summary {summary})")
+        bench_common.check_summary("neo4j", "WCC", *summary)
 
     # --- BFS ---
     print("\n[Neo4j] Running BFS from vertex 6...")
@@ -255,31 +252,28 @@ def run_benchmark():
                 RETURN size(nodeIds) AS reached
             """, src=src_id)
             row = r.single()
-            print(f"  Reached: {row['reached']} nodes")
-        return row
-    elapsed, _ = bench_common.run_timed_warm("BFS", _run_bfs)
+        return row['reached'], None
+    elapsed, summary = bench_common.run_timed_warm("BFS", _run_bfs)
     results["bfs"] = elapsed
     if isinstance(elapsed, (int, float)):
-        print(f"  BFS time: {elapsed:.2f}s")
+        print(f"  BFS time: {elapsed:.2f}s  (summary {summary})")
+        bench_common.check_summary("neo4j", "BFS", summary[0], None)
 
     # --- LCC ---
     print("\n[Neo4j] Running LCC...")
     def _run_lcc():
         with driver.session() as session:
-            r = session.run("""
+            row = session.run("""
                 CALL gds.localClusteringCoefficient.stream('bench')
                 YIELD nodeId, localClusteringCoefficient
-                RETURN gds.util.asNode(nodeId).id AS id, localClusteringCoefficient AS coeff
-                ORDER BY coeff DESC LIMIT 10
-            """)
-            rows = list(r)
-            for row in rows[:3]:
-                print(f"    Top LCC: node={row['id']}, coeff={row['coeff']:.6f}")
-        return rows
-    elapsed, _ = bench_common.run_timed_warm("LCC", _run_lcc)
+                RETURN count(*) AS n, sum(localClusteringCoefficient) AS agg
+            """).single()
+        return row["n"], row["agg"]
+    elapsed, summary = bench_common.run_timed_warm("LCC", _run_lcc)
     results["lcc"] = elapsed
     if isinstance(elapsed, (int, float)):
-        print(f"  LCC time: {elapsed:.2f}s")
+        print(f"  LCC time: {elapsed:.2f}s  (summary {summary})")
+        bench_common.check_summary("neo4j", "LCC", *summary)
 
     _dump_all(driver)  # before the projection is dropped
 

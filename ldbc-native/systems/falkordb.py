@@ -19,6 +19,17 @@ BFS_QUERY = ("MATCH (src:Node {id: 6}) CALL algo.BFS(src, 999, 'EDGE') YIELD nod
              "RETURN size(nodes) AS reached")
 
 
+# Compute-only variants (GRAPHALYTICS_OUTPUT=count, the default): same call, reduced to (rows, aggregate over every value).
+COUNT_QUERIES = {
+    "PageRank": "CALL algo.pageRank('Node', 'EDGE') YIELD node, score RETURN count(*) AS n, sum(score) AS agg",
+    "WCC": "CALL algo.WCC(null) YIELD node, componentId RETURN count(*) AS n, count(DISTINCT componentId) AS agg",
+    "CDLP": ("CALL algo.labelPropagation({nodeLabels: ['Node'], relationshipTypes: ['EDGE'], maxIterations: 10}) "
+             "YIELD node, communityId RETURN count(*) AS n, count(DISTINCT communityId) AS agg"),
+    "BFS": BFS_QUERY,    # already a count: the BFS procedure returns the list of reached nodes, the query returns its size
+}
+FULL_QUERIES = {"PageRank": PAGERANK_QUERY, "WCC": WCC_QUERY, "CDLP": CDLP_QUERY, "BFS": BFS_QUERY}
+
+
 def _save(rc):
     """Synchronous snapshot: Redis only writes its dump on the configured save points, so without this a stopped
     container comes back with an older, partial graph (observed: 62.8M of 68.4M edges) and the load is repeated."""
@@ -232,38 +243,27 @@ def run_benchmark():
         bench_common.cleanup_docker("falkordb")
         return results
 
-    # --- PageRank ---
-    print("\n[FalkorDB] Running PageRank...")
-    def _run_pagerank():
-        r = g.ro_query(PAGERANK_QUERY)
-        print(f"  PageRank: {len(r.result_set)} rows")
-        return r
-    elapsed, _ = bench_common.run_timed_warm("PageRank", _run_pagerank)
-    results["pagerank"] = elapsed
-    if isinstance(elapsed, (int, float)):
-        print(f"  PageRank time: {elapsed:.2f}s")
+    # GRAPHALYTICS_OUTPUT=count (default): the call returns a summary row; =full: every row (BFS stays the reached-count query).
+    def timed(name, key):
+        print(f"\n[FalkorDB] Running {name}...")
+        count_only = bench_common.compute_only()
+        q = (COUNT_QUERIES if count_only else FULL_QUERIES)[name]
+        def _run():
+            r = g.ro_query(q)
+            if name == "BFS":
+                return r.result_set[0][0], None
+            return tuple(r.result_set[0]) if count_only else (len(r.result_set), None)
+        elapsed, summary = bench_common.run_timed_warm(name, _run)
+        results[key] = elapsed
+        if isinstance(elapsed, (int, float)):
+            print(f"  {name} time: {elapsed:.2f}s  (summary {summary})")
+            if count_only:
+                n, agg = summary
+                bench_common.check_summary("falkordb", name, n, agg)
 
-    # --- WCC (Weakly Connected Components) ---
-    print("\n[FalkorDB] Running WCC...")
-    def _run_wcc():
-        r = g.ro_query(WCC_QUERY)
-        print(f"  WCC: {len(r.result_set)} rows")
-        return r
-    elapsed, _ = bench_common.run_timed_warm("WCC", _run_wcc)
-    results["wcc"] = elapsed
-    if isinstance(elapsed, (int, float)):
-        print(f"  WCC time: {elapsed:.2f}s")
-
-    # --- BFS ---
-    print("\n[FalkorDB] Running BFS from vertex 6...")
-    def _run_bfs():
-        r = g.ro_query(BFS_QUERY)
-        print(f"  Reached {r.result_set[0][0]} nodes")
-        return r
-    elapsed, _ = bench_common.run_timed_warm("BFS", _run_bfs)
-    results["bfs"] = elapsed
-    if isinstance(elapsed, (int, float)):
-        print(f"  BFS time: {elapsed:.2f}s")
+    timed("PageRank", "pagerank")
+    timed("WCC", "wcc")
+    timed("BFS", "bfs")
 
     # --- SSSP ---
     # FalkorDB's algo.SSpaths does not support full single-source Dijkstra;
@@ -272,15 +272,7 @@ def run_benchmark():
     results["sssp"] = "N/A"
 
     # --- CDLP (Community Detection via Label Propagation) ---
-    print("\n[FalkorDB] Running CDLP...")
-    def _run_cdlp():
-        r = g.ro_query(CDLP_QUERY)
-        print(f"  CDLP: {len(r.result_set)} rows")
-        return r
-    elapsed, _ = bench_common.run_timed_warm("CDLP", _run_cdlp)
-    results["cdlp"] = elapsed
-    if isinstance(elapsed, (int, float)):
-        print(f"  CDLP time: {elapsed:.2f}s")
+    timed("CDLP", "cdlp")
 
     # --- LCC (Local Clustering Coefficient) ---
     # FalkorDB has no built-in LCC algorithm. Cypher-based triangle counting
@@ -288,6 +280,8 @@ def run_benchmark():
     print("\n[FalkorDB] LCC: not supported (no built-in algorithm, Cypher too slow)")
     results["lcc"] = "N/A"
 
+    results["_summary"] = dict(bench_common.SUMMARY_CHECKS)
+    results["_output"] = bench_common.OUTPUT_MODE
     _dump_all(g)
     bench_common.cleanup_docker("falkordb")
     return results

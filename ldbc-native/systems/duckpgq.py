@@ -21,6 +21,20 @@ BFS_QUERY = """
 """
 
 
+# Compute-only variants (GRAPHALYTICS_OUTPUT=count, the default): same table function, reduced to (rows, aggregate over a value column).
+COUNT_QUERIES = {
+    "PageRank": "SELECT count(*) AS n, sum(pagerank) AS agg FROM pagerank(ldbc2, nodes, edges2)",
+    "WCC": "SELECT count(*) AS n, count(DISTINCT componentId) AS agg FROM weakly_connected_component(ldbc, nodes, edges)",
+    "LCC": "SELECT count(*) AS n, sum(local_clustering_coefficient) AS agg FROM local_clustering_coefficient(ldbc, nodes, edges)",
+    "BFS": """
+    SELECT count(*) AS n, max(dist) AS agg FROM GRAPH_TABLE(ldbc2
+        MATCH p = ANY SHORTEST (a:nodes WHERE a.id = 6)-[e:edges2]->{1,30}(b:nodes)
+        COLUMNS (b.id AS dst, path_length(p) AS dist)
+    )
+""",
+}
+
+
 def _dump_all(conn):
     """Full per-vertex outputs of the exact calls the benchmark times (see bench_common.dump_*)."""
     if not bench_common.dump_enabled():
@@ -107,32 +121,41 @@ def run_benchmark():
 
     def timed(name, label, query, key, keep=False):
         print(f"\n[DuckPGQ] Running {label}...")
+        count_only = bench_common.compute_only()
+        q = COUNT_QUERIES[name] if count_only else query
         def _run():
             # SIGALRM cannot interrupt a query that runs inside DuckDB, so the limit is enforced with interrupt()
             timer = threading.Timer(bench_common.QUERY_TIMEOUT, conn.interrupt)
             timer.start()
             try:
-                r = conn.execute(query).fetchall()
+                r = conn.execute(q).fetchall()
             finally:
                 timer.cancel()
-            print(f"  {label}: {len(r)} rows")
             return r
         elapsed, rows = bench_common.run_timed_warm(name, _run)
         results[key] = elapsed
         if isinstance(elapsed, (int, float)):
-            print(f"  {label} time: {elapsed:.2f}s")
+            print(f"  {label} time: {elapsed:.2f}s  ({len(rows)} rows returned)")
+            if count_only:
+                n, agg = rows[0]
+                bench_common.check_summary("duckpgq", name, n + 1 if name == "BFS" else n, agg)   # BFS: the source is not a result row
+                rows = None
         return rows if keep else None
 
-    # Every timed call is the exact query that _dump_all exports and the validator checks: full output, no LIMIT.
+    # GRAPHALYTICS_OUTPUT=full: every timed call is the exact query that _dump_all exports and the validator checks.
     timed("PageRank", "PageRank", PAGERANK_QUERY, "pagerank")
     timed("WCC", "WCC", WCC_QUERY, "wcc")
     timed("LCC", "LCC", LCC_QUERY, "lcc")
     _dump_all(conn)  # PR, WCC, LCC outputs are exported before the BFS, which can hit the time limit
     bfs_rows = timed("BFS", "BFS (undirected shortest paths from vertex 6)", BFS_QUERY, "bfs", keep=True)
+    if bench_common.compute_only() and isinstance(results.get("bfs"), (int, float)) and bench_common.dump_enabled():
+        bfs_rows = conn.execute(BFS_QUERY).fetchall()   # the full output for the export, untimed (the timed call returned a summary)
     if bfs_rows:
         bench_common.dump_safely("duckpgq", "BFS", lambda: bench_common.dump_bfs(
             "duckpgq", {r[0]: r[1] for r in bfs_rows},
             [row[0] for row in conn.execute("SELECT id FROM nodes").fetchall()], 6))
+    results["_summary"] = dict(bench_common.SUMMARY_CHECKS)
+    results["_output"] = bench_common.OUTPUT_MODE
 
     conn.close()
     os.remove(db_path)

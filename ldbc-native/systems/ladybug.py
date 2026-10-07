@@ -103,79 +103,38 @@ def run_benchmark():
     except Exception as e:
         print(f"  Project graph failed: {e}")
 
-    # --- PageRank ---
-    print("\n[LadybugDB] Running PageRank...")
-    def _run_pagerank():
-        r = conn.execute("""
-            CALL page_rank('pg') RETURN node.id, rank
-            ORDER BY rank DESC LIMIT 10
-        """)
-        count = 0
-        while r.has_next():
-            row = r.get_next()
-            if count < 3:
-                print(f"    Top PR: node={row[0]}, rank={row[1]:.6f}")
-            count += 1
-        return count
-    elapsed, _ = bench_common.run_timed_warm("PageRank", _run_pagerank)
-    results["pagerank"] = elapsed
-    if isinstance(elapsed, (int, float)):
-        print(f"  PageRank time: {elapsed:.2f}s")
-
-    # --- WCC (Weakly Connected Components) ---
-    print("\n[LadybugDB] Running WCC...")
-    def _run_wcc():
-        r = conn.execute("""
-            CALL weakly_connected_components('pg')
-            RETURN group_id, count(*) AS size
-            ORDER BY size DESC LIMIT 10
-        """)
-        count = 0
-        while r.has_next():
-            row = r.get_next()
-            if count < 3:
-                print(f"    Component: group={row[0]}, size={row[1]}")
-            count += 1
-        return count
-    elapsed, _ = bench_common.run_timed_warm("WCC", _run_wcc)
-    results["wcc"] = elapsed
-    if isinstance(elapsed, (int, float)):
-        print(f"  WCC time: {elapsed:.2f}s")
-
-    # --- LCC (Local Clustering Coefficient) ---
-    print("\n[LadybugDB] Running LCC...")
-    def _run_lcc():
-        r = conn.execute("""
-            CALL local_clustering_coefficient('pg')
-            RETURN node.id, coefficient
-            ORDER BY coefficient DESC LIMIT 10
-        """)
-        count = 0
-        while r.has_next():
-            row = r.get_next()
-            if count < 3:
-                print(f"    Top LCC: node={row[0]}, coeff={row[1]:.6f}")
-            count += 1
-        return count
-    elapsed, _ = bench_common.run_timed_warm("LCC", _run_lcc)
-    results["lcc"] = elapsed
-    if isinstance(elapsed, (int, float)):
-        print(f"  LCC time: {elapsed:.2f}s")
-
-    # --- BFS (shortest path from source) ---
-    print("\n[LadybugDB] Running BFS/Shortest Path from vertex 6...")
-    def _run_bfs():
-        r = conn.execute(BFS_QUERY)
-        count = 0
-        while r.has_next():
-            r.get_next()
-            count += 1
-        print(f"  Reached {count} nodes")
-        return count
-    elapsed, _ = bench_common.run_timed_warm("BFS", _run_bfs)
-    results["bfs"] = elapsed
-    if isinstance(elapsed, (int, float)):
-        print(f"  BFS time: {elapsed:.2f}s")
+    # The timed calls are compute only (GRAPHALYTICS_OUTPUT=count, the default): the same call as the export, reduced to
+    # (rows, aggregate over every value). GRAPHALYTICS_OUTPUT=full returns the full output (BFS) instead.
+    # PageRank/WCC/LCC need the algo extension, which does not load on macOS arm64 (they fail and are reported as N/A).
+    COUNT = {
+        "PageRank": ("CALL page_rank('pg') RETURN count(*) AS n, sum(rank) AS agg", "pagerank"),
+        "WCC": ("CALL weakly_connected_components('pg') RETURN count(*) AS n, count(DISTINCT group_id) AS agg", "wcc"),
+        "LCC": ("CALL local_clustering_coefficient('pg') RETURN count(*) AS n, sum(coefficient) AS agg", "lcc"),
+        "BFS": ("MATCH (a:Node {id: 6})-[e:Edge* SHORTEST 1..30]-(b:Node) RETURN count(*) AS n, max(length(e)) AS agg", "bfs"),
+    }
+    for name, (query, key) in COUNT.items():
+        print(f"\n[LadybugDB] Running {name}...")
+        count_only = bench_common.compute_only()
+        q = query if (count_only or name != "BFS") else BFS_QUERY
+        def _run(q=q):
+            r = conn.execute(q)
+            if count_only or name != "BFS":
+                n, agg = r.get_next()
+                return n, agg
+            n = 0
+            while r.has_next():
+                r.get_next()
+                n += 1
+            return n, None
+        elapsed, summary = bench_common.run_timed_warm(name, _run)
+        results[key] = elapsed
+        if isinstance(elapsed, (int, float)):
+            print(f"  {name} time: {elapsed:.2f}s  (summary {summary})")
+            if count_only:
+                n, agg = summary
+                bench_common.check_summary("ladybug", name, n + 1 if name == "BFS" else n, agg)
+    results["_summary"] = dict(bench_common.SUMMARY_CHECKS)
+    results["_output"] = bench_common.OUTPUT_MODE
 
     _dump_bfs(conn)
 
