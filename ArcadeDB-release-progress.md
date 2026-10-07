@@ -143,7 +143,7 @@ The Docker drivers now send the timed calls over Bolt (the earlier tables were m
 
 Every difference is within the spread between two runs of the same protocol, so Bolt and HTTP are indistinguishable here. That is expected: each timed call returns one row (`count(*)`), so the protocol adds only per-request overhead. The protocol would matter for calls that return many rows (the per-vertex exports are not timed). Container memory peaks are the same (12.5-12.8 GiB, the fixed heap).
 
-### Bolt against HTTP when a call returns many rows (same image and day, AC power, `scripts/bolt_transfer_bench.py`)
+### Bolt against HTTP when a call returns many rows (same image and day, AC power, script removed on 2026-10-07, see git history before `901359c`)
 
 The calls above return one row. Calls that return many rows show the real protocol cost (warm median of 3, rows consumed on the client, row counts equal over both protocols):
 
@@ -165,11 +165,11 @@ After the Bolt buffering fix (#9165) the Python client still needed 4-12 s for w
 | Python driver with the Rust codec (`neo4j-rust-ext`) against pure Python | 7-12% faster: value decoding is a small part |
 | Python driver, rows per PULL 1,000 / 10,000 / 100,000 / all (edge sample, 2M rows) | 15.0 / 11.1 / 10.8 / 10.8 s: each PULL is a round trip, worth about 25% |
 | Server CPU profile (JFR) while streaming the edge sample | the Bolt encoder (`sendRecord`, `PackStreamWriter`) is about 9% of the samples; the server thread is idle about 60% of the time, waiting for the client's next PULL |
-| **Official Java driver, same server, same calls** (`scripts/JavaBoltBench.java`) | vertex ids **0.25 s**, edge sample **1.48 s** with all rows in one PULL (HTTP: 0.40 s and 2.5 s); with the default 1,000 rows per PULL 1.40 s and 4.19 s |
+| **Official Java driver, same server, same calls** (script removed on 2026-10-07) | vertex ids **0.25 s**, edge sample **1.48 s** with all rows in one PULL (HTTP: 0.40 s and 2.5 s); with the default 1,000 rows per PULL 1.40 s and 4.19 s |
 
 So the server streams about 1.35 million rows/s over Bolt, faster than HTTP, and the slowness seen in the benchmarks is the **Python driver** (about 5 us of Python per record in its message loop and result handling, which the Rust codec does not cover), plus the round trip of every PULL (about 1.3 ms each through Docker Desktop on macOS, so 2,000 of them cost about 2.7 s). The published Graphalytics and LSQB numbers are unaffected, since each timed call returns one row. For many-row results use a large fetch size (`ARCADEDB_BENCH_BOLT_FETCH_SIZE=-1` for the Python helper) or a fast client.
 
-### gRPC against HTTP and Bolt for many rows (new image `661e5110188f`, Python client, on battery so relative, `scripts/grpc_transfer_bench.py`)
+### gRPC against HTTP and Bolt for many rows (new image `661e5110188f`, Python client, on battery so relative, script removed on 2026-10-07)
 
 The gRPC plugin (`arcadedb-grpcw`) ships in the image and starts with `-Darcadedb.server.plugins=...,GRPC:com.arcadedb.server.grpc.GrpcServerPlugin`; the streaming call `StreamQuery` returns batches of typed records. Seconds, warm median of 3, rows consumed on the client (every column read except in the "count only" line), row counts equal everywhere:
 

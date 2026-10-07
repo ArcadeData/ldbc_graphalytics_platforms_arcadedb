@@ -30,9 +30,9 @@ If a compute-only call turns out to be optimised away for some vendor, the fallb
    code and the algorithm calls are unchanged since the 2026-10-05 validated runs).
 4. Per vendor (what the timed call is now):
    - ArcadeDB Docker: `CALL ... YIELD node, x WITH node, x RETURN count(*) AS n, <agg> AS agg` over HTTP, one row back.
-     **Engine bug found:** on 26.11.1-SNAPSHOT an aggregate directly after `CALL ... YIELD` returns 0/null for `sum`, `max` and `count(DISTINCT)` (only `count(*)` is right);
+     **Engine bug found:** on 26.11.1-SNAPSHOT (with a GAV) an aggregate directly after `CALL ... YIELD` returns 0/null for `sum`, `max` and `count(DISTINCT)` (only `count(*)` is right);
      a `WITH node, x` clause in between gives the right values (verified against the reference: PR sum 1.0000000000000224, WCC 1 component, LCC sum 55493.73, CDLP 218 labels,
-     BFS/SSSP max 5 / 5.44446). Worth a bug report to ArcadeData/arcadedb (not filed by me).
+     BFS/SSSP max 5 / 5.44446). Filed as https://github.com/ArcadeData/arcadedb/issues/9453 (as lvca, 2026-10-07). Refinement found while writing the repro: it only happens when the database has a Graph Analytical View; without a GAV the aggregates are right.
    - Kuzu, LadybugDB: `CALL ... RETURN count(*), <agg>` (Ladybug PR/WCC/LCC still fail: the algo extension does not load on macOS arm64). Kuzu BFS `RETURN count(*), max(length(e))`.
    - DuckPGQ: `SELECT count(*), <agg> FROM <table function>`; BFS also summary (it still times out as before).
    - Memgraph, FalkorDB: same procedure call, `RETURN count(*), <agg>`; FalkorDB BFS was already a reached-count query.
@@ -72,3 +72,6 @@ All nine vendors, both datasets, exported with `GRAPHALYTICS_DUMP_ONLY=1` and ch
 The ✗ marks in the tables are confirmed, nothing changed: ArcadeDB Docker valid for all six (datagen) / five (graph500-22-w) algorithms; DuckPGQ PR invalid; FalkorDB PR and CDLP invalid; Memgraph CDLP invalid; ArangoDB and HugeGraph CDLP invalid.
 Everything else exported is valid (Kuzu, LadybugDB BFS, Neo4j PR/WCC/LCC/BFS-reach on datagen, HugeGraph PR/WCC/BFS/LCC, ArangoDB PR/WCC/BFS/SSSP, Memgraph PR/WCC/BFS/SSSP).
 Only new observation: Neo4j LCC on graph500-22-w exports with 23 mismatching vertices (all other vertices match); the timed LCC there times out anyway, so no table cell is affected.
+
+## 12:50 Housekeeping
+- Bug filed: ArcadeData/arcadedb#9453. Removed the unused Bolt files (`shared/bench_bolt.py`, `scripts/bolt_transfer_bench.py`, `scripts/JavaBoltBench.java`) and `scripts/grpc_transfer_bench.py` (it imported the Bolt helper); the study results stay in `ArcadeDB-release-progress.md`.
