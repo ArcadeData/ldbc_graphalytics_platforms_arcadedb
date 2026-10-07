@@ -10,6 +10,16 @@ from ._common import VERTEX_FILE, EDGE_FILE, SOURCE_VERTEX, GRAPHS_DIR, bench_co
 PAGERANK_PARAMS = {"pagerank.damping": "0.85", "pagerank.diff_threshold": "0", "compute.max_step": "10"}
 
 
+def _task_seconds(response):
+    """Engine-reported processing time of a Vermeer compute task: update_time - start_time of the task record."""
+    from datetime import datetime
+    task = response["task"]
+    def parse(ts):   # RFC 3339 with nanoseconds: keep microseconds
+        head, _, frac = ts.rstrip("Z").partition(".")
+        return datetime.fromisoformat(f"{head}.{frac[:6].ljust(6, '0')}")
+    return (parse(task["update_time"]) - parse(task["start_time"])).total_seconds()
+
+
 def _undirected_edge_file():
     """The datasets store every undirected edge once and Vermeer follows the stored direction: PageRank and BFS run
     on a second graph ("bench_u") loaded from a copy of the edge file that has every edge in both directions."""
@@ -165,39 +175,55 @@ def run_benchmark():
 
     # --- PageRank ---
     print("\n[HugeGraph] Running PageRank...")
+    t_pagerank = bench_common.ServerTimer()
     def _run_pagerank():
-        return run_algo("pagerank", "pagerank", PAGERANK_PARAMS, graph="bench_u")
+        res = run_algo("pagerank", "pagerank", PAGERANK_PARAMS, graph="bench_u")
+        t_pagerank.add(_task_seconds(res))   # Vermeer task update_time - start_time
+        return res
     elapsed, _ = bench_common.run_timed_warm("PageRank", _run_pagerank)
     results["pagerank"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  PageRank time: {elapsed:.2f}s")
+        bench_common.report_server_time("hugegraph", "PageRank", t_pagerank.median())
 
     # --- WCC ---
     print("\n[HugeGraph] Running WCC...")
+    t_wcc = bench_common.ServerTimer()
     def _run_wcc():
-        return run_algo("wcc", "wcc", {})
+        res = run_algo("wcc", "wcc", {})
+        t_wcc.add(_task_seconds(res))   # Vermeer task update_time - start_time
+        return res
     elapsed, _ = bench_common.run_timed_warm("WCC", _run_wcc)
     results["wcc"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  WCC time: {elapsed:.2f}s")
+        bench_common.report_server_time("hugegraph", "WCC", t_wcc.median())
 
     # --- BFS (SSSP unweighted = hop-count BFS) ---
     print("\n[HugeGraph] Running BFS...")
+    t_bfs = bench_common.ServerTimer()
     def _run_bfs():
-        return run_algo("sssp", "bfs", {"sssp.source": str(SOURCE_VERTEX)}, graph="bench_u")
+        res = run_algo("sssp", "bfs", {"sssp.source": str(SOURCE_VERTEX)}, graph="bench_u")
+        t_bfs.add(_task_seconds(res))   # Vermeer task update_time - start_time
+        return res
     elapsed, _ = bench_common.run_timed_warm("BFS", _run_bfs)
     results["bfs"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  BFS time: {elapsed:.2f}s")
+        bench_common.report_server_time("hugegraph", "BFS", t_bfs.median())
 
     # --- LCC (Clustering Coefficient) ---
     print("\n[HugeGraph] Running LCC...")
+    t_lcc = bench_common.ServerTimer()
     def _run_lcc():
-        return run_algo("clustering_coefficient", "lcc", {})
+        res = run_algo("clustering_coefficient", "lcc", {})
+        t_lcc.add(_task_seconds(res))   # Vermeer task update_time - start_time
+        return res
     elapsed, _ = bench_common.run_timed_warm("LCC", _run_lcc)
     results["lcc"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  LCC time: {elapsed:.2f}s")
+        bench_common.report_server_time("hugegraph", "LCC", t_lcc.median())
 
     # --- SSSP (weighted — Vermeer's sssp is unweighted/hop-count only) ---
     # Vermeer's built-in SSSP computes unweighted shortest paths (hop count).
@@ -212,13 +238,18 @@ def run_benchmark():
 
     # --- CDLP (Label Propagation) ---
     print("\n[HugeGraph] Running CDLP...")
+    t_cdlp = bench_common.ServerTimer()
     def _run_cdlp():
-        return run_algo("lpa", "cdlp", {})
+        res = run_algo("lpa", "cdlp", {})
+        t_cdlp.add(_task_seconds(res))   # Vermeer task update_time - start_time
+        return res
     elapsed, _ = bench_common.run_timed_warm("CDLP", _run_cdlp)
     results["cdlp"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  CDLP time: {elapsed:.2f}s")
+        bench_common.report_server_time("hugegraph", "CDLP", t_cdlp.median())
 
+    results["_server_time"] = dict(bench_common.SERVER_TIMES)
     _dump_all(run_algo)
     bench_common.cleanup_docker("vermeer-master", "vermeer-worker")
     return results

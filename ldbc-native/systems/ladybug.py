@@ -116,8 +116,10 @@ def run_benchmark():
         print(f"\n[LadybugDB] Running {name}...")
         count_only = bench_common.compute_only()
         q = query if (count_only or name != "BFS") else BFS_QUERY
-        def _run(q=q):
+        timer = bench_common.ServerTimer()
+        def _run(q=q, timer=timer):
             r = conn.execute(q)
+            timer.add(r.get_execution_time() / 1000.0)   # engine-reported execution time (ms), without compilation
             if count_only or name != "BFS":
                 n, agg = r.get_next()
                 return n, agg
@@ -130,10 +132,12 @@ def run_benchmark():
         results[key] = elapsed
         if isinstance(elapsed, (int, float)):
             print(f"  {name} time: {elapsed:.2f}s  (summary {summary})")
+            bench_common.report_server_time("ladybug", name, timer.median())
             if count_only:
                 n, agg = summary
                 bench_common.check_summary("ladybug", name, n + 1 if name == "BFS" else n, agg)
     results["_summary"] = dict(bench_common.SUMMARY_CHECKS)
+    results["_server_time"] = dict(bench_common.SERVER_TIMES)
     results["_output"] = bench_common.OUTPUT_MODE
 
     _dump_bfs(conn)

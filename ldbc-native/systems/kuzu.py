@@ -143,8 +143,10 @@ def run_benchmark():
         count_only = bench_common.compute_only()
         if count_only:
             query = COUNT_QUERIES[name]
+        timer = bench_common.ServerTimer()
         def _run():
             r = conn.execute(query)
+            timer.add(r.get_execution_time() / 1000.0)   # engine-reported execution time (ms), without compilation
             if count_only:
                 n, agg = r.get_next()
                 return n, agg
@@ -157,6 +159,7 @@ def run_benchmark():
         results[key] = elapsed
         if isinstance(elapsed, (int, float)):
             print(f"  {label} time: {elapsed:.2f}s  (summary {summary})")
+            bench_common.report_server_time("kuzu", name, timer.median())
             if count_only:
                 n, agg = summary
                 if name == "WCC":   # untimed verification: the number of distinct components
@@ -170,6 +173,7 @@ def run_benchmark():
     timed("BFS", "BFS (undirected shortest paths from vertex 6)", BFS_QUERY, "bfs")
 
     results["_summary"] = dict(bench_common.SUMMARY_CHECKS)
+    results["_server_time"] = dict(bench_common.SERVER_TIMES)
     results["_output"] = bench_common.OUTPUT_MODE
     _dump_all(conn)
 

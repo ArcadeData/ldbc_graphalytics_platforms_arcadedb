@@ -222,6 +222,14 @@ def run_benchmark():
     results["pagerank"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  PageRank time: {elapsed:.2f}s")
+        def _pr_server():   # GDS computeMillis of the two runs the PageRank correction needs (10 and 11 iterations)
+            total = 0.0
+            with driver.session() as session:
+                for it in (10, 11):
+                    total += session.run(PAGERANK_STATS_QUERY.format(it=it).replace("RETURN ranIterations", "RETURN computeMillis AS ms")
+                                         .replace("YIELD ranIterations", "YIELD computeMillis")).single()["ms"]
+            return total / 1000.0
+        bench_common.measure_server_time("neo4j", "PageRank", _pr_server)
 
     # --- WCC ---  (compute only: the stream is reduced to a summary on the server; no asNode lookup, nothing shipped)
     print("\n[Neo4j] Running WCC...")
@@ -240,6 +248,10 @@ def run_benchmark():
         with driver.session() as session:   # untimed verification: the number of distinct components
             row = session.run("CALL gds.wcc.stream('bench') YIELD nodeId, componentId RETURN count(*) AS n, count(DISTINCT componentId) AS agg").single()
         bench_common.check_summary("neo4j", "WCC", row["n"], row["agg"])
+        def _wcc_server():
+            with driver.session() as session:
+                return session.run("CALL gds.wcc.stats('bench') YIELD computeMillis RETURN computeMillis AS ms").single()["ms"] / 1000.0
+        bench_common.measure_server_time("neo4j", "WCC", _wcc_server)
 
     # --- BFS ---
     print("\n[Neo4j] Running BFS from vertex 6...")
@@ -276,7 +288,12 @@ def run_benchmark():
     if isinstance(elapsed, (int, float)):
         print(f"  LCC time: {elapsed:.2f}s  (summary {summary})")
         bench_common.check_summary("neo4j", "LCC", *summary)
+        def _lcc_server():
+            with driver.session() as session:
+                return session.run("CALL gds.localClusteringCoefficient.stats('bench') YIELD computeMillis RETURN computeMillis AS ms").single()["ms"] / 1000.0
+        bench_common.measure_server_time("neo4j", "LCC", _lcc_server)
 
+    results["_server_time"] = dict(bench_common.SERVER_TIMES)   # BFS: GDS reports no compute time for stream mode
     _dump_all(driver)  # before the projection is dropped
 
     # Cleanup

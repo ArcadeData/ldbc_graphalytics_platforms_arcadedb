@@ -321,6 +321,14 @@ public class ArcadeDBEmbeddedLoader {
                 # algo.bfs and the Dijkstra procedure do not emit the source itself (the export adds it with distance 0)
                 bench_common.check_summary("arcadedb", name, n + 1 if name in ("bfs", "sssp") else n, agg)
 
+        # server-reported compute time: the cost of the CALL step in PROFILE (the algorithm, without the summary aggregate or the HTTP round trip)
+        def _profile():
+            r = cmd("PROFILE " + _count_query(name, full_query), language="opencypher", timeout=timeout)
+            steps = r.json()["explainPlan"]["steps"]
+            return sum(st["cost"] for st in steps if st["name"] == "CallStep") / 1e9
+        if isinstance(elapsed, (int, float)):
+            bench_common.measure_server_time("arcadedb", name, _profile)
+
     # Graphalytics PageRank: undirected (BOTH), exactly 10 iterations, no early stop. The procedure's
     # defaults (direction OUT, 20 iterations, tolerance 1e-4) compute a different, directed PageRank.
     run_algo("pagerank", PR_Q)
@@ -331,6 +339,7 @@ public class ArcadeDBEmbeddedLoader {
     run_algo("sssp", SSSP_Q)
     run_algo("cdlp", CDLP_Q)
     results["_summary"] = dict(bench_common.SUMMARY_CHECKS)
+    results["_server_time"] = dict(bench_common.SERVER_TIMES)
     results["_output"] = bench_common.OUTPUT_MODE
 
     _dump_all(cmd)

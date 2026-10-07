@@ -253,8 +253,10 @@ def run_benchmark():
         print(f"\n[FalkorDB] Running {name}...")
         count_only = bench_common.compute_only()
         q = (COUNT_QUERIES if count_only else FULL_QUERIES)[name]
+        timer = bench_common.ServerTimer()
         def _run():
             r = g.ro_query(q)
+            timer.add(r.run_time_ms / 1000.0)   # engine-reported "internal execution time"
             if name == "BFS":
                 return r.result_set[0][0], None
             return tuple(r.result_set[0]) if count_only else (len(r.result_set), None)
@@ -262,6 +264,7 @@ def run_benchmark():
         results[key] = elapsed
         if isinstance(elapsed, (int, float)):
             print(f"  {name} time: {elapsed:.2f}s  (summary {summary})")
+            bench_common.report_server_time("falkordb", name, timer.median())
             if count_only:
                 n, agg = summary
                 if name in DISTINCT_QUERIES:
@@ -289,6 +292,7 @@ def run_benchmark():
     results["lcc"] = "N/A"
 
     results["_summary"] = dict(bench_common.SUMMARY_CHECKS)
+    results["_server_time"] = dict(bench_common.SERVER_TIMES)
     results["_output"] = bench_common.OUTPUT_MODE
     _dump_all(g)
     bench_common.cleanup_docker("falkordb")

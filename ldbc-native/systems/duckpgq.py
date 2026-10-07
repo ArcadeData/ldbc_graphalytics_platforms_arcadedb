@@ -137,6 +137,16 @@ def run_benchmark():
         if isinstance(elapsed, (int, float)):
             print(f"  {label} time: {elapsed:.2f}s  ({len(rows)} rows returned)")
             if count_only:
+                def _analyze(q=q):   # engine-reported total time of the query (EXPLAIN ANALYZE)
+                    import re
+                    timer = threading.Timer(bench_common.QUERY_TIMEOUT, conn.interrupt)
+                    timer.start()
+                    try:
+                        text = conn.execute("EXPLAIN ANALYZE " + q).fetchall()[0][1]
+                    finally:
+                        timer.cancel()
+                    return float(re.search(r"Total Time: ([0-9.]+)s", text).group(1))
+                bench_common.measure_server_time("duckpgq", name, _analyze)
                 n, agg = rows[0]
                 if name == "WCC":   # untimed verification: the number of distinct components
                     n, agg = conn.execute("SELECT count(*), count(DISTINCT componentId) FROM weakly_connected_component(ldbc, nodes, edges)").fetchone()
@@ -157,6 +167,7 @@ def run_benchmark():
             "duckpgq", {r[0]: r[1] for r in bfs_rows},
             [row[0] for row in conn.execute("SELECT id FROM nodes").fetchall()], 6))
     results["_summary"] = dict(bench_common.SUMMARY_CHECKS)
+    results["_server_time"] = dict(bench_common.SERVER_TIMES)
     results["_output"] = bench_common.OUTPUT_MODE
 
     conn.close()

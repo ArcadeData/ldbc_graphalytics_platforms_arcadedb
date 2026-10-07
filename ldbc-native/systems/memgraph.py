@@ -230,10 +230,22 @@ def run_benchmark():
             cursor.execute(q)
             rows = cursor.fetchall()
             return rows[0] if count_only else (len(rows), None)
+
+        def _profile():   # engine-reported time of the procedure call / expansion operator (PROFILE, absolute time in ms)
+            import re
+            cursor.execute("PROFILE " + q)
+            best = 0.0
+            for row in cursor.fetchall():
+                op, absolute = str(row[0]), str(row[-1])
+                m = re.search(r"([0-9.]+)\s*ms", absolute)
+                if m and ("CallProcedure" in op or "Expand" in op or "BFS" in op or "ShortestPath" in op or "WeightedShortestPath" in op):
+                    best = max(best, float(m.group(1)) / 1000.0)
+            return best
         elapsed, summary = bench_common.run_timed_warm(name, _run)
         results[key] = elapsed
         if isinstance(elapsed, (int, float)):
             print(f"  {name} time: {elapsed:.2f}s  (summary {summary})")
+            bench_common.measure_server_time("memgraph", name, _profile)
             if count_only:
                 n, agg = summary
                 if name in DISTINCT_QUERIES:
@@ -254,6 +266,7 @@ def run_benchmark():
     timed("SSSP", "sssp")
     timed("CDLP", "cdlp")
     results["_summary"] = dict(bench_common.SUMMARY_CHECKS)
+    results["_server_time"] = dict(bench_common.SERVER_TIMES)
     results["_output"] = bench_common.OUTPUT_MODE
 
     if results.get("cdlp") == "timeout":  # the server may still be busy with the abandoned query: new session

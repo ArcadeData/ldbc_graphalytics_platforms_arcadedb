@@ -255,6 +255,59 @@ def check_summary(vendor, algo, n, agg):
     return verdict == "ok"
 
 
+# ------------------------------------------------------------ server-reported compute time
+#
+# Like the official Graphalytics processing time, a second metric asks the ENGINE how long the algorithm itself took (its own profile
+# / statistics of the same call), which excludes the client round trip, the result serialisation and the summary aggregate:
+# ArcadeDB PROFILE (the CALL step), Neo4j GDS computeMillis, Kuzu / FalkorDB query execution time, DuckDB EXPLAIN ANALYZE,
+# Memgraph PROFILE (CallProcedure), ArangoDB Pregel computation time / AQL execution time, Vermeer task times.
+# What each engine reports is described in DECISIONS-2026-10-07.md; the number is printed as `[server-time] <vendor> <ALGO>: <s>`
+# and stored in results["_server_time"].
+SERVER_TIMES = {}
+
+
+class ServerTimer:
+    """Collects the engine-reported seconds of every call of one algorithm; the first call is the warm-up and is dropped."""
+
+    def __init__(self):
+        self.values = []
+
+    def add(self, seconds):
+        if seconds is not None:
+            self.values.append(float(seconds))
+
+    def median(self):
+        import statistics
+        xs = self.values[1:] if len(self.values) > 1 else self.values
+        return statistics.median(xs) if xs else None
+
+
+def report_server_time(vendor, algo, seconds):
+    key = SUMMARY_NAMES.get(algo.lower(), algo.upper())
+    if seconds is None:
+        print(f"  [server-time] {vendor} {key}: not reported", flush=True)
+        return
+    SERVER_TIMES[key] = round(seconds, 4)
+    print(f"  [server-time] {vendor} {key}: {seconds:.4f}s", flush=True)
+
+
+def measure_server_time(vendor, algo, fn, reps=None):
+    """Separate loop for engines whose time comes from a different call than the timed one: fn() returns the engine-reported
+    seconds; one warm-up call, then the median of `reps` calls (a single call when the warm-up took more than WARM_SLOW)."""
+    timer = ServerTimer()
+    try:
+        t0 = time.perf_counter()
+        timer.add(fn())
+        slow = time.perf_counter() - t0 > WARM_SLOW
+        for _ in range(1 if slow else (reps or GRAPHALYTICS_REPS)):
+            timer.add(fn())
+    except Exception as e:  # noqa: BLE001
+        print(f"  [server-time] {vendor} {algo}: failed: {str(e)[:120]}", flush=True)
+        return None
+    report_server_time(vendor, algo, timer.median())
+    return timer.median()
+
+
 def dump_dir():
     return os.environ.get("GRAPHALYTICS_DUMP_DIR")
 

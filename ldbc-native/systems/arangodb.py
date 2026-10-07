@@ -213,30 +213,37 @@ def run_benchmark():
 
     # --- PageRank ---
     print("\n[ArangoDB] Running PageRank...")
+    pr_timer = bench_common.ServerTimer()
     def _run_pagerank():
         job = run_pregel('pagerank', max_gss=PAGERANK_SUPERSTEPS, algo_params={'threshold': 0.0})
         if job['state'] == 'done':
+            pr_timer.add(job.get('computation_time'))   # Pregel computation time (supersteps), without the startup / graph loading phase
             return job
         raise RuntimeError(f"PageRank failed: {job['state']}")
     elapsed, _ = bench_common.run_timed_warm("PageRank", _run_pagerank)
     results["pagerank"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  PageRank time: {elapsed:.2f}s")
+        bench_common.report_server_time("arangodb", "PageRank", pr_timer.median())
 
     # --- WCC ---
     print("\n[ArangoDB] Running WCC...")
+    wcc_timer = bench_common.ServerTimer()
     def _run_wcc():
         job = run_pregel('connectedcomponents')
         if job['state'] == 'done':
+            wcc_timer.add(job.get('computation_time'))
             return job
         raise RuntimeError(f"WCC failed: {job['state']}")
     elapsed, _ = bench_common.run_timed_warm("WCC", _run_wcc)
     results["wcc"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  WCC time: {elapsed:.2f}s")
+        bench_common.report_server_time("arangodb", "WCC", wcc_timer.median())
 
     # --- LCC (via AQL triangle counting) ---
     print("\n[ArangoDB] Running LCC...")
+    lcc_timer = bench_common.ServerTimer()
     def _run_lcc():
         client_lcc = ArangoClient(hosts='http://localhost:8529', request_timeout=300)
         db_lcc = client_lcc.db('_system', username='root', password='benchmark')
@@ -268,6 +275,7 @@ def run_benchmark():
                 RETURN {n: n, agg: total}
         """, ttl=300, max_runtime=300)
         row = list(cursor)[0]
+        lcc_timer.add(cursor.statistics().get("execution_time"))   # AQL execution time reported by the server
         return row["n"], row["agg"]
     elapsed, summary = bench_common.run_timed_warm("LCC", _run_lcc)
     results["lcc"] = elapsed
@@ -275,12 +283,16 @@ def run_benchmark():
         print(f"  LCC time: {elapsed:.2f}s  (summary {summary})")
         # the query skips vertices of degree < 2 (their coefficient is 0): n is the vertex count, the sum is over all values
         bench_common.check_summary("arangodb", "LCC", db.collection('nodes').count(), summary[1])
+        bench_common.report_server_time("arangodb", "LCC", lcc_timer.median())
 
     # --- SSSP (Pregel) ---
     print("\n[ArangoDB] Running SSSP from vertex 6...")
+    sssp_timer = bench_common.ServerTimer()
     def _run_sssp():
         if bench_common.compute_only():
-            row = list(_long_db(300).aql.execute(SSSP_COUNT_QUERY, ttl=300, max_runtime=300))[0]
+            cur = _long_db(300).aql.execute(SSSP_COUNT_QUERY, ttl=300, max_runtime=300)
+            row = list(cur)[0]
+            sssp_timer.add(cur.statistics().get("execution_time"))
             return row["n"], row["agg"]
         rows = list(_long_db(300).aql.execute(SSSP_QUERY, ttl=300, batch_size=100000, max_runtime=300))
         return len(rows), None
@@ -290,21 +302,26 @@ def run_benchmark():
         print(f"  SSSP time: {elapsed:.2f}s  (summary {summary})")
         if bench_common.compute_only():
             bench_common.check_summary("arangodb", "SSSP", *summary)
+        bench_common.report_server_time("arangodb", "SSSP", sssp_timer.median())
 
     # --- CDLP (Label Propagation via Pregel) ---
     print("\n[ArangoDB] Running CDLP...")
+    cdlp_timer = bench_common.ServerTimer()
     def _run_cdlp():
         job = run_pregel('labelpropagation', max_gss=10)
         if job['state'] == 'done':
+            cdlp_timer.add(job.get('computation_time'))
             return job
         raise RuntimeError(f"CDLP failed: {job['state']}")
     elapsed, _ = bench_common.run_timed_warm("CDLP", _run_cdlp)
     results["cdlp"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  CDLP time: {elapsed:.2f}s")
+        bench_common.report_server_time("arangodb", "CDLP", cdlp_timer.median())
 
     # --- BFS (via AQL traversal) ---
     print("\n[ArangoDB] Running BFS from vertex 6...")
+    bfs_timer = bench_common.ServerTimer()
     def _run_bfs():
         long_db = ArangoClient(hosts='http://localhost:8529', request_timeout=300).db(
             '_system', username='root', password='benchmark')   # the default client times out after 60 s
@@ -315,16 +332,19 @@ def run_benchmark():
                 RETURN {depth: depth, count: cnt}
         """, ttl=300, max_runtime=300)
         rows = list(cursor)   # grouped by depth on the server: a handful of rows, already compute only
+        bfs_timer.add(cursor.statistics().get("execution_time"))
         return sum(r['count'] for r in rows), max(r['depth'] for r in rows)
     elapsed, summary = bench_common.run_timed_warm("BFS", _run_bfs)
     results["bfs"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  BFS time: {elapsed:.2f}s  (summary {summary})")
         bench_common.check_summary("arangodb", "BFS", *summary)
+        bench_common.report_server_time("arangodb", "BFS", bfs_timer.median())
 
     # PageRank, WCC and CDLP are Pregel jobs with store=False: the whole computation runs, nothing is stored or returned (no
     # summary to check; their outputs are validated through the untimed export).
     results["_summary"] = dict(bench_common.SUMMARY_CHECKS)
+    results["_server_time"] = dict(bench_common.SERVER_TIMES)
     results["_output"] = bench_common.OUTPUT_MODE
     _dump_all(db, run_pregel)
 
