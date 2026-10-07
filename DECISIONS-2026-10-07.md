@@ -41,3 +41,17 @@ If a compute-only call turns out to be optimised away for some vendor, the fallb
    - HugeGraph (Vermeer): unchanged (compute task, output stays on the server; no summary to check).
    - Embedded ArcadeDB, Mode 1: unchanged (in process).
 5. BFS/SSSP summaries add 1 to the row count where the engine does not return the source vertex itself (the export adds it with distance 0).
+
+## Progress notes (datagen-7_5-fb compute-only run finished 02:35; graph500-22-w running)
+- All summaries ok except: DuckPGQ PR (known wrong algorithm: `pagerank()` has no iteration/damping parameter, was already flagged), FalkorDB BFS (check bug, source row not counted: fixed in the driver after the run; time unaffected).
+- ArangoDB LCC is N/A as before (the AQL query is rejected by this ArangoDB version: `uniqueVertices: 'global'` with ANY traversal).
+- Two timings moved the "wrong" way and need a look once the queue is idle (an optimiser could be the cause): DuckPGQ LCC 49.3 s (full output) -> 13.2 s (count/sum), Neo4j LCC 15.4 s (top-10 query) -> 60.0 s (stream + sum). Plan: time the old and new query forms back to back on an idle machine and decide whether the compute-only form is representative.
+
+## 05:35 Second iteration: cheap timed aggregate for WCC / CDLP
+- First graph500-22-w compute-only pass (logs `weekly-results/20261007-compute-only/`) showed the `count(DISTINCT label)` aggregate is itself expensive in ArcadeDB's Cypher pipeline
+  (CDLP 20.2 s with it, against 7.6 s with the full output and 4.3 s with a bare `count(*)`), i.e. the aggregate, not the algorithm, dominated. That would unfairly penalise ArcadeDB.
+- Decision: the timed call now uses `count(*)` + a cheap `max(label)` for WCC/CDLP (sum for PR/LCC, max distance for BFS/SSSP), and the number of distinct labels is verified in ONE extra
+  UNTIMED call after the timed runs (so the summary check against the reference stays). Applied to ArcadeDB, Kuzu, DuckPGQ, Memgraph, FalkorDB, Neo4j (WCC).
+- Rerun scope (logs `weekly-results/20261007-compute-only-v2/`): ArcadeDB, Kuzu, FalkorDB fully; Neo4j fully on datagen, without LCC on graph500-22-w (it times out); DuckPGQ and Memgraph only WCC (+CDLP for Memgraph).
+  The other cells (LadybugDB, ArangoDB, HugeGraph, DuckPGQ/Neo4j/Memgraph unaffected algorithms) are taken from the first pass: their timed call did not change.
+- Known and accepted summary difference: on `graph500-22-w` CDLP has one label fewer than the reference (the 22 vertices of vertex 6's community settle on label 17 because ids 6 and 248533 are swapped); the check allows exactly that (-1).

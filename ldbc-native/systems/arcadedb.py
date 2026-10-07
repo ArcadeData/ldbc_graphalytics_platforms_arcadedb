@@ -23,9 +23,18 @@ CDLP_Q = ("CALL algo.labelPropagation({maxIterations: 10, tieBreakProperty: 'VID
 
 # Compute-only variants (GRAPHALYTICS_OUTPUT=count, the default): the same procedure call, but the server reduces the output to a
 # summary that depends on every value, so only one row travels. check_summary() compares it with the reference output.
-COUNT_AGG = {"pagerank": ("score", "sum(score)"), "wcc": ("componentId", "count(DISTINCT componentId)"), "bfs": ("depth", "max(depth)"),
+# The timed aggregate is cheap (sum / max): a DISTINCT over millions of rows costs the Cypher pipeline more than shipping the output.
+# WCC and CDLP are checked with the number of distinct labels in one extra UNTIMED call (DISTINCT_AGG) after the timed runs.
+COUNT_AGG = {"pagerank": ("score", "sum(score)"), "wcc": ("componentId", "max(componentId)"), "bfs": ("depth", "max(depth)"),
              "lcc": ("localClusteringCoefficient", "sum(localClusteringCoefficient)"), "sssp": ("cost", "max(cost)"),
-             "cdlp": ("communityId", "count(DISTINCT communityId)")}
+             "cdlp": ("communityId", "max(communityId)")}
+DISTINCT_AGG = {"wcc": "componentId", "cdlp": "communityId"}
+
+
+def _distinct_query(name, full):
+    col = DISTINCT_AGG[name]
+    head = full[:full.rindex(" RETURN ")]
+    return f"{head} WITH node, {col} RETURN count(*) AS n, count(DISTINCT {col}) AS agg"
 
 
 def _count_query(name, full):
@@ -305,6 +314,10 @@ public class ArcadeDBEmbeddedLoader {
             print(f"  {name} time: {elapsed:.2f}s  (summary {summary})")
             if bench_common.compute_only():
                 n, agg = summary
+                if name in DISTINCT_AGG:   # untimed verification: the number of distinct labels
+                    r = cmd(_distinct_query(name, full_query), language="opencypher", timeout=timeout)
+                    row = r.json()["result"][0]
+                    n, agg = row["n"], row["agg"]
                 # algo.bfs and the Dijkstra procedure do not emit the source itself (the export adds it with distance 0)
                 bench_common.check_summary("arcadedb", name, n + 1 if name in ("bfs", "sssp") else n, agg)
 

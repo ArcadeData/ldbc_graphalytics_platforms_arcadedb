@@ -230,14 +230,16 @@ def run_benchmark():
             row = session.run("""
                 CALL gds.wcc.stream('bench')
                 YIELD nodeId, componentId
-                RETURN count(*) AS n, count(DISTINCT componentId) AS agg
+                RETURN count(*) AS n, max(componentId) AS agg
             """).single()
         return row["n"], row["agg"]
     elapsed, summary = bench_common.run_timed_warm("WCC", _run_wcc)
     results["wcc"] = elapsed
     if isinstance(elapsed, (int, float)):
         print(f"  WCC time: {elapsed:.2f}s  (summary {summary})")
-        bench_common.check_summary("neo4j", "WCC", *summary)
+        with driver.session() as session:   # untimed verification: the number of distinct components
+            row = session.run("CALL gds.wcc.stream('bench') YIELD nodeId, componentId RETURN count(*) AS n, count(DISTINCT componentId) AS agg").single()
+        bench_common.check_summary("neo4j", "WCC", row["n"], row["agg"])
 
     # --- BFS ---
     print("\n[Neo4j] Running BFS from vertex 6...")

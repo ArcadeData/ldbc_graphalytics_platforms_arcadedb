@@ -22,10 +22,15 @@ BFS_QUERY = ("MATCH (src:Node {id: 6}) CALL algo.BFS(src, 999, 'EDGE') YIELD nod
 # Compute-only variants (GRAPHALYTICS_OUTPUT=count, the default): same call, reduced to (rows, aggregate over every value).
 COUNT_QUERIES = {
     "PageRank": "CALL algo.pageRank('Node', 'EDGE') YIELD node, score RETURN count(*) AS n, sum(score) AS agg",
+    "WCC": "CALL algo.WCC(null) YIELD node, componentId RETURN count(*) AS n, max(componentId) AS agg",
+    "CDLP": ("CALL algo.labelPropagation({nodeLabels: ['Node'], relationshipTypes: ['EDGE'], maxIterations: 10}) "
+             "YIELD node, communityId RETURN count(*) AS n, max(communityId) AS agg"),
+    "BFS": BFS_QUERY,    # already a count: the BFS procedure returns the list of reached nodes, the query returns its size
+}
+DISTINCT_QUERIES = {   # untimed verification of the number of distinct labels (the timed aggregate is a cheap max)
     "WCC": "CALL algo.WCC(null) YIELD node, componentId RETURN count(*) AS n, count(DISTINCT componentId) AS agg",
     "CDLP": ("CALL algo.labelPropagation({nodeLabels: ['Node'], relationshipTypes: ['EDGE'], maxIterations: 10}) "
              "YIELD node, communityId RETURN count(*) AS n, count(DISTINCT communityId) AS agg"),
-    "BFS": BFS_QUERY,    # already a count: the BFS procedure returns the list of reached nodes, the query returns its size
 }
 FULL_QUERIES = {"PageRank": PAGERANK_QUERY, "WCC": WCC_QUERY, "CDLP": CDLP_QUERY, "BFS": BFS_QUERY}
 
@@ -259,7 +264,10 @@ def run_benchmark():
             print(f"  {name} time: {elapsed:.2f}s  (summary {summary})")
             if count_only:
                 n, agg = summary
-                bench_common.check_summary("falkordb", name, n, agg)
+                if name in DISTINCT_QUERIES:
+                    n, agg = g.ro_query(DISTINCT_QUERIES[name]).result_set[0]
+                # BFS: the reached list does not contain the source vertex (the export adds it); the summary has no distance aggregate
+                bench_common.check_summary("falkordb", name, n + 1 if name == "BFS" else n, None if name == "BFS" else agg)
 
     timed("PageRank", "pagerank")
     timed("WCC", "wcc")

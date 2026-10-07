@@ -24,11 +24,15 @@ SSSP_QUERY = ("MATCH (a:Node {id: 6})-[e:EDGE *wShortest (e, n | e.weight)]->(b:
 # Compute-only variants (GRAPHALYTICS_OUTPUT=count, the default): same call, reduced to (rows, aggregate over every value).
 COUNT_QUERIES = {
     "PageRank": (f"CALL pagerank.get({PAGERANK_ITERATIONS}, 0.85, 0.0) YIELD node, rank RETURN count(*) AS n, sum(rank) AS agg"),
-    "WCC": "CALL weakly_connected_components.get() YIELD node, component_id RETURN count(*) AS n, count(DISTINCT component_id) AS agg",
-    "CDLP": "CALL community_detection.get() YIELD node, community_id RETURN count(*) AS n, count(DISTINCT community_id) AS agg",
+    "WCC": "CALL weakly_connected_components.get() YIELD node, component_id RETURN count(*) AS n, max(component_id) AS agg",
+    "CDLP": "CALL community_detection.get() YIELD node, community_id RETURN count(*) AS n, max(community_id) AS agg",
     "BFS": "MATCH (a:Node {id: 6})-[e:EDGE *BFS]->(b:Node) RETURN count(*) AS n, max(size(e)) AS agg",
     "SSSP": ("MATCH (a:Node {id: 6})-[e:EDGE *wShortest (e, n | e.weight)]->(b:Node) "
              "RETURN count(*) AS n, max(reduce(w = 0.0, x IN e | w + x.weight)) AS agg"),
+}
+DISTINCT_QUERIES = {   # untimed verification of the number of distinct labels (the timed aggregate is a cheap max)
+    "WCC": "CALL weakly_connected_components.get() YIELD node, component_id RETURN count(*) AS n, count(DISTINCT component_id) AS agg",
+    "CDLP": "CALL community_detection.get() YIELD node, community_id RETURN count(*) AS n, count(DISTINCT community_id) AS agg",
 }
 FULL_QUERIES = {}   # filled below once the query constants exist
 
@@ -232,6 +236,9 @@ def run_benchmark():
             print(f"  {name} time: {elapsed:.2f}s  (summary {summary})")
             if count_only:
                 n, agg = summary
+                if name in DISTINCT_QUERIES:
+                    cursor.execute(DISTINCT_QUERIES[name])
+                    n, agg = cursor.fetchall()[0]
                 # BFS/SSSP: the source vertex is not an expansion result row (the export adds it)
                 bench_common.check_summary("memgraph", name, n + 1 if name in ("BFS", "SSSP") else n, agg)
 
