@@ -96,37 +96,39 @@ How ArcadeDB itself changes from release to release (official framework, Mode 2 
 
 ### Graphalytics, `datagen-7_5-fb` (633,432 vertices, 34,185,747 edges)
 
-Seconds, last column peak memory in GiB. Bold marks the fastest *valid* result per column. Systems, versions, how we measure, per-system notes and how to run each vendor: [detailed page](docs/benchmark-graphalytics-multivendor.md).
+Seconds, **compute only** (every system runs the whole algorithm and returns a summary row; see the [detailed page](docs/benchmark-graphalytics-multivendor.md) for the rule, re-measured 2026-10-07), last column peak memory in GiB. Bold marks the fastest *valid* result per column. Systems, versions, how we measure, per-system notes and how to run each vendor: [detailed page](docs/benchmark-graphalytics-multivendor.md).
 
 | System | Load | PageRank | WCC | BFS | LCC | SSSP | CDLP | Peak memory (GiB) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | ArcadeDB embedded | 71.9 | **0.085** | **0.003** | **0.020** | **2.05** | **0.75** | **0.96** | 5.6 |
-| ArcadeDB Docker | 43.9 | 1.11 | 0.83 | 0.88 | 3.26 | 2.09 | 2.17 | 12.7 |
-| Neo4j | 657 | 6.98§ | 0.111 | 0.480‡ | 15.4 | N/A | N/A | 13.3 |
-| Kuzu | 28.8 | 1.16 | 0.434 | 0.328 | N/A | N/A | N/A | 0.87 |
-| LadybugDB | 5.16 | N/A | N/A | 7.89 | N/A | N/A | N/A | 1.0 |
-| DuckPGQ | 0.85 | 1.51✗ | 2.00 | timeout¶ | 49.3 | N/A | N/A | 8.3 |
-| Memgraph | 437 | 5.49 | 189 | 3.85 | N/A | 75.9 | timeout | 25.1 |
-| ArangoDB \* | 726 | 93.0 | 40.9 | 38.4 | N/A | 173 | 254✗ | 23.2 |
-| FalkorDB | 116 | 2.67✗ | 2.50 | 0.057 | N/A | N/A | 10.6✗ | 8.4 |
-| HugeGraph | 34.7 | 2.41 | 0.293 | 0.195 | 110 | N/A | 22.3✗ | 3.2 |
+| ArcadeDB Docker | 43.9 | 0.30 | 0.79 | 0.22 | 2.63 | 1.38 | 1.56 | 12.5 |
+| Neo4j | 657 | 7.33§ | 0.07 | 0.47‡ | 14.4 | N/A | N/A | 13.3 |
+| Kuzu | 28.8 | 0.91 | 0.21 | 0.05 | N/A | N/A | N/A | 0.8 |
+| LadybugDB | 5.16 | N/A | N/A | 7.42 | N/A | N/A | N/A | 1.0 |
+| DuckPGQ | 0.85 | 1.45✗ | 3.29♦ | timeout¶ | 13.0 | N/A | N/A | 14.6 |
+| Memgraph | 437 | 4.28 | 143 | 3.40 | N/A | 67.6 | timeout | 24.4 |
+| ArangoDB \* | 726 | 79.4 | 35.0 | 28.2 | N/A | 132 | 196✗ | 23.6 |
+| FalkorDB | 116 | 1.10✗ | 1.08 | 0.07 | N/A | N/A | 7.07✗ | 7.5 |
+| HugeGraph | 34.7 | 2.36 | 0.30 | 0.19 | 102 | N/A | 21.4✗ | 3.2 |
+
+♦ DuckPGQ's WCC varies between 1.8 s and 8.0 s across runs on this machine (median of three runs shown).
 
 ### Graphalytics, `graph500-22` (2,396,657 vertices, 64,155,735 edges)
 
-Seconds; no SSSP (not defined for this dataset). ArcadeDB is `26.11.1-SNAPSHOT`; bold marks the fastest *valid* result per column. Per-system notes, the harness problems found and how to reproduce: [detailed page](docs/benchmark-graphalytics-graph500-22.md).
+Seconds, compute only (same rule as above); no SSSP (not defined for this dataset). ArcadeDB is `26.11.1-SNAPSHOT`; bold marks the fastest *valid* result per column. Per-system notes, the harness problems found and how to reproduce: [detailed page](docs/benchmark-graphalytics-graph500-22.md).
 
 | System | Load | PageRank | WCC | BFS | LCC | CDLP | Peak memory (GiB) |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | ArcadeDB embedded | 114.5 | **0.268** | **0.013** | **0.076** | **46.9** | **1.78** | 1.6\*\* |
-| ArcadeDB Docker | 101† | 4.28 | 3.69 | 3.59 | 51.7 | 7.59 | 13.1 |
-| Neo4j | 2017† | 12.5 | 0.20 | 1.05 | timeout | N/A | 13.3 |
-| Kuzu | 53.8† | 3.13 | 1.26 | 0.94 | N/A | N/A | 5.9 |
-| LadybugDB | 10.1† | N/A | N/A | 16.7 | N/A | N/A | 2.0 |
-| DuckPGQ | 0.57† | 9.27✗ | 4.94 | timeout‡ | timeout | N/A | 15.7 |
-| Memgraph | 932§ | 31.0 | OOM | 12.5 | N/A | OOM | 25.0 |
-| ArangoDB 3.11.14 | 1700† | 261.9 | 106.4 | OOM¶ | N/A | timeout | 30.6 |
-| FalkorDB | 348.5 | 7.97✗ | 7.30 | 0.151 | N/A | 39.8✗ | 15.9 |
-| HugeGraph | 34.2† | 6.03 | 0.67 | 0.42 | timeout | 44.7✗ | 8.8 |
+| ArcadeDB Docker | 101† | 1.19 | 0.71 | 0.83 | 61.4 | 6.63 | 12.7 |
+| Neo4j | 2017† | 13.6 | 1.81 | 6.36 | timeout | N/A | 13.2 |
+| Kuzu | 53.8† | 3.11 | 0.60 | 0.14 | N/A | N/A | 1.6 |
+| LadybugDB | 10.1† | N/A | N/A | 15.9 | N/A | N/A | 1.5 |
+| DuckPGQ | 0.57† | 11.1✗ | 4.78 | timeout‡ | 180 | N/A | 12.1 |
+| Memgraph | 932§ | 13.2 | OOM | 10.5 | N/A | 253✗ | 30.0 |
+| ArangoDB 3.11.14 | 1700† | 252 | 99.1 | OOM¶ | N/A | timeout | 30.4 |
+| FalkorDB | 348.5 | 2.10✗ | 1.80 | 0.13 | N/A | 16.9✗ | 14.9 |
+| HugeGraph | 34.2† | 6.16 | 0.77 | 0.37 | timeout | 31.4✗ | 8.2 |
 
 OOM = out of memory (Docker Desktop's 32 GB). † remembered original load, ‡ DuckPGQ BFS does not finish (ended after 20 min), § Memgraph load includes the reverse-edge step, ¶ ArangoDB container ran out of memory, \*\* live heap after GC (process peak not measured): see the detailed page.
 

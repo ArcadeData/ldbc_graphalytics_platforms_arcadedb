@@ -1,22 +1,22 @@
-# LDBC Graphalytics on graph500-22 (derived `graph500-22-w`), warm and validated, 2026-10-06
+# LDBC Graphalytics on graph500-22 (derived `graph500-22-w`), warm and validated, compute-only timing re-measured 2026-10-07
 
 Dataset: `graph500-22` as `graph500-22-w` (2,396,657 vertices, 64,155,735 undirected edges, stored once; ids 6 and 248533 swapped, constant weight 1.0). Official algorithms BFS, CDLP, LCC, PR, WCC.
 Machine: MacBook Pro M5 Pro, 48 GB, AC power, Docker Desktop 32 GB, 5-minute limit per operation, 12 GB heap for JVM systems, ArcadeDB `26.11.1-SNAPSHOT`
-(ArcadeDB `main` @ `cbf701d66e`, with the Q9 fix #9282 and the CDLP tie-break #9285), Temurin 25 with `-XX:+UseCompactObjectHeaders`. Raw logs: `weekly-results/20261006-graph500-22-w/`.
+(ArcadeDB `main` @ `cbf701d66e`, with the Q9 fix #9282 and the CDLP tie-break #9285), Temurin 25 with `-XX:+UseCompactObjectHeaders`. Raw logs: `weekly-results/20261006-graph500-22-w/` (validation), `weekly-results/20261007-compute-only*/` (timings, see DECISIONS-2026-10-07.md).
 This replaces the cold, unvalidated single-run table of 2026-10-03 in [`results-m5-multivendor-2026-10-03.md`](../results-m5-multivendor-2026-10-03.md).
 
 | System | Load | PageRank | WCC | BFS | LCC | CDLP | Peak memory (GiB) |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | ArcadeDB embedded | 114.5 | **0.268** | **0.013** | **0.076** | **46.9** | **1.78** | 1.6\*\* |
-| ArcadeDB Docker | 101† | 4.28 | 3.69 | 3.59 | 51.7 | 7.59 | 13.1 |
-| Neo4j | 2017† | 12.5 | 0.20 | 1.05 | timeout | N/A | 13.3 |
-| Kuzu | 53.8† | 3.13 | 1.26 | 0.94 | N/A | N/A | 5.9 |
-| LadybugDB | 10.1† | N/A | N/A | 16.7 | N/A | N/A | 2.0 |
-| DuckPGQ | 0.57† | 9.27✗ | 4.94 | timeout‡ | timeout | N/A | 15.7 |
-| Memgraph | 932§ | 31.0 | OOM | 12.5 | N/A | OOM | 25.0 |
-| ArangoDB 3.11.14 | 1700† | 261.9 | 106.4 | OOM¶ | N/A | timeout | 30.6 |
-| FalkorDB | 348.5 | 7.97✗ | 7.30 | 0.151 | N/A | 39.8✗ | 15.9 |
-| HugeGraph | 34.2† | 6.03 | 0.67 | 0.42 | timeout | 44.7✗ | 8.8 |
+| ArcadeDB Docker | 101† | 1.19 | 0.71 | 0.83 | 61.4 | 6.63 | 12.7 |
+| Neo4j | 2017† | 13.6 | 1.81 | 6.36 | timeout | N/A | 13.2 |
+| Kuzu | 53.8† | 3.11 | 0.60 | 0.14 | N/A | N/A | 1.6 |
+| LadybugDB | 10.1† | N/A | N/A | 15.9 | N/A | N/A | 1.5 |
+| DuckPGQ | 0.57† | 11.1✗ | 4.78 | timeout‡ | 180 | N/A | 12.1 |
+| Memgraph | 932§ | 13.2 | OOM | 10.5 | N/A | 253✗ | 30.0 |
+| ArangoDB 3.11.14 | 1700† | 252 | 99.1 | OOM¶ | N/A | timeout | 30.4 |
+| FalkorDB | 348.5 | 2.10✗ | 1.80 | 0.13 | N/A | 16.9✗ | 14.9 |
+| HugeGraph | 34.2† | 6.16 | 0.77 | 0.37 | timeout | 31.4✗ | 8.2 |
 
 - Seconds, warm medians (the first call of every algorithm is an untimed warm-up; median of 3 timed runs, 5 in the embedded ArcadeDB JVM which is launched 3 times and the median of those is shown; when the warm-up call takes longer than 60 s there is a single timed run). Bold = fastest valid result in the column.
 - **✗** = the output was exported in full and **failed** the check against the official `graph500-22` reference outputs, so the time is shown for completeness and is not ranked. **N/A** = the system has no implementation (or its extension does not load). **timeout** = the 5-minute limit per operation. **OOM** = the system ran out of memory inside Docker Desktop's 32 GB.
@@ -32,7 +32,7 @@ Reproduce: `cd ldbc-native && GRAPHALYTICS_DATASET=graph500-22-w GRAPHALYTICS_SK
 ## Per system
 
 - **ArcadeDB embedded** (Graph Analytical View): all five algorithms valid. CDLP uses the tie-break by vertex id from [ArcadeData/arcadedb#9285](https://github.com/ArcadeData/arcadedb/issues/9285) (rank built once, outside the timed call). 22 vertices (the community of vertex 6) settle on label 17 instead of 6 because ids 6 and 248533 are swapped in the derived dataset, which changes the "smallest id" tie-break for that community; `validate_outputs.py` counts these as `swap_tie_break`, not as mismatches. LCC is the slow one (46.9 s), as in the earlier cold run (44.3 s).
-- **ArcadeDB Docker**: all five valid (CDLP with the same 22 swap tie-break vertices). The server needs `-Darcadedb.server.httpQueryMaxResultRows=5000000` for the full 2.4M-row exports (the default cap is 1,000,000 rows); the timed calls return the full per-vertex output over HTTP (rerun 2026-10-07, all five valid, 13.1 GiB; before that the row timed `count(*)` calls and read PageRank 0.59, WCC 0.09, BFS 0.24, LCC 60.1, CDLP 4.33, which left out the result transfer the other systems pay).
+- **ArcadeDB Docker**: all five valid (CDLP with the same 22 swap tie-break vertices). The server needs `-Darcadedb.server.httpQueryMaxResultRows=5000000` for the full 2.4M-row exports (the default cap is 1,000,000 rows); the timed calls are compute only (a summary row, see the method note in [the datagen page](benchmark-graphalytics-multivendor.md)); re-measured 2026-10-07 (the earlier row used a bare `count(*)`: PageRank 0.59, WCC 0.09, BFS 0.24, LCC 60.1, CDLP 4.33). The CDLP summary has one label fewer than the reference (the 22 swap tie-break vertices).
 - **Neo4j (GDS)**: PageRank, WCC and BFS valid; LCC exceeds 5 minutes (15 s on `datagen-7_5-fb`); no CDLP in the driver.
 - **Kuzu**: PageRank, WCC and BFS valid; no LCC or CDLP. **LadybugDB**: only BFS runs (the `algo` extension for macOS arm64 fails to load), valid.
 - **DuckPGQ**: WCC valid; PageRank fails validation (`pagerank()` has no iteration or damping parameter); LCC timeout; BFS does not finish.
