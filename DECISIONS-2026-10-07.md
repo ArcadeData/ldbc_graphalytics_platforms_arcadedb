@@ -66,3 +66,9 @@ If a compute-only call turns out to be optimised away for some vendor, the fallb
 - **ArcadeDB aggregate cost:** a value aggregate over the Cypher pipeline costs ArcadeDB more than a bare `count(*)` (PageRank 0.14 -> 0.30 s on datagen). I kept the value aggregate for all vendors so none can skip the work; a bare count would give ArcadeDB Docker lower numbers but would not prove the values were computed. Your call.
 - **Engine bug to report:** aggregates (`sum`, `max`, `count(DISTINCT)`) directly after `CALL ... YIELD` return 0/null in ArcadeDB 26.11.1-SNAPSHOT Cypher; `WITH node, x` in between fixes it.
 - **Not done:** HugeGraph/ArangoDB Pregel summaries (nothing returned); Mode 1 and embedded benchmarks unchanged; LSQB unchanged; the per-vertex validation re-run; the README/docs still carry the 2026-10-05 validation marks. Everything is committed and pushed; to revert to full-output timing set `GRAPHALYTICS_OUTPUT=full` and rerun.
+
+## 10:30 Full-output re-validation done (item 1)
+All nine vendors, both datasets, exported with `GRAPHALYTICS_DUMP_ONLY=1` and checked by `scripts/validate_outputs.py` (verdicts in `weekly-results/20261007-validate/validation.txt`, logs next to it).
+The ✗ marks in the tables are confirmed, nothing changed: ArcadeDB Docker valid for all six (datagen) / five (graph500-22-w) algorithms; DuckPGQ PR invalid; FalkorDB PR and CDLP invalid; Memgraph CDLP invalid; ArangoDB and HugeGraph CDLP invalid.
+Everything else exported is valid (Kuzu, LadybugDB BFS, Neo4j PR/WCC/LCC/BFS-reach on datagen, HugeGraph PR/WCC/BFS/LCC, ArangoDB PR/WCC/BFS/SSSP, Memgraph PR/WCC/BFS/SSSP).
+Only new observation: Neo4j LCC on graph500-22-w exports with 23 mismatching vertices (all other vertices match); the timed LCC there times out anyway, so no table cell is affected.
