@@ -3,7 +3,6 @@
 import time
 import os
 
-import bench_bolt
 from ._common import data_dir_merged, CYPHER_QUERIES, bench_common
 
 
@@ -31,8 +30,8 @@ def run_benchmark():
             raise Exception(f"HTTP {r.status_code}")
     except Exception as e:
         print(f"  Cannot connect to ArcadeDB: {e}")
-        print("  Start with: docker run -d --name arcadedb-lsqb -p 2480:2480 -p 7687:7687 "
-              f'-e JAVA_OPTS="-Darcadedb.server.rootPassword=benchmark {bench_bolt.BOLT_PLUGIN_OPT}" '
+        print("  Start with: docker run -d --name arcadedb-lsqb -p 2480:2480 "
+              f'-e JAVA_OPTS="-Darcadedb.server.rootPassword=benchmark" '
               '-e ARCADEDB_OPTS_MEMORY="-Xms12g -Xmx12g" '
               "arcadedata/arcadedb:latest")
         return {"error": str(e)}
@@ -236,27 +235,15 @@ def run_benchmark():
     gav_time = time.perf_counter() - gav_start
     print(f"  GAV ready: {gav_time:.2f}s")
 
-    # Run LSQB queries using Cypher over Bolt (like Neo4j and Memgraph; ARCADEDB_BENCH_PROTOCOL=http keeps the HTTP API).
+    # Run LSQB queries using Cypher over the HTTP API.
     # ArcadeDB supports openCypher and Post/Comment both extend Message,
     # so :Message label matches both.
-    results["_protocol"] = bench_bolt.protocol()
-    bolt = None
-    if bench_bolt.use_bolt():
-        try:
-            bolt = bench_bolt.ArcadeBolt(db)
-            print(f"\n[ArcadeDB] Queries over Bolt ({bolt.uri}, database {db})")
-        except Exception as e:
-            print(f"  Bolt connection failed: {e}")
-            bench_common.cleanup_docker("arcadedb-lsqb")
-            return {"error": f"Bolt: {e}"}
     for qid in [f"q{i}" for i in range(1, 10)]:
         query = CYPHER_QUERIES[qid]
         print(f"\n[ArcadeDB] Running {qid.upper()}...")
         start = time.perf_counter()
         try:
             def _once(query=query):
-                if bolt is not None:
-                    return bolt.scalar(query.strip(), "count")
                 r = cypher(query.strip())
                 if r.status_code != 200:
                     raise RuntimeError(r.text[:300])
@@ -269,8 +256,6 @@ def run_benchmark():
             print(f"  {qid.upper()} failed ({elapsed:.2f}s): {e}")
             results[qid] = "N/A"
 
-    if bolt is not None:
-        bolt.close()
     bench_common.cleanup_docker("arcadedb-lsqb")
     return results
 

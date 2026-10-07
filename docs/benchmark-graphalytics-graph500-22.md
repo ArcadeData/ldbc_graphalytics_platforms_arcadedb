@@ -8,7 +8,7 @@ This replaces the cold, unvalidated single-run table of 2026-10-03 in [`results-
 | System | Load | PageRank | WCC | BFS | LCC | CDLP | Peak memory (GiB) |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | ArcadeDB embedded | 114.5 | **0.268** | **0.013** | **0.076** | **46.9** | **1.78** | 1.6\*\* |
-| ArcadeDB Docker | 101† | 0.59 | 0.09 | 0.24 | 60.1 | 4.33 | 13.5 |
+| ArcadeDB Docker | 101† | 4.28 | 3.69 | 3.59 | 51.7 | 7.59 | 13.1 |
 | Neo4j | 2017† | 12.5 | 0.20 | 1.05 | timeout | N/A | 13.3 |
 | Kuzu | 53.8† | 3.13 | 1.26 | 0.94 | N/A | N/A | 5.9 |
 | LadybugDB | 10.1† | N/A | N/A | 16.7 | N/A | N/A | 2.0 |
@@ -32,7 +32,7 @@ Reproduce: `cd ldbc-native && GRAPHALYTICS_DATASET=graph500-22-w GRAPHALYTICS_SK
 ## Per system
 
 - **ArcadeDB embedded** (Graph Analytical View): all five algorithms valid. CDLP uses the tie-break by vertex id from [ArcadeData/arcadedb#9285](https://github.com/ArcadeData/arcadedb/issues/9285) (rank built once, outside the timed call). 22 vertices (the community of vertex 6) settle on label 17 instead of 6 because ids 6 and 248533 are swapped in the derived dataset, which changes the "smallest id" tie-break for that community; `validate_outputs.py` counts these as `swap_tie_break`, not as mismatches. LCC is the slow one (46.9 s), as in the earlier cold run (44.3 s).
-- **ArcadeDB Docker**: all five valid (CDLP with the same 22 swap tie-break vertices). The server needs `-Darcadedb.server.httpQueryMaxResultRows=5000000` for the full 2.4M-row exports (the default cap is 1,000,000 rows); the timed calls return `count(*)` and are not affected.
+- **ArcadeDB Docker**: all five valid (CDLP with the same 22 swap tie-break vertices). The server needs `-Darcadedb.server.httpQueryMaxResultRows=5000000` for the full 2.4M-row exports (the default cap is 1,000,000 rows); the timed calls return the full per-vertex output over HTTP (rerun 2026-10-07, all five valid, 13.1 GiB; before that the row timed `count(*)` calls and read PageRank 0.59, WCC 0.09, BFS 0.24, LCC 60.1, CDLP 4.33, which left out the result transfer the other systems pay).
 - **Neo4j (GDS)**: PageRank, WCC and BFS valid; LCC exceeds 5 minutes (15 s on `datagen-7_5-fb`); no CDLP in the driver.
 - **Kuzu**: PageRank, WCC and BFS valid; no LCC or CDLP. **LadybugDB**: only BFS runs (the `algo` extension for macOS arm64 fails to load), valid.
 - **DuckPGQ**: WCC valid; PageRank fails validation (`pagerank()` has no iteration or damping parameter); LCC timeout; BFS does not finish.

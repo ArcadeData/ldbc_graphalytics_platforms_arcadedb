@@ -1,4 +1,5 @@
-"""Bolt access to a remote (Docker) ArcadeDB for the benchmarks.
+"""DIAGNOSTIC ONLY: Bolt access to ArcadeDB, used by scripts/bolt_transfer_bench.py and scripts/grpc_transfer_bench.py.
+No benchmark driver uses it any more: the ArcadeDB benchmarks go over gRPC (shared/bench_grpc.py).
 
 Every timed query and algorithm call of the ArcadeDB Docker drivers goes over Bolt, like Neo4j and Memgraph, so the protocol is
 no longer a difference between the systems. Setup that Bolt cannot do (create or drop a database, SQL schema statements, the GAV

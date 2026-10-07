@@ -27,7 +27,7 @@ import science.atlarge.graphalytics.arcadedb.metrics.wcc.WeaklyConnectedComponen
 
 /**
  * Factory for creating ArcadeDB benchmark jobs. Uses ArcadeDB's native graph
- * algorithms invoked via Cypher procedures over the Bolt protocol.
+ * algorithms invoked via Cypher procedures.
  *
  * @author Luca Garulli (l.garulli@arcadedata.com)
  */

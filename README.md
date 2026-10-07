@@ -101,7 +101,7 @@ Seconds, last column peak memory in GiB. Bold marks the fastest *valid* result p
 | System | Load | PageRank | WCC | BFS | LCC | SSSP | CDLP | Peak memory (GiB) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | ArcadeDB embedded | 71.9 | **0.085** | **0.003** | **0.020** | **2.05** | **0.75** | **0.96** | 5.6 |
-| ArcadeDB Docker | 43.9 | 0.16 | 0.02 | 0.06 | 2.61 | 1.39 | 1.45 | 12.3 |
+| ArcadeDB Docker | 43.9 | 1.11 | 0.83 | 0.88 | 3.26 | 2.09 | 2.17 | 12.7 |
 | Neo4j | 657 | 6.98§ | 0.111 | 0.480‡ | 15.4 | N/A | N/A | 13.3 |
 | Kuzu | 28.8 | 1.16 | 0.434 | 0.328 | N/A | N/A | N/A | 0.87 |
 | LadybugDB | 5.16 | N/A | N/A | 7.89 | N/A | N/A | N/A | 1.0 |
@@ -118,7 +118,7 @@ Seconds; no SSSP (not defined for this dataset). ArcadeDB is `26.11.1-SNAPSHOT`;
 | System | Load | PageRank | WCC | BFS | LCC | CDLP | Peak memory (GiB) |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | ArcadeDB embedded | 114.5 | **0.268** | **0.013** | **0.076** | **46.9** | **1.78** | 1.6\*\* |
-| ArcadeDB Docker | 101† | 0.59 | 0.09 | 0.24 | 60.1 | 4.33 | 13.5 |
+| ArcadeDB Docker | 101† | 4.28 | 3.69 | 3.59 | 51.7 | 7.59 | 13.1 |
 | Neo4j | 2017† | 12.5 | 0.20 | 1.05 | timeout | N/A | 13.3 |
 | Kuzu | 53.8† | 3.13 | 1.26 | 0.94 | N/A | N/A | 5.9 |
 | LadybugDB | 10.1† | N/A | N/A | 16.7 | N/A | N/A | 2.0 |
