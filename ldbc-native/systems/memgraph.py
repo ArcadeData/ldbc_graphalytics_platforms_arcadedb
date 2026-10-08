@@ -220,6 +220,10 @@ def run_benchmark():
         bench_common.cleanup_docker("memgraph")
         return results
 
+    # Autocommit for the timed section: PROFILE is not allowed in a multicommand transaction, and a long-lived open transaction
+    # of the benchmark connection is aborted by Memgraph's transaction timeout during the slow algorithms.
+    conn.commit()
+    conn.autocommit = True
     # The timed call is the same procedure call as the export; GRAPHALYTICS_OUTPUT=count (default) reduces it to a summary row,
     # =full returns every row.
     def timed(name, key):
@@ -233,14 +237,9 @@ def run_benchmark():
 
         def _profile():   # engine-reported time of the procedure call / expansion operator (PROFILE, absolute time in ms)
             import re
-            pconn = mgclient.connect(host='127.0.0.1', port=7687, sslmode=mgclient.MG_SSLMODE_DISABLE)
-            pconn.autocommit = True   # PROFILE is not allowed inside the multicommand transaction of the benchmark connection
-            pcur = pconn.cursor()
-            pcur.execute("PROFILE " + q)
+            cursor.execute("PROFILE " + q)
             best = 0.0
-            rows_ = pcur.fetchall()
-            pconn.close()
-            for row in rows_:
+            for row in cursor.fetchall():
                 op, absolute = str(row[0]), str(row[-1])
                 m = re.search(r"([0-9.]+)\s*ms", absolute)
                 if m and ("CallProcedure" in op or "Expand" in op or "BFS" in op or "ShortestPath" in op or "WeightedShortestPath" in op):
