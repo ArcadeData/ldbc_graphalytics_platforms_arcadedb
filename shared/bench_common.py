@@ -310,6 +310,15 @@ def measure_server_time(vendor, algo, fn, reps=None):
     return timer.median()
 
 
+def record_image(results, image=None):
+    """Print and store the ArcadeDB image id / creation time (the tag moves) and, when a server answers, its build string."""
+    image = image or bench_containers.arcadedb_image()
+    out = subprocess.run(["docker", "image", "inspect", image, "--format", "{{.Id}} {{.Created}}"], capture_output=True, text=True)
+    info = out.stdout.strip().replace("sha256:", "")[:90] if out.returncode == 0 else "unknown"
+    print(f"  [image] {image} -> {info}", flush=True)
+    results["_image"] = {"name": image, "id_created": info}
+
+
 def dump_dir():
     return os.environ.get("GRAPHALYTICS_DUMP_DIR")
 

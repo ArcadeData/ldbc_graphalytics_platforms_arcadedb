@@ -1,6 +1,8 @@
 """ArcadeDB (Docker) benchmark for LDBC Graphalytics."""
 
 import time
+
+import bench_containers
 import os
 import shutil
 
@@ -249,7 +251,7 @@ public class ArcadeDBEmbeddedLoader {
                  "-Darcadedb.server.httpQueryMaxResultRows=5000000",   # full per-vertex output of graph500-22 (2.4M rows)
         "-v", f"{data_root}:/home/arcadedb/databases",
         "-v", f"{log_root}:/home/arcadedb/log",
-        os.environ.get("ARCADEDB_IMAGE", "arcadedata/arcadedb:26.11.1-SNAPSHOT")
+        bench_containers.arcadedb_image()
     ], check=True)
 
     # Wait for server + GAV auto-restore (CSR build takes ~60-90s)
@@ -338,6 +340,7 @@ public class ArcadeDBEmbeddedLoader {
     # The SSSP procedure defaults to direction OUT; the undirected Graphalytics SSSP needs BOTH (in SSSP_Q).
     run_algo("sssp", SSSP_Q)
     run_algo("cdlp", CDLP_Q)
+    bench_common.record_image(results)
     results["_summary"] = dict(bench_common.SUMMARY_CHECKS)
     results["_server_time"] = dict(bench_common.SERVER_TIMES)
     results["_output"] = bench_common.OUTPUT_MODE

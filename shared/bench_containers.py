@@ -183,6 +183,15 @@ MEMGRAPH_ARGS = ["--storage-snapshot-on-exit=true", "--data-recovery-on-startup=
 MEMGRAPH_RUN = ["--user", "root"]  # a bind-mounted data dir is root-owned inside the container
 
 
+ARCADEDB_IMAGE_DEFAULT = "arcadedata/arcadedb:26.11.1-SNAPSHOT"
+
+
+def arcadedb_image():
+    """The ArcadeDB image of the Docker benchmarks. The default tag MOVES (snapshot builds are re-pushed and rebuilt locally), so every
+    result records the image id (bench_common.record_image); set ARCADEDB_IMAGE=<image id or name@sha256:digest> to pin a build."""
+    return os.environ.get("ARCADEDB_IMAGE", ARCADEDB_IMAGE_DEFAULT)
+
+
 def _specs():
     neo4j_image = os.environ.get("NEO4J_IMAGE", "neo4j:2026.09.0-community")
     memgraph_image = os.environ.get("MEMGRAPH_IMAGE", "memgraph/memgraph-mage:latest")
@@ -192,7 +201,7 @@ def _specs():
     arango_image = os.environ.get("ARANGODB_IMAGE", "arangodb/arangodb:3.11.14")
     falkor_image = os.environ.get("FALKORDB_IMAGE", "falkordb/falkordb:latest")
     pg_image = os.environ.get("POSTGRES_IMAGE", "postgres:18")
-    arcade_image = os.environ.get("ARCADEDB_IMAGE", "arcadedata/arcadedb:26.11.1-SNAPSHOT")
+    arcade_image = arcadedb_image()
     return {
         ("graphalytics", "neo4j"): Spec(
             "neo4j-gds", neo4j_image, ["7688:7687", "7476:7474"],
