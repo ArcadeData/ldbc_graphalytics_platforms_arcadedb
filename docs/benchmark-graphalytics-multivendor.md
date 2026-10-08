@@ -112,19 +112,20 @@ Seconds (warm medians), `datagen-7_5-fb`, last column peak memory in GiB. Arcade
 
 | System | Load | PageRank | WCC | BFS | LCC | SSSP | CDLP | Peak memory (GiB) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| ArcadeDB embedded | 71.9 | **0.085** | **0.003** | **0.020** | **2.05** | **0.75** | **0.96** | 5.6 |
-| ArcadeDB Docker | 43.9 | 0.30 | 0.79 | 0.22 | 2.63 | 1.38 | 1.56 | 12.5 |
-| Neo4j | 657 | 7.33§ | 0.07 | 0.47‡ | 14.4 | N/A | N/A | 13.3 |
-| Kuzu | 28.8 | 0.91 | 0.21 | 0.05 | N/A | N/A | N/A | 0.8 |
-| LadybugDB | 5.16 | N/A | N/A | 7.42 | N/A | N/A | N/A | 1.0 |
-| DuckPGQ | 0.85 | 1.45✗ | 3.29♦ | timeout¶ | 13.0 | N/A | N/A | 14.6 |
-| Memgraph | 437 | 4.28 | 143 | 3.40 | N/A | 67.6 | timeout | 24.4 |
-| ArangoDB \* | 726 | 79.4 | 35.0 | 28.2 | N/A | 132 | 196✗ | 23.6 |
-| FalkorDB | 116 | 1.10✗ | 1.08 | 0.07 | N/A | N/A | 7.07✗ | 7.5 |
-| HugeGraph | 34.7 | 2.36 | 0.30 | 0.19 | 102 | N/A | 21.4✗ | 3.2 |
+| ArcadeDB embedded | 71.9 | **0.085** | **0.003** | 0.020 | **2.05** | **0.75** | **0.96** | 5.6 |
+| ArcadeDB Docker | 43.9 | 0.124 | 0.005 | **0.010** | 2.41 | 1.24 | 1.39 | 12.8 |
+| Neo4j | 657 | 6.84§ | 0.021 | 0.45ʷ‡ | 15.4 | N/A | N/A | 13.3 |
+| Kuzu | 28.8 | 0.85 | 0.181 | 0.043 | N/A | N/A | N/A | 0.8 |
+| LadybugDB | 5.16 | N/A | N/A | 7.45 | N/A | N/A | N/A | 0.9 |
+| DuckPGQ | 0.85 | 1.61✗ | 2.14♦ | timeout¶ | 12.4 | N/A | N/A | 7.3 |
+| Memgraph | 437 | 4.23 | 128 | 3.28 | N/A | 58.1 | timeout | 25.2 |
+| ArangoDB \* | 726 | 70.3 | 23.9 | 35.6 | N/A | 142 | 211✗ | 21.1 |
+| FalkorDB | 116 | 0.96✗ | 0.96 | 0.059 | N/A | N/A | 6.96✗ | 8.3 |
+| HugeGraph | 34.7 | 2.45 | 0.306 | 0.201 | 115 | N/A | 22.3✗ | 4.0 |
 
 - **ArcadeDB** (embedded and Docker) is valid for all six algorithms. CDLP used to fail validation because the engine broke ties by dense node index instead of vertex id ([ArcadeData/arcadedb#9285](https://github.com/ArcadeData/arcadedb/issues/9285)); from 26.11.1-SNAPSHOT `algo.labelPropagation` takes a `tieBreakProperty` (the Docker driver passes `VID`) and the embedded kernel takes a tie-break rank, and the output matches the reference exactly. The embedded benchmark builds the vertex-id rank once, outside the timed call (like the node mapping); the Docker call computes it inside the timed procedure, and returns all rows to the client, which is part of why it is slower (2.17 s against 0.96 s).
-- **What the timed call is (changed 2026-10-07).** Every system is timed **compute only**: the call runs the complete algorithm on the server and returns one summary row (row count plus an aggregate over every value: sum for PageRank and LCC, maximum for the WCC/CDLP label and for BFS/SSSP distances), so no system pays for moving or serialising the per-vertex output and none can skip the work. The summary is compared with the same summary of the official reference output (a sanity check of the timed call; the number of distinct WCC/CDLP labels is checked in one extra untimed call), and the full per-vertex outputs are still exported and validated against the reference in a separate, untimed step, which decides the **✗** marks. Systems that already keep results on the server (ArangoDB Pregel jobs, HugeGraph/Vermeer tasks) have no summary to check. Before 2026-10-07 the systems were timed inconsistently (some returned the full output, some a top-10 or a count, ArcadeDB Docker a bare `count(*)`); all numbers in this table were re-measured with the rule above on 2026-10-07 (AC power, warm medians). If a compute-only call ever turns out to be optimised away, the fallback is `GRAPHALYTICS_OUTPUT=full` (every system returns the full output). Decisions and raw logs: [DECISIONS-2026-10-07.md](DECISIONS-2026-10-07.md). Embedded ArcadeDB runs in process and is unchanged.
+- **What the tables show (changed 2026-10-07).** Like the official Graphalytics *processing time*, the headline number is the time the **engine itself reports for the algorithm**, without the client round trip, result serialisation or any summary aggregate: ArcadeDB `PROFILE` (the `CALL algo.…` step), Neo4j GDS `computeMillis`, Kuzu/LadybugDB/FalkorDB query execution time, DuckDB `EXPLAIN ANALYZE`, Memgraph `PROFILE` (procedure / expansion operator), ArangoDB Pregel `computation_time` (the supersteps, without the startup phase that loads the graph into Pregel) or AQL execution time, Vermeer task `update_time - start_time`. Warm median of 3 (first call is the warm-up). **ʷ** = the engine reports no time for that call (Neo4j GDS BFS `stream`), so the wall-clock time of the call is shown. The definitions differ per engine (embedded query engines report their whole query, Pregel and Vermeer report job phases), so small differences between systems are not meaningful; the **client view** table below lists the wall-clock time of the same calls for comparison. Every timed call runs the complete algorithm on the server and returns one summary row (row count plus an aggregate over every value), checked against the reference summary; the full per-vertex outputs are exported and validated in a separate untimed step, which decides the **✗** marks. Before 2026-10-07 the systems were timed inconsistently (full output, top-10, bare `count(*)`); all numbers here were re-measured on 2026-10-07 (AC power). ArcadeDB Docker is the median of three runs on the image built after the weight-rule fix #9443 (`26.11.1-SNAPSHOT`, image `753d7332`), which changes nothing in its results (validated). Embedded ArcadeDB runs in process and is unchanged (its BFS includes materialising the result, which is why Docker's engine-side BFS is lower). Rule, alternatives and raw logs: [DECISIONS-2026-10-07.md](../DECISIONS-2026-10-07.md).
+- ♦ DuckPGQ's WCC varies a lot between runs on this machine (1.8 s to 8.0 s across runs); ArangoDB and Memgraph timings also vary by 1.5x between runs (swap pressure on the Docker VM), read them as orders of magnitude.
 - ♦ DuckPGQ's WCC time varies a lot between runs on this machine (1.8 s, 3.3 s and 8.0 s in three runs; the value shown is the median of the three); the other values repeat within about 20%.
 - **Load** times are not like for like: ArcadeDB loads with its embedded Java loader (and, for Docker, serves over HTTP afterwards), the other server systems load through Python batches over the network. Systems whose algorithms follow the stored edge direction (Memgraph, FalkorDB, ArangoDB; HugeGraph for PageRank/BFS) load every edge in both directions, and that cost is part of their load time. FalkorDB loads with its bulk loader (`falkordb-bulk-insert`, 116 s for the 68.4M edge records; the per-query path took 53 minutes). The ArcadeDB Docker load is the time of its original load; later runs reuse the data.
 - ‡ **Neo4j BFS** returns only the reached vertices (no distances), so it is checked as a reachable set, which matches the reference.
@@ -146,3 +147,19 @@ Notes:
 ## Larger dataset
 
 The same suite on `graph500-22` (2.4M vertices, 64M edges, no SSSP): [benchmark-graphalytics-graph500-22.md](benchmark-graphalytics-graph500-22.md).
+
+### Client view: wall-clock time of the same calls (seconds, `datagen-7_5-fb`)
+
+The call includes the round trip and the cheap summary aggregate; for ArcadeDB Docker the median of three runs.
+
+| System (client view) | PageRank | WCC | BFS | LCC | SSSP | CDLP |
+|---|---:|---:|---:|---:|---:|---:|
+| ArcadeDB Docker | 0.34 | 0.17 | 0.21 | 2.61 | 1.75 | 1.63 |
+| Neo4j | 7.14 | 0.060 | 0.45 | 15.4 | N/A | N/A |
+| Kuzu | 0.85 | 0.18 | 0.040 | N/A | N/A | N/A |
+| LadybugDB | N/A | N/A | 7.45 | N/A | N/A | N/A |
+| DuckPGQ | 1.65 | 2.13 | timeout | 12.9 | N/A | N/A |
+| Memgraph | 4.36 | 128 | 11.4 | N/A | 60.4 | timeout |
+| ArangoDB | 83.6 | 37.6 | 35.8 | N/A | 142 | 227 |
+| FalkorDB | 0.96 | 0.96 | 0.060 | N/A | N/A | 6.96 |
+| HugeGraph | 2.46 | 0.31 | 0.21 | 115 | N/A | 22.4 |

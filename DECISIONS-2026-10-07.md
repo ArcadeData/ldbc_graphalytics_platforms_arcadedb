@@ -75,3 +75,14 @@ Only new observation: Neo4j LCC on graph500-22-w exports with 23 mismatching ver
 
 ## 12:50 Housekeeping
 - Bug filed: ArcadeData/arcadedb#9453. Removed the unused Bolt files (`shared/bench_bolt.py`, `scripts/bolt_transfer_bench.py`, `scripts/JavaBoltBench.java`) and `scripts/grpc_transfer_bench.py` (it imported the Bolt helper); the study results stay in `ArcadeDB-release-progress.md`.
+
+## 23:00 Third iteration: engine-reported compute time is the headline (your "do that")
+- Decision: tables show the time the ENGINE reports for the algorithm (closest to the official Graphalytics processing time); the wall-clock of the summary call is kept as the client view (detail pages).
+  Per engine: ArcadeDB `PROFILE` CALL step; Neo4j GDS `computeMillis` (stats mode; PageRank = the two runs of the correction); Kuzu/LadybugDB `get_execution_time()`; FalkorDB `run_time_ms`; DuckDB `EXPLAIN ANALYZE` total;
+  Memgraph `PROFILE` (CallProcedure / expansion operator; needed autocommit on the benchmark connection); ArangoDB Pregel `computation_time` and AQL `execution_time`; Vermeer task `update_time - start_time`.
+  Neo4j BFS has no engine time (GDS stream mode): wall-clock shown with the mark ʷ. Definitions differ per engine, hence the caveat on the pages.
+- Measurements (logs `weekly-results/20261007-server-time*`): one pass for all vendors on both datasets, reruns for Memgraph (PROFILE fix), ArangoDB (noisy), and ArcadeDB Docker x3 on the new image (median shown; one outlier PageRank 2.26 s on graph500-22-w vs 0.35-0.36 in the other two runs).
+- Image: pulled the post-#9457 `arcadedata/arcadedb:26.11.1-SNAPSHOT` (`753d7332`); the earlier runs of this day used build `0136fed6`. SSSP and all other outputs validate on the new image (`weekly-results/20261007-validate-newimage/`); SSSP engine time 1.24 s (1.12-1.30 across runs) against 1.28-1.38 s wall-clock before, no regression visible. Embedded benchmark and Mode 1 still use the older jar in `~/.m2` (not rebuilt).
+- Things you may want to change: (a) ArangoDB graph500-22-w PageRank timed out in the last pass but took 252 s in the first: shown as `252ʷ◊`; (b) ArcadeDB Docker BFS (0.010 s) is lower than embedded (0.020 s): the embedded benchmark times a call that also materialises the result, so bold marks Docker there;
+  (c) Memgraph BFS wall-clock swings 3.4 s to 11.4 s between runs while PROFILE says 3.3 s; (d) `scripts/collect_results.py` extracts both numbers from the logs.
+- Not done: Mode 1 with 3 repetitions; rebuilding the embedded jar against the latest engine; repeat runs (3) for the vendors measured once (Kuzu, Neo4j, DuckPGQ, FalkorDB, HugeGraph, LadybugDB, Memgraph g5).

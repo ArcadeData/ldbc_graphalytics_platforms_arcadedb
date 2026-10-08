@@ -7,16 +7,16 @@ This replaces the cold, unvalidated single-run table of 2026-10-03 in [`results-
 
 | System | Load | PageRank | WCC | BFS | LCC | CDLP | Peak memory (GiB) |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| ArcadeDB embedded | 114.5 | **0.268** | **0.013** | **0.076** | **46.9** | **1.78** | 1.6\*\* |
-| ArcadeDB Docker | 101† | 1.19 | 0.71 | 0.83 | 61.4 | 6.63 | 12.7 |
-| Neo4j | 2017† | 13.6 | 1.81 | 6.36 | timeout | N/A | 13.2 |
-| Kuzu | 53.8† | 3.11 | 0.60 | 0.14 | N/A | N/A | 1.6 |
-| LadybugDB | 10.1† | N/A | N/A | 15.9 | N/A | N/A | 1.5 |
-| DuckPGQ | 0.57† | 11.1✗ | 4.78 | timeout‡ | 180 | N/A | 12.1 |
-| Memgraph | 932§ | 13.2 | OOM | 10.5 | N/A | 253✗ | 30.0 |
-| ArangoDB 3.11.14 | 1700† | 252 | 99.1 | OOM¶ | N/A | timeout | 30.4 |
-| FalkorDB | 348.5 | 2.10✗ | 1.80 | 0.13 | N/A | 16.9✗ | 14.9 |
-| HugeGraph | 34.2† | 6.16 | 0.77 | 0.37 | timeout | 31.4✗ | 8.2 |
+| ArcadeDB embedded | 114.5 | **0.268** | **0.013** | 0.076 | **46.9** | **1.78** | 1.6\*\* |
+| ArcadeDB Docker | 101† | 0.362 | 0.014 | **0.039** | 48.6 | 3.58 | 12.9 |
+| Neo4j | 2017† | 13.1 | 0.060 | 1.08ʷ | 229ʷ | N/A | 13.3 |
+| Kuzu | 53.8† | 3.30 | 0.854 | 0.161 | N/A | N/A | 1.6 |
+| LadybugDB | 10.1† | N/A | N/A | 16.6 | N/A | N/A | 1.7 |
+| DuckPGQ | 0.57† | 16.5✗ | 5.15 | timeout‡ | 119 | N/A | 12.2 |
+| Memgraph | 932§ | 19.0 | OOM | 10.2 | N/A | timeout | 30.3 |
+| ArangoDB 3.11.14 | 1700† | 252ʷ◊ | 83.0 | OOM¶ | N/A | timeout | 30.4 |
+| FalkorDB | 348.5 | 2.19✗ | 2.03 | 0.163 | N/A | 20.8✗ | 15.7 |
+| HugeGraph | 34.2† | 7.08 | 0.706 | 0.418 | timeout | 22.6✗ | 7.8 |
 
 - Seconds, warm medians (the first call of every algorithm is an untimed warm-up; median of 3 timed runs, 5 in the embedded ArcadeDB JVM which is launched 3 times and the median of those is shown; when the warm-up call takes longer than 60 s there is a single timed run). Bold = fastest valid result in the column.
 - **✗** = the output was exported in full and **failed** the check against the official `graph500-22` reference outputs, so the time is shown for completeness and is not ranked. **N/A** = the system has no implementation (or its extension does not load). **timeout** = the 5-minute limit per operation. **OOM** = the system ran out of memory inside Docker Desktop's 32 GB.
@@ -49,3 +49,19 @@ Reproduce: `cd ldbc-native && GRAPHALYTICS_DATASET=graph500-22-w GRAPHALYTICS_SK
 - Exports that hang (HugeGraph and Neo4j LCC re-run the slow algorithm for the export): every export is now bounded to 10 minutes (`DUMP_TIMEOUT`), and an algorithm listed in `GRAPHALYTICS_SKIP` is neither timed nor exported. Two vendor children (DuckPGQ BFS, HugeGraph LCC export) had to be ended by hand because their clients ignore the alarm.
 - Validator: for derived datasets with swapped ids, CDLP labels equal to a swapped id can legitimately differ (see above); they are counted as `swap_tie_break`.
 - Embedded Java benchmark: `-Dgraph=<dataset>` and `-Dskip.sssp=true`.
+
+## Client view: wall-clock time of the same calls (seconds)
+
+The tables above show the engine-reported compute time (rule and per-engine definitions in [the datagen page](benchmark-graphalytics-multivendor.md)); ʷ = the engine reports no time, wall-clock shown; ◊ = timed out in the last pass, the value is the wall-clock of an earlier pass (ArangoDB varies by 1.5x between passes). ArcadeDB Docker is the median of three runs.
+
+| System (client view) | PageRank | WCC | BFS | LCC | CDLP |
+|---|---:|---:|---:|---:|---:|
+| ArcadeDB Docker | 1.68 | 0.76 | 0.93 | 49.9 | 4.46 |
+| Neo4j | 13.6 | 0.29 | 1.08 | 229 | N/A |
+| Kuzu | 3.30 | 0.85 | 0.16 | N/A | N/A |
+| LadybugDB | N/A | N/A | 16.6 | N/A | N/A |
+| DuckPGQ | 12.9 | 7.24 | timeout | 114 | N/A |
+| Memgraph | 21.6 | N/A | 10.8 | N/A | timeout |
+| ArangoDB | timeout | 124 | timeout | N/A | timeout |
+| FalkorDB | 2.19 | 2.03 | 0.16 | N/A | 20.8 |
+| HugeGraph | 7.10 | 0.72 | 0.44 | timeout | 22.6 |
