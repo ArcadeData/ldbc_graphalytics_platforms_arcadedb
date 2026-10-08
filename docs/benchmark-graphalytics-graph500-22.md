@@ -52,7 +52,7 @@ Reproduce: `cd ldbc-native && GRAPHALYTICS_DATASET=graph500-22-w GRAPHALYTICS_SK
 
 ## Client view: wall-clock time of the same calls (seconds)
 
-The tables above show the engine-reported compute time (rule and per-engine definitions in [the datagen page](benchmark-graphalytics-multivendor.md)); ʷ = the engine reports no time, wall-clock shown; ◊ = timed out in the last pass, the value is the wall-clock of an earlier pass (ArangoDB varies by 1.5x between passes). ArcadeDB Docker is the median of three runs.
+The tables above show the engine-reported compute time (rule and per-engine definitions in [the datagen page](benchmark-graphalytics-multivendor.md)); ʷ = the engine reports no time, wall-clock shown; ◊ = timed out in the last pass, the value is the wall-clock of an earlier pass (ArangoDB varies by 1.5x between passes). ArcadeDB Docker is the median of three runs on image `753d7332` (`26.11.1-SNAPSHOT` built after #9443; the tag moves, the datagen page uses the later image `00d42e12`).
 
 | System (client view) | PageRank | WCC | BFS | LCC | CDLP |
 |---|---:|---:|---:|---:|---:|

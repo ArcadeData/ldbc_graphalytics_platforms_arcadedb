@@ -86,3 +86,6 @@ Only new observation: Neo4j LCC on graph500-22-w exports with 23 mismatching ver
 - Things you may want to change: (a) ArangoDB graph500-22-w PageRank timed out in the last pass but took 252 s in the first: shown as `252ʷ◊`; (b) ArcadeDB Docker BFS (0.010 s) is lower than embedded (0.020 s): the embedded benchmark times a call that also materialises the result, so bold marks Docker there;
   (c) Memgraph BFS wall-clock swings 3.4 s to 11.4 s between runs while PROFILE says 3.3 s; (d) `scripts/collect_results.py` extracts both numbers from the logs.
 - Not done: Mode 1 with 3 repetitions; rebuilding the embedded jar against the latest engine; repeat runs (3) for the vendors measured once (Kuzu, Neo4j, DuckPGQ, FalkorDB, HugeGraph, LadybugDB, Memgraph g5).
+
+## 23:30 Published ArcadeDB Docker on image 00d42e12
+- datagen row = median of 3 runs on `00d42e12` (`weekly-results/20261007-server-time-v5/`): engine time 0.119 / 0.004 / 0.008 / 2.41 / 1.19 / 1.38 s; vs the post-fix pull `753d7332` within 0-5% and vs pre-#9457 `0136fed6` 10-75% faster (BFS most), not attributable to #9457 alone (other merges in the image). graph500-22-w row stays on `753d7332` (not re-run: valid and consistent; run it on `00d42e12` for a single-build row if you prefer). The pages state the image id; pinning the image id in the scripts is still TODO.

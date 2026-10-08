@@ -101,7 +101,7 @@ Seconds, **engine-reported compute time** of the algorithm (like the official Gr
 | System | Load | PageRank | WCC | BFS | LCC | SSSP | CDLP | Peak memory (GiB) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | ArcadeDB embedded | 71.9 | **0.085** | **0.003** | 0.020 | **2.05** | **0.75** | **0.96** | 5.6 |
-| ArcadeDB Docker | 43.9 | 0.124 | 0.005 | **0.010** | 2.41 | 1.24 | 1.39 | 12.8 |
+| ArcadeDB Docker | 43.9 | 0.119 | 0.004 | **0.008** | 2.41 | 1.19 | 1.38 | 12.7 |
 | Neo4j | 657 | 6.84§ | 0.021 | 0.45ʷ‡ | 15.4 | N/A | N/A | 13.3 |
 | Kuzu | 28.8 | 0.85 | 0.181 | 0.043 | N/A | N/A | N/A | 0.8 |
 | LadybugDB | 5.16 | N/A | N/A | 7.45 | N/A | N/A | N/A | 0.9 |
