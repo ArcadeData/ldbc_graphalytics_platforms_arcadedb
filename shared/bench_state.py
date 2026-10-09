@@ -89,12 +89,17 @@ def drop_marker(suite, key):
 
 
 def reset_vendor_data(suite, key):
-    """Delete persisted data directories and the load marker of one vendor."""
+    """Delete persisted data directories and the load marker of one vendor.
+
+    A vendor's directories are exactly `<suite>-<key>-embedded` or `<suite>-<key>-<12 hex image id>`. A plain prefix match would also
+    delete the directories of other vendors whose key starts with this one (resetting `arcadedb` removed `arcadedb-native` and the
+    embedded Java benchmark's `graphalytics-arcadedb-java`)."""
+    import re
     data_root = state_path("data")
-    prefix = f"{suite}-{key}-"
+    own = re.compile(rf"^{re.escape(suite)}-{re.escape(key)}-(embedded|[0-9a-f]{{12}})$")
     if os.path.isdir(data_root):
         for entry in os.listdir(data_root):
-            if entry.startswith(prefix):
+            if own.match(entry):
                 shutil.rmtree(os.path.join(data_root, entry), ignore_errors=True)
     drop_marker(suite, key)
 

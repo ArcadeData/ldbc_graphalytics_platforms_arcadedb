@@ -628,7 +628,8 @@ def run_vendor_isolated(suite, key, name, script, passthrough, metrics, dataset_
               f"another process holding memory?)")
         time.sleep(30)
     # drivers that start their own container (no spec) are listed here so the sampler still sees them
-    own_containers = {"arcadedb": ["arcadedb"]} if suite.startswith("graphalytics") else {}
+    own_containers = ({"arcadedb": ["arcadedb"], "arcadedb-native": ["arcadedb-native"]}
+                      if suite.startswith("graphalytics") else {})
     containers = (["vermeer-master", "vermeer-worker"] if key == "hugegraph"
                   else [spec.name] if spec is not None else own_containers.get(key, []))
     sampler = bench_memory.MemorySampler(containers) if os.environ.get("BENCH_NO_MEMORY") != "1" else None

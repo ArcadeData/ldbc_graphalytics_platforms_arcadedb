@@ -192,6 +192,16 @@ def arcadedb_image():
     return os.environ.get("ARCADEDB_IMAGE", ARCADEDB_IMAGE_DEFAULT)
 
 
+ARCADEDB_NATIVE_IMAGE_DEFAULT = "arcadedata/arcadedb:latest-native"
+
+
+def arcadedb_native_image():
+    """The GraalVM native-image build of the server (no JVM inside, distroless). It is published on its own schedule, so its engine
+    commit is usually NOT the one of the JVM tag: every result records the build string the server prints, and a fair comparison needs a
+    JVM image built from the same commit (ARCADEDB_IMAGE=<that image>). Pin with ARCADEDB_NATIVE_IMAGE=<image id or name@sha256:digest>."""
+    return os.environ.get("ARCADEDB_NATIVE_IMAGE", ARCADEDB_NATIVE_IMAGE_DEFAULT)
+
+
 def _specs():
     neo4j_image = os.environ.get("NEO4J_IMAGE", "neo4j:2026.09.0-community")
     memgraph_image = os.environ.get("MEMGRAPH_IMAGE", "memgraph/memgraph-mage:latest")

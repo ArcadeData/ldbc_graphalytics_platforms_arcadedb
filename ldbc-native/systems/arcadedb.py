@@ -47,7 +47,7 @@ def _count_query(name, full):
     return f"{head} WITH node, {col} RETURN count(*) AS n, {agg} AS agg"
 
 
-def _dump_all(cmd):
+def _dump_all(cmd, vendor):
     """Full per-vertex outputs of the exact procedure calls the benchmark times (see bench_common.dump_*)."""
     if not bench_common.dump_enabled():
         return
@@ -59,52 +59,99 @@ def _dump_all(cmd):
             yield tuple(rec[c] for c in cols)
     def all_ids():
         return [r[0] for r in rows("MATCH (v:Vertex) RETURN v.VID AS id", "id")]
-    bench_common.dump_safely("arcadedb", "PR", lambda: bench_common.dump_rows("arcadedb", "PR", (
+    bench_common.dump_safely(vendor, "PR", lambda: bench_common.dump_rows(vendor, "PR", (
         (i, float(s)) for i, s in rows(
 PR_Q, "id", "score"))))
-    bench_common.dump_safely("arcadedb", "WCC", lambda: bench_common.dump_rows("arcadedb", "WCC", rows(
+    bench_common.dump_safely(vendor, "WCC", lambda: bench_common.dump_rows(vendor, "WCC", rows(
         WCC_Q, "id", "componentId")))
-    bench_common.dump_safely("arcadedb", "LCC", lambda: bench_common.dump_rows("arcadedb", "LCC", (
+    bench_common.dump_safely(vendor, "LCC", lambda: bench_common.dump_rows(vendor, "LCC", (
         (i, float(c)) for i, c in rows(
 LCC_Q, "id", "lcc"))))
     def bfs():
         reached = {i: d for i, d in rows(
 BFS_Q, "id", "depth")}
-        bench_common.dump_bfs("arcadedb", reached, all_ids(), 6)
-    bench_common.dump_safely("arcadedb", "BFS", bfs)
+        bench_common.dump_bfs(vendor, reached, all_ids(), 6)
+    bench_common.dump_safely(vendor, "BFS", bfs)
     def sssp():
         dist = {i: float(c) for i, c in rows(
 SSSP_Q, "id", "cost")}
         dist[6] = 0.0
-        bench_common.dump_rows("arcadedb", "SSSP", ((i, dist.get(i, "infinity")) for i in all_ids()))
+        bench_common.dump_rows(vendor, "SSSP", ((i, dist.get(i, "infinity")) for i in all_ids()))
     if "sssp" not in bench_common.GRAPHALYTICS_SKIP:
-        bench_common.dump_safely("arcadedb", "SSSP", sssp)
+        bench_common.dump_safely(vendor, "SSSP", sssp)
     def cdlp():
         # communityId is the dense index of the vertex whose label was adopted, and the procedure emits its rows in dense
         # order, so the label of vertex i is the id found in row communityId.
         got = list(rows(
 CDLP_Q, "id", "communityId"))
         ids = [i for i, _ in got]
-        bench_common.dump_rows("arcadedb", "CDLP", ((i, ids[c]) for i, c in got))
-    bench_common.dump_safely("arcadedb", "CDLP", cdlp)
+        bench_common.dump_rows(vendor, "CDLP", ((i, ids[c]) for i, c in got))
+    bench_common.dump_safely(vendor, "CDLP", cdlp)
+
+
+def _server_build(container):
+    """Version, commit and runtime the server prints at startup ("ArcadeDB Server v... (build <sha>/...)", "Running on ... - <VM>").
+    The image tags move and the native image is built from another commit than the JVM tag, so every result carries its build."""
+    import re
+    import subprocess
+    out = subprocess.run(["docker", "logs", container], capture_output=True, text=True)
+    text = out.stdout + out.stderr
+    m = re.search(r"ArcadeDB Server v(\S+) \(build (\w+)/", text)
+    r = re.search(r"Running on (.+)", text)
+    return {"version": m.group(1) if m else None, "commit": m.group(2)[:10] if m else None,
+            "runtime": r.group(1).strip() if r else None}
+
+
+def _port_in_use(port):
+    import socket
+    for host in ("127.0.0.1", "::1"):
+        try:
+            with socket.create_connection((host, int(port)), timeout=0.5):
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def run_benchmark():
+    """The JVM image (arcadedb_image()): see _run_variant."""
+    return _run_variant(native=False)
+
+
+def run_benchmark_native():
+    """The GraalVM native-image build (arcadedb_native_image()): see _run_variant."""
+    return _run_variant(native=True)
+
+
+def _run_variant(native):
     """
     ArcadeDB benchmark via Docker. The timed algorithm calls and the exports go over the HTTP API; the setup (GAV create/rebuild) stays on HTTP.
 
-    Setup:
+    Two variants of the same server, same loader, same 12 GB heap, same queries (HTTP, OpenCypher):
+      JVM    (vendor "arcadedb"):        container arcadedb,        JAVA_OPTS / ARCADEDB_OPTS_MEMORY environment
+      native (vendor "arcadedb-native"): container arcadedb-native, distroless image without JVM and shell: the entrypoint is the native
+                                         binary, so heap and system properties are command-line arguments (no JAVA_OPTS; the server still logs
+                                         "Graph-OLAP SIMD vector ops enabled" in this image, so the Vector API is available there too)
+    Each variant has its own database directory (the loader runs once per variant), so neither opens files the other one touched.
+
+    Setup (JVM):
       docker run -d --name arcadedb -p 2480:2480 -p 2424:2424 \
         -e JAVA_OPTS="-Darcadedb.server.rootPassword=benchmark -Xms12g -Xmx12g --add-modules jdk.incubator.vector \
                       " \
         -v "$(cd ../datasets && pwd)":/data/graphs:ro \
         -v /tmp/arcadedb-docker-data:/home/arcadedb/databases \
         arcadedata/arcadedb:latest
+    Setup (native):
+      docker run -d --name arcadedb-native -p 2480:2480 -v <databases>:/home/arcadedb/databases arcadedata/arcadedb:latest-native \
+        -Xms12g -Xmx12g -Darcadedb.server.rootPassword=benchmark
     """
     import requests
     import subprocess as _sp
+    vendor = "arcadedb-native" if native else "arcadedb"
+    container = vendor
+    image = bench_containers.arcadedb_native_image() if native else bench_containers.arcadedb_image()
     print("\n" + "=" * 70)
-    print("ARCADEDB (DOCKER) BENCHMARK")
+    print("ARCADEDB (DOCKER, NATIVE IMAGE) BENCHMARK" if native else "ARCADEDB (DOCKER) BENCHMARK")
     print("=" * 70)
 
     results = {}
@@ -131,8 +178,8 @@ def run_benchmark():
     # --- Phase 1: Load data via embedded Java (fast GraphBatchImporter) ---
     # The database is created by the Java loader and then mounted into Docker.
     # This separates "load" (embedded, ~160s) from "compute" (Docker, HTTP API).
-    data_root = bench_common.embedded_db_path("graphalytics", "arcadedb", "databases")
-    log_root = bench_common.embedded_db_path("graphalytics", "arcadedb", "log")
+    data_root = bench_common.embedded_db_path("graphalytics", vendor, "databases")
+    log_root = bench_common.embedded_db_path("graphalytics", vendor, "log")
     db_path = os.path.join(data_root, "bench")
     needs_load = not os.path.isdir(db_path) or bench_common.RESET
 
@@ -241,50 +288,97 @@ public class ArcadeDBEmbeddedLoader {
         print("\n[ArcadeDB] Database already exists at " + db_path + ", skipping load")
 
     # --- Phase 2: Start Docker server on the pre-loaded database ---
-    print("\n[ArcadeDB] Starting Docker server...")
-    _sp.run(["docker", "rm", "-f", "arcadedb"], capture_output=True)
-    _sp.run([
-        "docker", "run", "-d", "--name", "arcadedb",
-        "-p", f"{http_port}:2480", "-p", f"{binary_port}:2424",
-        "-e", "ARCADEDB_OPTS_MEMORY=-Xms12g -Xmx12g",
-        "-e", "JAVA_OPTS=--add-modules jdk.incubator.vector -Darcadedb.server.rootPassword=benchmark "
-                 "-Darcadedb.server.httpQueryMaxResultRows=5000000",   # full per-vertex output of graph500-22 (2.4M rows)
-        "-v", f"{data_root}:/home/arcadedb/databases",
-        "-v", f"{log_root}:/home/arcadedb/log",
-        bench_containers.arcadedb_image()
-    ], check=True)
+    print(f"\n[ArcadeDB] Starting Docker server ({image})...")
+    _sp.run(["docker", "rm", "-f", container], capture_output=True)
+    # A foreign server on the port (another ArcadeDB, a test run) would answer /ready and reject our login, or take our requests: refuse to start.
+    for _ in range(20):
+        if not _port_in_use(http_port):
+            break
+        time.sleep(0.5)
+    else:
+        return {"error": f"host port {http_port} is already in use by another process (set ARCADEDB_BENCH_HTTP_PORT to a free port)"}
+    settings = ["-Darcadedb.server.rootPassword=benchmark",
+                "-Darcadedb.server.httpQueryMaxResultRows=5000000"]   # full per-vertex output of graph500-22 (2.4M rows)
+    if native:
+        # no JVM, no shell, no JAVA_OPTS: the entrypoint is the native binary and takes the heap size and the properties as arguments
+        # (no --add-modules: the Vector ops are enabled anyway, see the startup log); the binary port is not published, nothing uses it
+        run_cmd = ["docker", "run", "-d", "--name", container, "-p", f"{http_port}:2480",
+                   "-v", f"{data_root}:/home/arcadedb/databases", "-v", f"{log_root}:/home/arcadedb/log",
+                   image, "-Xms12g", "-Xmx12g", *settings]
+    else:
+        run_cmd = ["docker", "run", "-d", "--name", container,
+                   "-p", f"{http_port}:2480", "-p", f"{binary_port}:2424",
+                   "-e", "ARCADEDB_OPTS_MEMORY=-Xms12g -Xmx12g",
+                   "-e", "JAVA_OPTS=--add-modules jdk.incubator.vector " + " ".join(settings),
+                   "-v", f"{data_root}:/home/arcadedb/databases",
+                   "-v", f"{log_root}:/home/arcadedb/log",
+                   image]
+    started = time.perf_counter()
+    _sp.run(run_cmd, check=True)
 
-    # Wait for server + GAV auto-restore (CSR build takes ~60-90s)
+    # Wait for server + GAV auto-restore (CSR build takes ~60-90s). Start-up time = docker run until /ready answers (polled every 0.1 s).
     print("  Waiting for server and GAV (CSR) build...")
-    for i in range(120):
+    for i in range(1200):
         try:
             r = requests.get(f"{base}/ready", timeout=2)
             if r.status_code == 204:
-                print("  ArcadeDB Docker server: OK")
+                results["_startup"] = round(time.perf_counter() - started, 2)
+                print(f"  ArcadeDB Docker server: OK (docker run -> /ready {results['_startup']}s)")
                 break
         except Exception:
             pass
-        time.sleep(1)
+        time.sleep(0.1)
     else:
         print("  ArcadeDB Docker server failed to start")
         return {"error": "Docker server timeout"}
+    results["_engine"] = _server_build(container)
+    print(f"  [engine] {vendor}: {results['_engine']}", flush=True)
+    # /ready answers before the login works (and a foreign server answers it too): wait for an authenticated query on our database.
+    last = None
+    for _ in range(120):
+        try:
+            r = cmd("SELECT 1 AS ok", timeout=10)
+            if r.status_code == 200:
+                break
+            last = f"HTTP {r.status_code} {r.text[:120]}"
+        except Exception as e:  # noqa: BLE001
+            last = f"{type(e).__name__}: {str(e)[:100]}"
+        time.sleep(0.5)
+    else:
+        print(f"  login probe failed: {last}")
+        return {"error": f"the server on port {http_port} does not accept root/benchmark ({last}); is another server using the port?"}
 
     # GAV is auto-restored on database open (persisted definition from the Java loader).
-    # Wait for the async CSR build to finish before running algorithms.
+    # Wait for the async CSR build to finish before running algorithms. A database that was just loaded has no GAV yet: do not wait for one.
     print("\n[ArcadeDB] Waiting for Graph Analytical View (CSR) to be ready...")
-    for i in range(120):
+    # A restored view is rebuilt in the background: it is listed at once, but until its status is READY the algorithms run unaccelerated
+    # (PageRank on graph500-22-w then exceeds the 5-minute limit) and compete with the builder. Wait for READY, not for the row.
+    gav_found = False
+    gav_status = None
+    gav_wait_start = time.perf_counter()
+    for i in range(0 if needs_load else 450):
         try:
-            r = cmd("SELECT FROM schema:graphAnalyticalViews WHERE name = 'benchmark'")
+            r = cmd("SELECT FROM schema:graphAnalyticalViews WHERE name = 'benchmark'", timeout=30)
             if r.status_code == 200:
                 result = r.json().get("result", {})
                 records = result.get("records", []) if isinstance(result, dict) else result
                 if records and len(records) > 0:
-                    print("  GAV ready")
-                    break
+                    rec = records[0]
+                    gav_status = rec.get("status") if isinstance(rec, dict) else None
+                    if gav_status in (None, "READY"):   # None: an engine without the status column
+                        waited = time.perf_counter() - gav_wait_start
+                        print(f"  GAV ready (status {gav_status}, {waited:.0f}s after the server answered)")
+                        results["_gav_restore"] = round(waited, 1)
+                        gav_found = True
+                        break
+                    if i % 5 == 0:
+                        print(f"  GAV status {gav_status}, waiting for READY ({time.perf_counter() - gav_wait_start:.0f}s)", flush=True)
         except Exception:
             pass
         time.sleep(2)
-    else:
+    if not gav_found and gav_status is not None:
+        return {"error": f"the Graph Analytical View is still {gav_status} after 900 s; not measuring an unaccelerated engine"}
+    if not gav_found:
         # GAV not found — create it (first run or --reset)
         print("  No GAV found, creating...")
         cmd("CREATE GRAPH ANALYTICAL VIEW benchmark VERTEX TYPES (Vertex) EDGE TYPES (EDGE) EDGE PROPERTIES (WEIGHT)")
@@ -294,6 +388,7 @@ public class ArcadeDBEmbeddedLoader {
         if r.status_code != 200:
             print(f"  GAV build failed: {r.text[:300]}")
             return {"error": "GAV build failed"}
+        results["_gav_build"] = round(gav_time, 2)
         print(f"  GAV build: {gav_time:.2f}s")
 
     # Give the async CSR build time to complete
@@ -321,7 +416,7 @@ public class ArcadeDBEmbeddedLoader {
                     row = r.json()["result"][0]
                     n, agg = row["n"], row["agg"]
                 # algo.bfs and the Dijkstra procedure do not emit the source itself (the export adds it with distance 0)
-                bench_common.check_summary("arcadedb", name, n + 1 if name in ("bfs", "sssp") else n, agg)
+                bench_common.check_summary(vendor, name, n + 1 if name in ("bfs", "sssp") else n, agg)
 
         # server-reported compute time: the cost of the CALL step in PROFILE (the algorithm, without the summary aggregate or the HTTP round trip)
         def _profile():
@@ -329,7 +424,7 @@ public class ArcadeDBEmbeddedLoader {
             steps = r.json()["explainPlan"]["steps"]
             return sum(st["cost"] for st in steps if st["name"] == "CallStep") / 1e9
         if isinstance(elapsed, (int, float)):
-            bench_common.measure_server_time("arcadedb", name, _profile)
+            bench_common.measure_server_time(vendor, name, _profile)
 
     # Graphalytics PageRank: undirected (BOTH), exactly 10 iterations, no early stop. The procedure's
     # defaults (direction OUT, 20 iterations, tolerance 1e-4) compute a different, directed PageRank.
@@ -340,14 +435,15 @@ public class ArcadeDBEmbeddedLoader {
     # The SSSP procedure defaults to direction OUT; the undirected Graphalytics SSSP needs BOTH (in SSSP_Q).
     run_algo("sssp", SSSP_Q)
     run_algo("cdlp", CDLP_Q)
-    bench_common.record_image(results)
+    bench_common.record_image(results, image)
     results["_summary"] = dict(bench_common.SUMMARY_CHECKS)
     results["_server_time"] = dict(bench_common.SERVER_TIMES)
     results["_output"] = bench_common.OUTPUT_MODE
 
-    _dump_all(cmd)
-    bench_common.cleanup_docker("arcadedb")
+    _dump_all(cmd, vendor)
+    bench_common.cleanup_docker(container)
     return results
 
 
 run_benchmark._cleanup = lambda: bench_common.cleanup_docker("arcadedb")
+run_benchmark_native._cleanup = lambda: bench_common.cleanup_docker("arcadedb-native")

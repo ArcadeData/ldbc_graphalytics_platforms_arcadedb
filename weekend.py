@@ -53,7 +53,7 @@ JAR = os.path.join(ROOT, "target", "graphalytics-platforms-arcadedb-0.1-SNAPSHOT
 STEPS = ["preflight", "java-m2", "java-lsqb", "bulk-update", "py-m2", "py-lsqb", "mode1"]
 M2_KEYS = ["LOAD", "PR", "WCC", "BFS", "LCC", "SSSP", "CDLP"]
 LSQB_KEYS = ["LOAD"] + [f"Q{i}" for i in range(1, 10)]
-STRAY = ["arcadedb", "arcadedb-lsqb", "neo4j-gds", "neo4j-lsqb", "memgraph", "memgraph-lsqb",
+STRAY = ["arcadedb", "arcadedb-native", "arcadedb-lsqb", "neo4j-gds", "neo4j-lsqb", "memgraph", "memgraph-lsqb",
          "arangodb", "falkordb", "falkordb-lsqb", "postgres-lsqb", "vermeer-master", "vermeer-worker"]
 
 

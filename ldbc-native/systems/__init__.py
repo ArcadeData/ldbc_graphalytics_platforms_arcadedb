@@ -11,12 +11,13 @@ from .neo4j import run_benchmark as _neo4j
 from .arangodb import run_benchmark as _arangodb
 from .falkordb import run_benchmark as _falkordb
 from .hugegraph import run_benchmark as _hugegraph
-from .arcadedb import run_benchmark as _arcadedb
+from .arcadedb import run_benchmark as _arcadedb, run_benchmark_native as _arcadedb_native
 from .surrealdb import run_benchmark as _surrealdb
 from .dgraph import run_benchmark as _dgraph
 
 AVAILABLE_SYSTEMS = {
     "arcadedb": ("ArcadeDB-Docker", _arcadedb),
+    "arcadedb-native": ("ArcadeDB-Native", _arcadedb_native),  # GraalVM native-image build of the same server, no JVM
     "kuzu": ("Kuzu", _kuzu),
     "ladybug": ("LadybugDB", _ladybug),
     "duckpgq": ("DuckPGQ", _duckpgq),
@@ -35,3 +36,5 @@ GRAPHALYTICS_METRICS = ["load", "pagerank", "wcc", "lcc", "bfs", "sssp", "cdlp"]
 # SurrealDB and Dgraph lack built-in graph algorithms — most metrics
 # return N/A. Still available via: python3 benchmark.py surrealdb dgraph
 DEFAULT_EXCLUDE = {"surrealdb", "dgraph"}
+# arcadedb-native is a variant of ArcadeDB, not another vendor: name it explicitly (next to arcadedb) to compare the two builds.
+DEFAULT_EXCLUDE.add("arcadedb-native")
