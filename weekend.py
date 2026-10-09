@@ -173,6 +173,8 @@ def step_java(args, report, out_dir, suite):
                           {"db.path": bench_state.state_path("data", "lsqb-arcadedb-java-olap", "db")}, LSQB_KEYS),
             "lsqb-oltp": ("ArcadeDBEmbeddedLSQB", os.path.join(ROOT, "lsqb"),
                           {"db.path": bench_state.state_path("data", "lsqb-arcadedb-java-oltp", "db")}, LSQB_KEYS)}
+    if suite == "lsqb":
+        variants = {k: v for k, v in variants.items() if k.split("-")[1] in args.lsqb_variants.split(",")}
     for vname, (cls, cwd, props, keys) in variants.items():
         os.makedirs(os.path.dirname(props["db.path"]), exist_ok=True)
         runs, statuses, logs, rss_peaks, live_heaps = [], [], [], [], []
@@ -367,6 +369,8 @@ def main():
     ap.add_argument("--jvm-flags", default=bench_java.JVM_FLAGS, help="JVM flags for the ArcadeDB runs (default: compact object headers)")
     ap.add_argument("--reps", type=int, default=3, help="repetitions of the ArcadeDB Java benchmarks (default 3)")
     ap.add_argument("--reset", action="store_true", help="reload every database from scratch")
+    ap.add_argument("--lsqb-variants", default="olap,oltp",
+                    help="embedded LSQB variants to run: olap (Graph Analytical View) and/or oltp (no GAV); default both")
     ap.add_argument("--mode1-dist", help="extracted Graphalytics distribution; enables the mode1 step")
     ap.add_argument("--out-dir", help="results directory (default weekly-results/<timestamp>)")
     ap.add_argument("--vendor-timeout", type=int, default=3600)
