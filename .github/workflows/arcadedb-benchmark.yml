@@ -296,7 +296,7 @@ jobs:
         id: mode1_publish
         if: hashFiles('mode1-bench-data/bench-data.json') != ''
         continue-on-error: true
-        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
+        uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
         with:
           name: "ArcadeDB Mode 1 — Official LDBC Graphalytics"
           tool: 'customSmallerIsBetter'
@@ -313,7 +313,7 @@ jobs:
         id: mode2_publish
         if: hashFiles('mode2-bench-data/bench-data.json') != ''
         continue-on-error: true
-        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
+        uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
         with:
           name: "ArcadeDB Mode 2 — Embedded (datagen-7_5-fb)"
           tool: 'customSmallerIsBetter'
@@ -330,7 +330,7 @@ jobs:
         id: mode3_publish
         if: hashFiles('mode3-bench-data/bench-data.json') != ''
         continue-on-error: true
-        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
+        uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
         with:
           name: "ArcadeDB Mode 3 — LSQB Embedded (SF0.1)"
           tool: 'customSmallerIsBetter'
