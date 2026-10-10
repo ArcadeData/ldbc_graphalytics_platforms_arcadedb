@@ -91,6 +91,7 @@ Every number is a **warm** number (first call discarded, median of 3 timed runs)
 | Graphalytics, multi-vendor (Mode 2), `datagen-7_5-fb` | 6 algorithms, 10 systems, 633K vertices / 34M edges | [docs/benchmark-graphalytics-multivendor.md](docs/benchmark-graphalytics-multivendor.md) |
 | Graphalytics, multi-vendor, `graph500-22` | 5 algorithms, 10 systems, 2.4M vertices / 64M edges | [docs/benchmark-graphalytics-graph500-22.md](docs/benchmark-graphalytics-graph500-22.md) |
 | LSQB SF1 (Mode 3) | 9 subgraph pattern matching queries, 7+ systems | [docs/benchmark-lsqb.md](docs/benchmark-lsqb.md) |
+| ArcadeDB native image against the JVM Docker image | `arcadedata/arcadedb:latest-native` (GraalVM, no JVM) and a JVM image of the same engine commit on both Graphalytics graphs: compute equal to 1.6x slower, wall-clock slower, start-up 4.5x faster, 20-40% less peak memory | [docs/benchmark-arcadedb-native-image.md](docs/benchmark-arcadedb-native-image.md) |
 
 How ArcadeDB itself changes from release to release (official framework, Mode 2 and LSQB): [ArcadeDB-release-progress.md](ArcadeDB-release-progress.md).
 
@@ -151,10 +152,10 @@ Seconds; ArcadeDB embedded is shown with the Graph Analytical View (OLAP) and wi
 
 ## More
 
-- [docs/benchmark-graphalytics-official.md](docs/benchmark-graphalytics-official.md), [docs/benchmark-graphalytics-multivendor.md](docs/benchmark-graphalytics-multivendor.md), [docs/benchmark-graphalytics-graph500-22.md](docs/benchmark-graphalytics-graph500-22.md), [docs/benchmark-lsqb.md](docs/benchmark-lsqb.md): one page per benchmark (how to run, method, full tables, notes).
+- [docs/benchmark-graphalytics-official.md](docs/benchmark-graphalytics-official.md), [docs/benchmark-graphalytics-multivendor.md](docs/benchmark-graphalytics-multivendor.md), [docs/benchmark-graphalytics-graph500-22.md](docs/benchmark-graphalytics-graph500-22.md), [docs/benchmark-lsqb.md](docs/benchmark-lsqb.md), [docs/benchmark-arcadedb-native-image.md](docs/benchmark-arcadedb-native-image.md): one page per benchmark (how to run, method, full tables, notes).
 - [docs/vendor-notes.md](docs/vendor-notes.md): SurrealDB and Dgraph (excluded from default runs, see also [SURREALDB.md](SURREALDB.md)) and FalkorDB.
 - [docs/architecture.md](docs/architecture.md): file structure, the Graph Analytical View (CSR) engine, execution modes.
-- [ArcadeDB-release-progress.md](ArcadeDB-release-progress.md): ArcadeDB across releases. `results-*.md`: raw results and history of earlier runs. `CLAUDE.md`: benchmark rules for the harness.
+- [ArcadeDB-release-progress.md](ArcadeDB-release-progress.md): ArcadeDB across releases. `results-*.md`: raw results and history of earlier runs (latest: [results-native-vs-jvm-2026-10-10.md](results-native-vs-jvm-2026-10-10.md)). `CLAUDE.md`: benchmark rules for the harness.
 
 ## License
 

@@ -63,7 +63,12 @@ python3 benchmark.py --reset neo4j      # force reload + run
 ```
 
 **Default vendors**: arcadedb, kuzu, ladybug, duckpgq, memgraph, neo4j, arangodb, falkordb, hugegraph
-**Excluded by default** (must name explicitly): surrealdb, dgraph
+**Excluded by default** (must name explicitly): surrealdb, dgraph, arcadedb-native
+
+`arcadedb-native` is the GraalVM native-image build of the ArcadeDB server (`arcadedata/arcadedb:latest-native`, override with `ARCADEDB_NATIVE_IMAGE`), driven by the same code as `arcadedb`
+(HTTP, OpenCypher, same validation). It is a variant of ArcadeDB, not another vendor. Compare it only with a JVM image built from the **same engine commit** (`ARCADEDB_IMAGE=<image>`; the native image is
+published on its own schedule): `scripts/native_vs_jvm.py` does the paired, interleaved runs (3 runs per variant, quiet-machine gate, discards contended attempts) and writes `native-vs-jvm.md`.
+Results and caveats: `docs/benchmark-arcadedb-native-image.md`.
 
 #### ArcadeDB Embedded (Mode 2)
 
@@ -376,6 +381,7 @@ After any benchmark run on a new ArcadeDB version (or a fix branch), update `Arc
 - `shared/bench_common.py` — Timeout (`QUERY_TIMEOUT=300`), `run_timed()`, `cleanup_docker()`, CLI parsing
 - `ldbc-native/systems/__init__.py` — Available systems and metrics for Mode 2
 - `ldbc-native/systems/_common.py` — Dataset paths, constants
+- `scripts/native_vs_jvm.py` — ArcadeDB native image against a same-commit JVM image (paired runs, validated)
 - `lsqb/systems/__init__.py` — Available systems for Mode 3
 - `ldbc-native/ArcadeDBEmbeddedBenchmark.java` — Standalone embedded Mode 2
 - `lsqb/ArcadeDBEmbeddedLSQB.java` — Standalone embedded Mode 3
