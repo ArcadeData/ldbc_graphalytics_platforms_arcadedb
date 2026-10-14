@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791194986918,
+  "lastUpdate": 1791966583933,
   "repoUrl": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb",
   "entries": {
     "ArcadeDB Mode 2 — Embedded (datagen-7_5-fb)": [
@@ -2450,6 +2450,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "CDLP",
             "value": 8.84,
+            "unit": "s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Roberto Franchini",
+            "username": "robfrank",
+            "email": "ro.franchini@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "959d0e7758554be571e904d1b11240fbf8a83851",
+          "message": "add maven central snapshot repo (#34)",
+          "timestamp": "2026-10-14T08:22:28Z",
+          "url": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb/commit/959d0e7758554be571e904d1b11240fbf8a83851"
+        },
+        "date": 1791966583505,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "LOAD",
+            "value": 108.79,
+            "unit": "s"
+          },
+          {
+            "name": "PR",
+            "value": 0.43,
+            "unit": "s"
+          },
+          {
+            "name": "WCC",
+            "value": 0.04,
+            "unit": "s"
+          },
+          {
+            "name": "BFS",
+            "value": 0.03,
+            "unit": "s"
+          },
+          {
+            "name": "LCC",
+            "value": 9.46,
+            "unit": "s"
+          },
+          {
+            "name": "SSSP",
+            "value": 2.32,
+            "unit": "s"
+          },
+          {
+            "name": "CDLP",
+            "value": 6.44,
             "unit": "s"
           }
         ]
