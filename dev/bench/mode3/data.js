@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791966586352,
+  "lastUpdate": 1792051717844,
   "repoUrl": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb",
   "entries": {
     "ArcadeDB Mode 3 — LSQB Embedded (SF0.1)": [
@@ -3167,6 +3167,78 @@ window.BENCHMARK_DATA = {
           {
             "name": "Q9",
             "value": 0.09,
+            "unit": "s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "github-actions[bot]",
+            "username": "github-actions[bot]",
+            "email": "41898282+github-actions[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "f262f36cd5211def3974ffd9e392b4ce388c31be",
+          "message": "Bump actions/setup-java from 6.0.0 to 6.0.1 (#31) [skip ci]\n\nBumps [actions/setup-java](https://github.com/actions/setup-java) from 6.0.0 to 6.0.1.\n<details>\n<summary>Release notes</summary>\n<p><em>Sourced from <a href=\"https://github.com/actions/setup-java/releases\">actions/setup-java's releases</a>.</em></p>\n<blockquote>\n<h2>v6.0.1</h2>\n<h2>What's Changed</h2>\n<ul>\n<li>Fix failing GitHub Actions job for temurin 17 by <a href=\"https://github.com/brunoborges\"><code>@​brunoborges</code></a> with <a href=\"https://github.com/Copilot\"><code>@​Copilot</code></a> in <a href=\"https://redirect.github.com/actions/setup-java/pull/1259\">actions/setup-java#1259</a></li>\n<li>Fix Temurin EA E2E signature verification by <a href=\"https://github.com/brunoborges\"><code>@​brunoborges</code></a> with <a href=\"https://github.com/Copilot\"><code>@​Copilot</code></a> in <a href=\"https://redirect.github.com/actions/setup-java/pull/1260\">actions/setup-java#1260</a></li>\n<li>Fix Alpine GPG verification failures and support multiple keys by <a href=\"https://github.com/brunoborges\"><code>@​brunoborges</code></a> in <a href=\"https://redirect.github.com/actions/setup-java/pull/1262\">actions/setup-java#1262</a></li>\n<li>Fix import-safe checks when scripts are run from a path with symlinks by <a href=\"https://github.com/otaconix\"><code>@​otaconix</code></a> in <a href=\"https://redirect.github.com/actions/setup-java/pull/1265\">actions/setup-java#1265</a></li>\n<li>Avoid macOS GPG socket overflow on long runner paths by <a href=\"https://github.com/brunoborges\"><code>@​brunoborges</code></a> with <a href=\"https://github.com/Copilot\"><code>@​Copilot</code></a> in <a href=\"https://redirect.github.com/actions/setup-java/pull/1266\">actions/setup-java#1266</a></li>\n<li>Complete v6 release highlights in README by <a href=\"https://github.com/brunoborges\"><code>@​brunoborges</code></a> in <a href=\"https://redirect.github.com/actions/setup-java/pull/1254\">actions/setup-java#1254</a></li>\n<li>Group and slow routine Dependabot updates by <a href=\"https://github.com/brunoborges\"><code>@​brunoborges</code></a> in <a href=\"https://redirect.github.com/actions/setup-java/pull/1255\">actions/setup-java#1255</a></li>\n<li>chore(deps-dev): update eslint and globals by <a href=\"https://github.com/dependabot\"><code>@​dependabot</code></a>[bot] in <a href=\"https://redirect.github.com/actions/setup-java/pull/1256\">actions/setup-java#1256</a></li>\n</ul>\n<h2>New Contributors</h2>\n<ul>\n<li><a href=\"https://github.com/otaconix\"><code>@​otaconix</code></a> made their first contribution in <a href=\"https://redirect.github.com/actions/setup-java/pull/1265\">actions/setup-java#1265</a></li>\n</ul>\n<p><strong>Full Changelog</strong>: <a href=\"https://github.com/actions/setup-java/compare/v6.0.0...v6.0.1\">https://github.com/actions/setup-java/compare/v6.0.0...v6.0.1</a></p>\n</blockquote>\n</details>\n<details>\n<summary>Commits</summary>\n<ul>\n<li><a href=\"https://github.com/actions/setup-java/commit/de7274f081f381c8f8158605e0321c36c376e2e6\"><code>de7274f</code></a> Avoid macOS GPG socket overflow on long runner paths (<a href=\"https://redirect.github.com/actions/setup-java/issues/1266\">#1266</a>)</li>\n<li><a href=\"https://github.com/actions/setup-java/commit/134912a529122c8803d42fbefc4adb2bd177f986\"><code>134912a</code></a> Fix import-safe checks when scripts are run from a path with symlinks (<a href=\"https://redirect.github.com/actions/setup-java/issues/1265\">#1265</a>)</li>\n<li><a href=\"https://github.com/actions/setup-java/commit/0781fc6af30d3e1f67f2d243034e1a15cf5f3677\"><code>0781fc6</code></a> Fix alpine failures by switching default back to only warn on verification fa...</li>\n<li><a href=\"https://github.com/actions/setup-java/commit/4889c4aff54cecfc8d479c505d9893fd814df73f\"><code>4889c4a</code></a> Fix Temurin EA E2E signature verification (<a href=\"https://redirect.github.com/actions/setup-java/issues/1260\">#1260</a>)</li>\n<li><a href=\"https://github.com/actions/setup-java/commit/8fd32400856216412ac77ad6dc67cca66ecffb93\"><code>8fd3240</code></a> [WIP] Fix failing GitHub Actions job for temurin 17 (<a href=\"https://redirect.github.com/actions/setup-java/issues/1259\">#1259</a>)</li>\n<li><a href=\"https://github.com/actions/setup-java/commit/273229181560643261a71a1544c22304f2a40df8\"><code>2732291</code></a> chore(deps-dev): update eslint and globals (<a href=\"https://redirect.github.com/actions/setup-java/issues/1256\">#1256</a>)</li>\n<li><a href=\"https://github.com/actions/setup-java/commit/1a8f22b7f7b115efae2d0dbe944753d561a53801\"><code>1a8f22b</code></a> chore: streamline Dependabot updates (<a href=\"https://redirect.github.com/actions/setup-java/issues/1255\">#1255</a>)</li>\n<li><a href=\"https://github.com/actions/setup-java/commit/85030b78b58b52f56c1ed3d0e893d2c93117274b\"><code>85030b7</code></a> docs: complete v6 release highlights (<a href=\"https://redirect.github.com/actions/setup-java/issues/1254\">#1254</a>)</li>\n<li>See full diff in <a href=\"https://github.com/actions/setup-java/compare/dd06d9cba3e5552c54d9f8ea23572deb30010f7c...de7274f081f381c8f8158605e0321c36c376e2e6\">compare view</a></li>\n</ul>\n</details>\n<br />",
+          "timestamp": "2026-10-14T08:37:48Z",
+          "url": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb/commit/f262f36cd5211def3974ffd9e392b4ce388c31be"
+        },
+        "date": 1792051717414,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "LOAD",
+            "value": 19.43,
+            "unit": "s"
+          },
+          {
+            "name": "Q1",
+            "value": 0.02,
+            "unit": "s"
+          },
+          {
+            "name": "Q2",
+            "value": 0.02,
+            "unit": "s"
+          },
+          {
+            "name": "Q3",
+            "value": 0.02,
+            "unit": "s"
+          },
+          {
+            "name": "Q4",
+            "value": 0.01,
+            "unit": "s"
+          },
+          {
+            "name": "Q5",
+            "value": 0.03,
+            "unit": "s"
+          },
+          {
+            "name": "Q6",
+            "value": 0.02,
+            "unit": "s"
+          },
+          {
+            "name": "Q7",
+            "value": 0.01,
+            "unit": "s"
+          },
+          {
+            "name": "Q8",
+            "value": 0.02,
+            "unit": "s"
+          },
+          {
+            "name": "Q9",
+            "value": 0.04,
             "unit": "s"
           }
         ]
