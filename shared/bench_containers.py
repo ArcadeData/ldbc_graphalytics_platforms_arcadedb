@@ -183,7 +183,7 @@ MEMGRAPH_ARGS = ["--storage-snapshot-on-exit=true", "--data-recovery-on-startup=
 MEMGRAPH_RUN = ["--user", "root"]  # a bind-mounted data dir is root-owned inside the container
 
 
-ARCADEDB_IMAGE_DEFAULT = "arcadedata/arcadedb:26.11.1-SNAPSHOT"
+ARCADEDB_IMAGE_DEFAULT = "arcadedata/arcadedb:26.10.2"
 
 
 def arcadedb_image():

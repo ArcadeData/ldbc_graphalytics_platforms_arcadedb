@@ -2,7 +2,7 @@
 """ArcadeDB native-image server vs JVM server: the same Graphalytics workload (HTTP, OpenCypher, compute only, outputs validated).
 
   python3 scripts/native_vs_jvm.py --jvm-image arcadedb-bench:af4ce03048-jvm
-  python3 scripts/native_vs_jvm.py --jvm-image <image> --dataset graph500-22-w --runs 3 --reference-image arcadedata/arcadedb:26.11.1-SNAPSHOT
+  python3 scripts/native_vs_jvm.py --jvm-image <image> --dataset graph500-22-w --runs 3 --reference-image arcadedata/arcadedb:26.10.2
 
 A comparison is only meaningful when both images contain the SAME engine commit: the native image (arcadedata/arcadedb:latest-native) is published
 on its own schedule, so the JVM tag is usually a different commit. Build a JVM image from the commit the native image prints at startup
