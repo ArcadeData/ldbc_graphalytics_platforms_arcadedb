@@ -107,7 +107,7 @@ jobs:
 
       - name: Upload benchmark JSON
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mode1-bench-data
           path: bench-data.json
@@ -115,7 +115,7 @@ jobs:
 
       - name: Upload report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mode1-official-report
           path: ${{ env.DIST }}/report/
@@ -177,7 +177,7 @@ jobs:
 
       - name: Upload benchmark JSON
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mode2-bench-data
           path: bench-data.json
@@ -185,7 +185,7 @@ jobs:
 
       - name: Upload log
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mode2-embedded-log
           path: mode2-output.log
@@ -247,7 +247,7 @@ jobs:
 
       - name: Upload benchmark JSON
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mode3-bench-data
           path: bench-data.json
@@ -255,7 +255,7 @@ jobs:
 
       - name: Upload log
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mode3-lsqb-log
           path: mode3-output.log
