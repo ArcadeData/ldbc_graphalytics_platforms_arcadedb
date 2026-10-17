@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1792137677400,
+  "lastUpdate": 1792222691469,
   "repoUrl": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb",
   "entries": {
     "ArcadeDB Mode 1 — Official LDBC Graphalytics": [
@@ -3771,6 +3771,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "CDLP processing",
             "value": 26.093,
+            "unit": "s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Luca Garulli",
+            "username": "lvca",
+            "email": "lvca@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "Luca Garulli",
+            "username": "lvca",
+            "email": "lvca@users.noreply.github.com"
+          },
+          "id": "abc5b55ef7c4cbf170d6e78e077f423749692f1e",
+          "message": "Using ArcadeDB 26.10.2",
+          "timestamp": "2026-10-15T21:31:09Z",
+          "url": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb/commit/abc5b55ef7c4cbf170d6e78e077f423749692f1e"
+        },
+        "date": 1792222690533,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "SSSP load",
+            "value": 62.611,
+            "unit": "s"
+          },
+          {
+            "name": "SSSP processing",
+            "value": 12.309,
+            "unit": "s"
+          },
+          {
+            "name": "LCC load",
+            "value": 58.852,
+            "unit": "s"
+          },
+          {
+            "name": "LCC processing",
+            "value": 13.289,
+            "unit": "s"
+          },
+          {
+            "name": "WCC load",
+            "value": 58.852,
+            "unit": "s"
+          },
+          {
+            "name": "WCC processing",
+            "value": 6.678,
+            "unit": "s"
+          },
+          {
+            "name": "BFS load",
+            "value": 58.852,
+            "unit": "s"
+          },
+          {
+            "name": "BFS processing",
+            "value": 14.011,
+            "unit": "s"
+          },
+          {
+            "name": "PR load",
+            "value": 58.852,
+            "unit": "s"
+          },
+          {
+            "name": "PR processing",
+            "value": 7.317,
+            "unit": "s"
+          },
+          {
+            "name": "CDLP load",
+            "value": 58.852,
+            "unit": "s"
+          },
+          {
+            "name": "CDLP processing",
+            "value": 22.511,
             "unit": "s"
           }
         ]
