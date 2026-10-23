@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1792657534081,
+  "lastUpdate": 1792743800571,
   "repoUrl": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb",
   "entries": {
     "ArcadeDB Mode 3 — LSQB Embedded (SF0.1)": [
@@ -3733,6 +3733,78 @@ window.BENCHMARK_DATA = {
           {
             "name": "Q7",
             "value": 0.01,
+            "unit": "s"
+          },
+          {
+            "name": "Q8",
+            "value": 0.02,
+            "unit": "s"
+          },
+          {
+            "name": "Q9",
+            "value": 0.03,
+            "unit": "s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Luca Garulli",
+            "username": "lvca",
+            "email": "lvca@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "Luca Garulli",
+            "username": "lvca",
+            "email": "lvca@users.noreply.github.com"
+          },
+          "id": "abc5b55ef7c4cbf170d6e78e077f423749692f1e",
+          "message": "Using ArcadeDB 26.10.2",
+          "timestamp": "2026-10-15T21:31:09Z",
+          "url": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb/commit/abc5b55ef7c4cbf170d6e78e077f423749692f1e"
+        },
+        "date": 1792743800140,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "LOAD",
+            "value": 19.96,
+            "unit": "s"
+          },
+          {
+            "name": "Q1",
+            "value": 0.02,
+            "unit": "s"
+          },
+          {
+            "name": "Q2",
+            "value": 0.02,
+            "unit": "s"
+          },
+          {
+            "name": "Q3",
+            "value": 0.02,
+            "unit": "s"
+          },
+          {
+            "name": "Q4",
+            "value": 0.02,
+            "unit": "s"
+          },
+          {
+            "name": "Q5",
+            "value": 0.03,
+            "unit": "s"
+          },
+          {
+            "name": "Q6",
+            "value": 0.02,
+            "unit": "s"
+          },
+          {
+            "name": "Q7",
+            "value": 0.02,
             "unit": "s"
           },
           {
