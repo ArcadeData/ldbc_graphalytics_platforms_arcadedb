@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1793157527330,
+  "lastUpdate": 1793243856594,
   "repoUrl": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb",
   "entries": {
     "ArcadeDB Mode 1 — Official LDBC Graphalytics": [
@@ -4755,6 +4755,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "CDLP processing",
             "value": 32.309,
+            "unit": "s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]",
+            "email": "49699333+dependabot[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "9ef40c966b8c02daa691bc0a4bc1afc37c0cd3c4",
+          "message": "Bump actions/setup-java from 6.0.1 to 6.1.0 (#37)\n\nBumps [actions/setup-java](https://github.com/actions/setup-java) from 6.0.1 to 6.1.0.\n- [Release notes](https://github.com/actions/setup-java/releases)\n- [Commits](https://github.com/actions/setup-java/compare/de7274f081f381c8f8158605e0321c36c376e2e6...b843ebf9b913146b38da2eaa7aeddf76074ae1ad)\n\n---\nupdated-dependencies:\n- dependency-name: actions/setup-java\n  dependency-version: 6.1.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-10-26T17:50:24Z",
+          "url": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb/commit/9ef40c966b8c02daa691bc0a4bc1afc37c0cd3c4"
+        },
+        "date": 1793243855667,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "SSSP load",
+            "value": 65.615,
+            "unit": "s"
+          },
+          {
+            "name": "SSSP processing",
+            "value": 12.253,
+            "unit": "s"
+          },
+          {
+            "name": "CDLP load",
+            "value": 55.939,
+            "unit": "s"
+          },
+          {
+            "name": "CDLP processing",
+            "value": 19.007,
+            "unit": "s"
+          },
+          {
+            "name": "PR load",
+            "value": 55.939,
+            "unit": "s"
+          },
+          {
+            "name": "PR processing",
+            "value": 7.14,
+            "unit": "s"
+          },
+          {
+            "name": "BFS load",
+            "value": 55.939,
+            "unit": "s"
+          },
+          {
+            "name": "BFS processing",
+            "value": 15.713,
+            "unit": "s"
+          },
+          {
+            "name": "LCC load",
+            "value": 55.939,
+            "unit": "s"
+          },
+          {
+            "name": "LCC processing",
+            "value": 18.269,
+            "unit": "s"
+          },
+          {
+            "name": "WCC load",
+            "value": 55.939,
+            "unit": "s"
+          },
+          {
+            "name": "WCC processing",
+            "value": 9.071,
             "unit": "s"
           }
         ]
