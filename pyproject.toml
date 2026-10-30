@@ -10,7 +10,7 @@ dependencies = [
 [project.optional-dependencies]
 neo4j = ["neo4j>=5.0"]
 kuzu = ["kuzu>=0.4"]
-ladybug = ["ladybug==0.21.2"]
+ladybug = ["ladybug==0.22.0"]
 duckdb = ["duckdb>=0.10"]
 falkordb = ["falkordb>=1.0", "redis>=5.0", "falkordb-bulk-loader"]
 memgraph = ["pymgclient>=1.3"]
