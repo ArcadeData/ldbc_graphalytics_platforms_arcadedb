@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1793243862131,
+  "lastUpdate": 1793330324119,
   "repoUrl": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb",
   "entries": {
     "ArcadeDB Mode 3 — LSQB Embedded (SF0.1)": [
@@ -4232,6 +4232,78 @@ window.BENCHMARK_DATA = {
           {
             "name": "Q6",
             "value": 0.04,
+            "unit": "s"
+          },
+          {
+            "name": "Q7",
+            "value": 0.01,
+            "unit": "s"
+          },
+          {
+            "name": "Q8",
+            "value": 0.02,
+            "unit": "s"
+          },
+          {
+            "name": "Q9",
+            "value": 0.03,
+            "unit": "s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Luca Garulli",
+            "username": "lvca",
+            "email": "lvca@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "Luca Garulli",
+            "username": "lvca",
+            "email": "lvca@users.noreply.github.com"
+          },
+          "id": "c9b52eaecd1943fe90fefe2eaa2b369761f02fab",
+          "message": "JVM memory probe: live heap and real footprint of ArcadeDB Docker and Neo4j under the fixed 12 GB heap\n\nBENCH_JVM_PROBE=1 runs jcmd inside the vendor's container before the first timed operation and after the\ntimed runs of each one: GC.class_histogram for the live heap (a full GC on any collector; GC.run is a no-op\non Neo4j, which starts with -XX:+DisableExplicitGC), VM.native_memory summary for the JVM's native memory,\nand docker stats for the container footprint (working set minus the unused part of the fixed heap).\nStored in result[\"_memory\"][\"jvm\"]. ARCADEDB_SERVER_FLAGS passes extra server settings.\n\nFirst results on datagen-7_5-fb (results-jvm-memory-2026-10-29.md): ArcadeDB 2.4-2.5 GiB with the default\npage cache, 1.2-1.25 GiB with maxPageRAM=512 (no change in compute time); Neo4j + GDS 1.9-2.0 GiB.",
+          "timestamp": "2026-10-30T01:44:02Z",
+          "url": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb/commit/c9b52eaecd1943fe90fefe2eaa2b369761f02fab"
+        },
+        "date": 1793330323687,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "LOAD",
+            "value": 18.74,
+            "unit": "s"
+          },
+          {
+            "name": "Q1",
+            "value": 0.02,
+            "unit": "s"
+          },
+          {
+            "name": "Q2",
+            "value": 0.02,
+            "unit": "s"
+          },
+          {
+            "name": "Q3",
+            "value": 0.01,
+            "unit": "s"
+          },
+          {
+            "name": "Q4",
+            "value": 0.01,
+            "unit": "s"
+          },
+          {
+            "name": "Q5",
+            "value": 0.02,
+            "unit": "s"
+          },
+          {
+            "name": "Q6",
+            "value": 0.02,
             "unit": "s"
           },
           {
