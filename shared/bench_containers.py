@@ -19,7 +19,9 @@ import time
 import bench_memory
 import bench_state
 
-HEAP = "12g"  # CLAUDE.md rule: same JVM heap for every JVM-based vendor
+# CLAUDE.md rule: same JVM heap for every JVM-based vendor. BENCH_JVM_HEAP overrides it only for the minimum-heap memory experiment
+# (scripts/min_heap.py); published timings always use 12g.
+HEAP = os.environ.get("BENCH_JVM_HEAP", "12g")
 
 
 class Spec:
@@ -181,6 +183,13 @@ NEO4J_ENV = {
 }
 
 MEMGRAPH_ARGS = ["--storage-snapshot-on-exit=true", "--data-recovery-on-startup=true"]
+
+
+def _memgraph_args():
+    """BENCH_MEMGRAPH_MEMORY_LIMIT (MiB) caps Memgraph's total memory: the Memgraph rung of the minimum-memory experiment
+    (scripts/min_heap.py), the counterpart of BENCH_JVM_HEAP for the JVM systems. Unset = Memgraph's default (90% of the RAM)."""
+    limit = os.environ.get("BENCH_MEMGRAPH_MEMORY_LIMIT")
+    return MEMGRAPH_ARGS + ([f"--memory-limit={limit}"] if limit else [])
 MEMGRAPH_RUN = ["--user", "root"]  # a bind-mounted data dir is root-owned inside the container
 
 
@@ -226,7 +235,7 @@ def _specs():
             [("data", "/data"), ("plugins", "/plugins")], ready_port=7688, settle=5),
         ("graphalytics", "memgraph"): Spec(
             "memgraph", memgraph_image, ["7687:7687"], {},
-            [("data", "/var/lib/memgraph")], args=MEMGRAPH_ARGS, ready_port=7687, settle=5,
+            [("data", "/var/lib/memgraph")], args=_memgraph_args(), ready_port=7687, settle=5,
             stop_timeout=600, run_args=MEMGRAPH_RUN,  # snapshot on exit
             ready_timeout=1800, ready_probe=bolt_ready, max_map_count=1048576),  # recovering the 21 GB snapshot takes ~10 minutes
         ("graphalytics", "arangodb"): Spec(

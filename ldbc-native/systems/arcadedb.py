@@ -1,5 +1,6 @@
 """ArcadeDB (Docker) benchmark for LDBC Graphalytics."""
 
+import json
 import time
 
 import bench_containers
@@ -288,6 +289,29 @@ public class ArcadeDBEmbeddedLoader {
     else:
         print("\n[ArcadeDB] Database already exists at " + db_path + ", skipping load")
 
+    # ARCADEDB_NO_GAV=1: run the algorithms on the OLTP storage, without the Graph Analytical View (the minimum-memory experiment:
+    # restoring the view is what needs the heap). The server gets its own copy of the database with the view definition removed from
+    # schema.json, so the loaded database keeps its view; the copy is made once and reused.
+    no_gav = os.environ.get("ARCADEDB_NO_GAV") == "1"
+    if no_gav:
+        nogav_root = bench_common.embedded_db_path("graphalytics", vendor + "-nogav", "databases")
+        nogav_db = os.path.join(nogav_root, "bench")
+        if needs_load and os.path.isdir(nogav_db):
+            shutil.rmtree(nogav_db)
+        if not os.path.isdir(nogav_db):
+            print(f"\n[ArcadeDB] Copying the database without its Graph Analytical View to {nogav_db}...")
+            shutil.copytree(db_path, nogav_db, ignore=shutil.ignore_patterns("database.lck"))
+            for name in ("schema.json", "schema.prev.json"):
+                schema_file = os.path.join(nogav_db, name)
+                if os.path.exists(schema_file):
+                    with open(schema_file) as f:
+                        schema = json.load(f)
+                    schema.get("extensions", {}).pop("graphAnalyticalViews", None)
+                    with open(schema_file, "w") as f:
+                        json.dump(schema, f)
+        data_root = nogav_root
+        results["_gav"] = False
+
     # --- Phase 2: Start Docker server on the pre-loaded database ---
     print(f"\n[ArcadeDB] Starting Docker server ({image})...")
     _sp.run(["docker", "rm", "-f", container], capture_output=True)
@@ -306,11 +330,11 @@ public class ArcadeDBEmbeddedLoader {
         # (no --add-modules: the Vector ops are enabled anyway, see the startup log); the binary port is not published, nothing uses it
         run_cmd = ["docker", "run", "-d", "--name", container, "-p", f"{http_port}:2480",
                    "-v", f"{data_root}:/home/arcadedb/databases", "-v", f"{log_root}:/home/arcadedb/log",
-                   image, "-Xms12g", "-Xmx12g", *settings]
+                   image, f"-Xms{bench_containers.HEAP}", f"-Xmx{bench_containers.HEAP}", *settings]
     else:
         run_cmd = ["docker", "run", "-d", "--name", container,
                    "-p", f"{http_port}:2480", "-p", f"{binary_port}:2424",
-                   "-e", "ARCADEDB_OPTS_MEMORY=-Xms12g -Xmx12g",
+                   "-e", f"ARCADEDB_OPTS_MEMORY=-Xms{bench_containers.HEAP} -Xmx{bench_containers.HEAP}",
                    "-e", "JAVA_OPTS=--add-modules jdk.incubator.vector " + " ".join(settings + bench_memory.jvm_probe_flags()),
                    "-v", f"{data_root}:/home/arcadedb/databases",
                    "-v", f"{log_root}:/home/arcadedb/log",
@@ -358,7 +382,7 @@ public class ArcadeDBEmbeddedLoader {
     gav_found = False
     gav_status = None
     gav_wait_start = time.perf_counter()
-    for i in range(0 if needs_load else 450):
+    for i in range(0 if needs_load or no_gav else 450):
         try:
             r = cmd("SELECT FROM schema:graphAnalyticalViews WHERE name = 'benchmark'", timeout=30)
             if r.status_code == 200:
@@ -380,7 +404,9 @@ public class ArcadeDBEmbeddedLoader {
         time.sleep(2)
     if not gav_found and gav_status is not None:
         return {"error": f"the Graph Analytical View is still {gav_status} after 900 s; not measuring an unaccelerated engine"}
-    if not gav_found:
+    if no_gav:
+        print("  ARCADEDB_NO_GAV=1: no Graph Analytical View, the algorithms run on the OLTP storage")
+    elif not gav_found:
         # GAV not found — create it (first run or --reset)
         print("  No GAV found, creating...")
         cmd("CREATE GRAPH ANALYTICAL VIEW benchmark VERTEX TYPES (Vertex) EDGE TYPES (EDGE) EDGE PROPERTIES (WEIGHT)")

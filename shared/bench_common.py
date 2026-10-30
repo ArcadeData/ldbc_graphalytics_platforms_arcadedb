@@ -747,6 +747,8 @@ def run_vendor_isolated(suite, key, name, script, passthrough, metrics, dataset_
         _apply_load_cache(suite, key, version_tag, dataset_sig, result)
         result["_status"] = status
         result["_version"] = version_tag
+        if key in bench_memory.JVM_VENDORS:
+            result["_heap"] = bench_containers.HEAP
         result["_elapsed"] = round(outcome.elapsed, 1) if outcome else None
     return result, status
 

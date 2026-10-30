@@ -241,6 +241,12 @@ JVMs. Quote the footprint, not the container size, when comparing JVM systems on
 `results-jvm-memory-2026-10-29.md`. `ARCADEDB_SERVER_FLAGS` passes extra settings to the ArcadeDB Docker server (e.g.
 `-Darcadedb.maxPageRAM=512`: the page cache is on the heap and defaults to a quarter of it).
 
+The minimum-memory experiment (`scripts/min_heap.py`, results in `results-min-memory-2026-10-30.md`) is the one exception to the 12 GB
+heap rule: `BENCH_JVM_HEAP` sets the heap of ArcadeDB Docker and Neo4j, `BENCH_MEMGRAPH_MEMORY_LIMIT` (MiB) Memgraph's `--memory-limit`,
+and `ARCADEDB_NO_GAV=1` runs ArcadeDB on a copy of its database without the Graph Analytical View. Never publish timings from these runs
+next to the 12 GB tables. An out-of-memory run leaves a `java_pid*.hprof` heap dump of up to the heap size in the vendor's `log`
+directory under `~/.cache/ldbc-graph-bench/data`: delete it.
+
 ### One vendor at a time — no parallel containers
 
 **NEVER start multiple Docker containers simultaneously.** The orchestrator runs vendors sequentially and does this for you; the manual procedure is:

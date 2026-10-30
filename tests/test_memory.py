@@ -76,5 +76,40 @@ class ProbeTests(unittest.TestCase):
             self.assertEqual(bench_memory.jvm_probe_flags(), [])
 
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
+
+import min_heap  # noqa: E402
+
+BASELINE = {"pagerank": 6.7, "wcc": 0.09, "_validation": {"pagerank": {"verdict": "valid"}, "wcc": {"verdict": "valid"},
+                                                           "sssp": {"verdict": "invalid"}}}
+
+
+class MinHeapTests(unittest.TestCase):
+    def test_baseline_defines_the_operations_that_must_pass(self):
+        passed, failures, _, valid = min_heap.summarize(BASELINE, False, None)
+        self.assertTrue(passed, failures)
+        self.assertEqual(valid, {"pagerank", "wcc"})
+
+    def test_timeout_or_invalid_output_fails(self):
+        smaller = {"pagerank": "timeout", "wcc": 0.1, "_validation": {"wcc": {"verdict": "invalid"}}}
+        passed, failures, _, _ = min_heap.summarize(smaller, False, {"pagerank", "wcc"})
+        self.assertFalse(passed)
+        self.assertEqual(failures, ["pagerank: timeout", "wcc: invalid"])
+
+    def test_oom_kill_fails_even_with_numbers(self):
+        passed, failures, _, _ = min_heap.summarize(BASELINE, True, {"pagerank", "wcc"})
+        self.assertFalse(passed)
+        self.assertIn("container OOM-killed", failures)
+
+    def test_memory_setting_per_vendor(self):
+        self.assertEqual(min_heap.memory_env("neo4j", "1536m"), {"BENCH_JVM_HEAP": "1536m"})
+        self.assertEqual(min_heap.memory_env("memgraph", "12g"), {"BENCH_MEMGRAPH_MEMORY_LIMIT": "12288"})
+        self.assertEqual(min_heap.memory_env("memgraph", "none"), {})
+
+    def test_crash_before_any_result_fails(self):
+        passed, failures, _, _ = min_heap.summarize({"error": "OutOfMemoryError"}, False, {"pagerank"})
+        self.assertFalse(passed)
+
+
 if __name__ == "__main__":
     unittest.main()
