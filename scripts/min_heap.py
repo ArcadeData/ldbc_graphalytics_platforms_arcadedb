@@ -63,9 +63,18 @@ def run_one(vendor, heap, dataset, out_dir, extra_env):
     return result, oom
 
 
-def summarize(result, oom, expected):
-    """(passed, failures, row) for one run; expected = operations valid at the baseline (None for the baseline itself)."""
+SUMMARY_KEYS = {"pagerank": "PR", "wcc": "WCC", "bfs": "BFS", "lcc": "LCC", "sssp": "SSSP", "cdlp": "CDLP"}
+
+
+def summarize(result, oom, expected, compute_only=False):
+    """(passed, failures, row) for one run; expected = operations valid at the baseline (None for the baseline itself).
+    compute_only: the full outputs are not exported (BENCH_NO_VALIDATE=1), so an operation counts as valid when its summary
+    check (vertex count and an aggregate of the output) is ok."""
     validation = result.get("_validation") or {}
+    if compute_only:
+        summary = result.get("_summary") or {}
+        validation = {op: {"verdict": "valid" if summary.get(key) == "ok" else f"summary {summary.get(key, 'missing')}"}
+                      for op, key in SUMMARY_KEYS.items() if key in summary}
     valid = {op for op, v in validation.items() if v.get("verdict") == "valid"}
     ops = expected if expected is not None else valid
     failures = []
@@ -117,7 +126,11 @@ def main():
     ap.add_argument("--vendors", nargs="+", default=["arcadedb", "neo4j"])
     ap.add_argument("--heaps", nargs="+", default=DEFAULT_HEAPS)
     ap.add_argument("--expect", help="operations that must pass, comma separated (default: those valid at the first heap)")
+    ap.add_argument("--compute-only", action="store_true",
+                    help="do not export and validate the full outputs (BENCH_NO_VALIDATE=1); pass on the summary checks")
     args = ap.parse_args()
+    if args.compute_only:
+        os.environ["BENCH_NO_VALIDATE"] = "1"
     args.out = os.path.abspath(args.out)   # benchmark.py runs in ldbc-native/
     os.makedirs(args.out, exist_ok=True)
     summary_file = os.path.join(args.out, "min-heap.json")
@@ -128,7 +141,7 @@ def main():
         for heap in args.heaps:
             print(f"[min-heap] {vendor} heap {heap}: running", flush=True)
             result, oom = run_one(vendor, heap, args.dataset, args.out, {})
-            passed, failures, row, valid = summarize(result, oom, expected)
+            passed, failures, row, valid = summarize(result, oom, expected, args.compute_only)
             if expected is None:
                 expected = valid
             runs[heap] = {"passed": passed, **row}

@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="430" viewBox="0 0 800 430" role="img" aria-labelledby="t d">
+  <title id="t">Container RAM to run LDBC Graphalytics: ArcadeDB, Neo4j, Memgraph</title>
+  <desc id="d">Peak container RAM at the smallest memory setting that runs every algorithm with validated outputs. datagen-7_5-fb: ArcadeDB 2.24 GiB, Neo4j 2.59 GiB, Memgraph 25.63 GiB. graph500-22: ArcadeDB 2.80 GiB, Neo4j 5.21 GiB, Memgraph ran out of memory at the 32 GiB Docker limit.</desc>
+  <defs>
+    <style>
+      .surface { fill: #fcfcfb; }
+      .ink-1 { fill: #0b0b0b; }
+      .ink-2 { fill: #52514e; }
+      .ink-3 { fill: #6f6e69; }
+      .grid { stroke: #e4e3df; stroke-width: 1; }
+      .base { stroke: #b9b8b2; stroke-width: 1; }
+      .s1 { fill: #2a78d6; }
+      .s2 { fill: #eb6834; }
+      .s3 { fill: #1baf7a; }
+      .s3-line { stroke: #1baf7a; }
+      .hatch-bg { fill: #fcfcfb; }
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+      .title { font-size: 17px; font-weight: 600; }
+      .sub { font-size: 12.5px; }
+      .panel { font-size: 13px; font-weight: 600; }
+      .row { font-size: 13px; }
+      .val { font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+      .tick { font-size: 11.5px; font-variant-numeric: tabular-nums; }
+      .note { font-size: 11px; }
+      @media (prefers-color-scheme: dark) {
+        .surface, .hatch-bg { fill: #1a1a19; }
+        .ink-1 { fill: #f0efec; }
+        .ink-2 { fill: #c3c2b7; }
+        .ink-3 { fill: #a3a29a; }
+        .grid { stroke: #33332f; }
+        .base { stroke: #5a5953; }
+        .s1 { fill: #3987e5; }
+        .s2 { fill: #d95926; }
+        .s3 { fill: #199e70; }
+        .s3-line { stroke: #199e70; }
+      }
+    </style>
+    <pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect class="hatch-bg" width="8" height="8"/>
+      <line class="s3-line" x1="0" y1="0" x2="0" y2="8" stroke-width="3"/>
+    </pattern>
+  </defs>
+
+  <rect class="surface" width="800" height="430" rx="8"/>
+
+  <text class="title ink-1" x="24" y="34">Container RAM to run the LDBC Graphalytics suite</text>
+  <text class="sub ink-2" x="24" y="54">Peak RAM at the smallest memory setting that runs every algorithm with outputs validated (GiB, lower is better)</text>
+
+  <!-- plot: x0 = 140 (0 GiB) .. x1 = 580 (32 GiB), 13.75 px per GiB -->
+  <g class="grid">
+    <line x1="140" y1="74" x2="140" y2="368"/>
+    <line x1="250" y1="74" x2="250" y2="368"/>
+    <line x1="360" y1="74" x2="360" y2="368"/>
+    <line x1="470" y1="74" x2="470" y2="368"/>
+    <line x1="580" y1="74" x2="580" y2="368"/>
+  </g>
+  <g class="tick ink-3" text-anchor="middle">
+    <text x="140" y="386">0</text>
+    <text x="250" y="386">8</text>
+    <text x="360" y="386">16</text>
+    <text x="470" y="386">24</text>
+    <text x="580" y="386">32 GiB</text>
+  </g>
+
+  <!-- panel 1: datagen-7_5-fb -->
+  <text class="panel ink-1" x="24" y="92">datagen-7_5-fb</text>
+  <text class="sub ink-3" x="150" y="92">633K vertices, 34M edges</text>
+  <g class="row ink-2" text-anchor="end">
+    <text x="128" y="119">ArcadeDB</text>
+    <text x="128" y="149">Neo4j + GDS</text>
+    <text x="128" y="179">Memgraph</text>
+  </g>
+  <!-- bars: 18px tall, 4px rounded data end, square at the baseline -->
+  <path class="s1" d="M140 105 H166.8 a4 4 0 0 1 4 4 V119 a4 4 0 0 1 -4 4 H140 Z"/>
+  <path class="s2" d="M140 135 H171.6 a4 4 0 0 1 4 4 V149 a4 4 0 0 1 -4 4 H140 Z"/>
+  <path class="s3" d="M140 165 H488.4 a4 4 0 0 1 4 4 V179 a4 4 0 0 1 -4 4 H140 Z"/>
+  <g class="val ink-1">
+    <text x="178.8" y="119">2.24</text>
+    <text x="183.6" y="149">2.59</text>
+    <text x="500.4" y="179">25.63</text>
+  </g>
+
+  <!-- panel 2: graph500-22 -->
+  <text class="panel ink-1" x="24" y="228">graph500-22</text>
+  <text class="sub ink-3" x="150" y="228">2.4M vertices, 64M edges</text>
+  <g class="row ink-2" text-anchor="end">
+    <text x="128" y="255">ArcadeDB</text>
+    <text x="128" y="285">Neo4j + GDS</text>
+    <text x="128" y="315">Memgraph</text>
+  </g>
+  <path class="s1" d="M140 241 H174.5 a4 4 0 0 1 4 4 V255 a4 4 0 0 1 -4 4 H140 Z"/>
+  <path class="s2" d="M140 271 H207.6 a4 4 0 0 1 4 4 V285 a4 4 0 0 1 -4 4 H140 Z"/>
+  <rect x="140" y="301" width="440" height="18" fill="url(#hatch)"/>
+  <g class="val ink-1">
+    <text x="186.5" y="255">2.80</text>
+    <text x="219.6" y="285">5.21</text>
+    <text x="588" y="315">out of memory</text>
+  </g>
+  <text class="note ink-3" x="588" y="331">at the 32 GiB Docker limit</text>
+
+  <line class="base" x1="140" y1="74" x2="140" y2="368"/>
+
+  <text class="note ink-3" x="24" y="408">Default settings for every system. ArcadeDB #11013 snapshot (results as NDJSON), Neo4j 2026.09 + GDS, Memgraph MAGE.</text>
+  <text class="note ink-3" x="24" y="423">Peak container working set (docker stats). MacBook Pro M5 Pro, 48 GB, Docker Desktop 32 GiB, one container at a time.</text>
+</svg>

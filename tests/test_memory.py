@@ -106,6 +106,12 @@ class MinHeapTests(unittest.TestCase):
         self.assertEqual(min_heap.memory_env("memgraph", "12g"), {"BENCH_MEMGRAPH_MEMORY_LIMIT": "12288"})
         self.assertEqual(min_heap.memory_env("memgraph", "none"), {})
 
+    def test_compute_only_passes_on_the_summary_checks(self):
+        run = {"pagerank": 1.3, "wcc": 0.9, "_summary": {"PR": "ok", "WCC": "MISMATCH"}}
+        passed, failures, _, _ = min_heap.summarize(run, False, {"pagerank", "wcc"}, compute_only=True)
+        self.assertFalse(passed)
+        self.assertEqual(failures, ["wcc: summary MISMATCH"])
+
     def test_crash_before_any_result_fails(self):
         passed, failures, _, _ = min_heap.summarize({"error": "OutOfMemoryError"}, False, {"pagerank"})
         self.assertFalse(passed)

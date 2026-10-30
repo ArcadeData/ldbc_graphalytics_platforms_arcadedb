@@ -3,6 +3,7 @@
 import json
 import time
 
+import arcadedb_http
 import bench_containers
 import bench_memory
 import os
@@ -49,15 +50,13 @@ def _count_query(name, full):
     return f"{head} WITH node, {col} RETURN count(*) AS n, {agg} AS agg"
 
 
-def _dump_all(cmd, vendor):
-    """Full per-vertex outputs of the exact procedure calls the benchmark times (see bench_common.dump_*)."""
+def _dump_all(stream, vendor):
+    """Full per-vertex outputs of the exact procedure calls the benchmark times (see bench_common.dump_*), streamed as NDJSON: the
+    buffered JSON response of a 2.4M-row output needs about 1 GB of server heap."""
     if not bench_common.dump_enabled():
         return
     def rows(q, *cols):
-        r = cmd(q, language="opencypher", timeout=900)
-        if r.status_code != 200:
-            raise RuntimeError(r.text[:200])
-        for rec in r.json()["result"]:
+        for rec in stream(q, timeout=900):
             yield tuple(rec[c] for c in cols)
     def all_ids():
         return [r[0] for r in rows("MATCH (v:Vertex) RETURN v.VID AS id", "id")]
@@ -176,6 +175,10 @@ def _run_variant(native):
         r = requests.post(f"{base}/command/{db}", json=body,
                           auth=auth, timeout=timeout)
         return r
+
+    def stream(command, language="opencypher", timeout=600):
+        """The rows of a read-only command, streamed (NDJSON): the server never holds the whole result."""
+        return arcadedb_http.stream_rows(base, db, auth, command, language=language, timeout=timeout)
 
     # --- Phase 1: Load data via embedded Java (fast GraphBatchImporter) ---
     # The database is created by the Java loader and then mounted into Docker.
@@ -336,6 +339,8 @@ public class ArcadeDBEmbeddedLoader {
                    "-p", f"{http_port}:2480", "-p", f"{binary_port}:2424",
                    "-e", f"ARCADEDB_OPTS_MEMORY=-Xms{bench_containers.HEAP} -Xmx{bench_containers.HEAP}",
                    "-e", "JAVA_OPTS=--add-modules jdk.incubator.vector " + " ".join(settings + bench_memory.jvm_probe_flags()),
+                   # ARCADEDB_GC replaces the image's collector (-XX:+UseZGC), e.g. ARCADEDB_GC=-XX:+UseG1GC (minimum-memory experiments)
+                   *(["-e", f"ARCADEDB_OPTS_GC={os.environ['ARCADEDB_GC']}"] if os.environ.get("ARCADEDB_GC") else []),
                    "-v", f"{data_root}:/home/arcadedb/databases",
                    "-v", f"{log_root}:/home/arcadedb/log",
                    image]
@@ -397,6 +402,10 @@ public class ArcadeDBEmbeddedLoader {
                         results["_gav_restore"] = round(waited, 1)
                         gav_found = True
                         break
+                    if gav_status == "FAILED":   # engines from #11013 on end a failed build or restore FAILED with the cause
+                        waited = time.perf_counter() - gav_wait_start
+                        print(f"  GAV FAILED after {waited:.0f}s: {rec.get('buildError')}", flush=True)
+                        return {"error": f"the Graph Analytical View FAILED after {waited:.0f} s: {rec.get('buildError')}"}
                     if i % 5 == 0:
                         print(f"  GAV status {gav_status}, waiting for READY ({time.perf_counter() - gav_wait_start:.0f}s)", flush=True)
         except Exception:
@@ -428,10 +437,7 @@ public class ArcadeDBEmbeddedLoader {
         print(f"\n[ArcadeDB] Running {name}...")
         query = _count_query(name, full_query) if bench_common.compute_only() else full_query
         def _run():
-            r = cmd(query, language="opencypher", timeout=timeout)
-            if r.status_code != 200:
-                raise RuntimeError(r.text[:200])
-            rows = r.json()["result"]
+            rows = list(stream(query, timeout=timeout))
             return (rows[0]["n"], rows[0]["agg"]) if bench_common.compute_only() else (len(rows), None)
         elapsed, summary = bench_common.run_timed_warm(name, _run, timeout=timeout)
         results[name] = elapsed
@@ -440,8 +446,7 @@ public class ArcadeDBEmbeddedLoader {
             if bench_common.compute_only():
                 n, agg = summary
                 if name in DISTINCT_AGG:   # untimed verification: the number of distinct labels
-                    r = cmd(_distinct_query(name, full_query), language="opencypher", timeout=timeout)
-                    row = r.json()["result"][0]
+                    row = list(stream(_distinct_query(name, full_query), timeout=timeout))[0]
                     n, agg = row["n"], row["agg"]
                 # algo.bfs and the Dijkstra procedure do not emit the source itself (the export adds it with distance 0)
                 bench_common.check_summary(vendor, name, n + 1 if name in ("bfs", "sssp") else n, agg)
@@ -468,7 +473,14 @@ public class ArcadeDBEmbeddedLoader {
     results["_server_time"] = dict(bench_common.SERVER_TIMES)
     results["_output"] = bench_common.OUTPUT_MODE
 
-    _dump_all(cmd, vendor)
+    _dump_all(stream, vendor)
+    if os.environ.get("ARCADEDB_CLEAN_STOP") == "1" and not native:
+        # A graceful stop closes the database, which persists the view's CSR (arcadedb.gavPersistCsr): the next start reuses it
+        # instead of rebuilding the view from a full scan. The default kill makes every start a rebuild.
+        start = time.perf_counter()
+        _sp.run(["docker", "stop", "-t", "600", container], capture_output=True, timeout=660)
+        results["_clean_stop"] = round(time.perf_counter() - start, 1)
+        print(f"  ARCADEDB_CLEAN_STOP=1: server stopped gracefully in {results['_clean_stop']}s")
     bench_common.cleanup_docker(container)
     return results
 

@@ -243,7 +243,12 @@ JVMs. Quote the footprint, not the container size, when comparing JVM systems on
 
 The minimum-memory experiment (`scripts/min_heap.py`, results in `results-min-memory-2026-10-30.md`) is the one exception to the 12 GB
 heap rule: `BENCH_JVM_HEAP` sets the heap of ArcadeDB Docker and Neo4j, `BENCH_MEMGRAPH_MEMORY_LIMIT` (MiB) Memgraph's `--memory-limit`,
-and `ARCADEDB_NO_GAV=1` runs ArcadeDB on a copy of its database without the Graph Analytical View. Never publish timings from these runs
+and `ARCADEDB_NO_GAV=1` runs ArcadeDB on a copy of its database without the Graph Analytical View. `ARCADEDB_CLEAN_STOP=1` stops the
+server gracefully at the end, which persists the view (`databases/bench/gav-<name>.csr`) so the next start reuses it instead of
+rebuilding it (the default kill makes every start a rebuild); `ARCADEDB_GC=<flag>` replaces the image's ZGC (e.g. `-XX:+UseG1GC`);
+`min_heap.py --compute-only` skips the full-output export and passes on the summary checks; `BENCH_ALLOW_BATTERY=1` skips the wait for
+AC power (memory-only runs; the result is still flagged `_on_battery`). Results after #11013: `results-min-memory-11013-2026-10-30.md`.
+Never publish timings from these runs
 next to the 12 GB tables. An out-of-memory run leaves a `java_pid*.hprof` heap dump of up to the heap size in the vendor's `log`
 directory under `~/.cache/ldbc-graph-bench/data`: delete it.
 
@@ -331,7 +336,7 @@ curl -X POST "http://localhost:6688/api/v1/admin/workers/group/\$/$WORKER"
 
 - **Memgraph**: Loading 34M edges via Cypher MATCH+CREATE is extremely slow. The load phase WILL timeout at 5 minutes. This is expected — record as "timeout" and move on.
 - **Neo4j**: The benchmark script auto-starts its own Docker container if not running. Still clean up after.
-- **ArcadeDB Docker**: Uses a two-phase approach — embedded Java loader for fast data loading, then Docker for algorithm execution over the **HTTP API only**. **Never use Bolt or gRPC for ArcadeDB benchmarks** (decision 2026-10-07: Bolt is not usable; gRPC measured no faster than HTTP, see `ArcadeDB-release-progress.md`; the Bolt helper and the transfer-study scripts were removed). The timed Graphalytics calls of **every vendor** are **compute only** (`GRAPHALYTICS_OUTPUT=count`, default): the whole algorithm runs and one summary row `(n, aggregate)` comes back, checked against the reference by `bench_common.check_summary`; `GRAPHALYTICS_OUTPUT=full` returns the full output instead (fallback). Numbers published up to 2026-10-06 used mixed methods and are not comparable. After loading, must wait for GAV (CSR) to build (~60-90s).
+- **ArcadeDB Docker**: Uses a two-phase approach — embedded Java loader for fast data loading, then Docker for algorithm execution over the **HTTP API only**. **Never use Bolt or gRPC for ArcadeDB benchmarks** (decision 2026-10-07: Bolt is not usable; gRPC measured no faster than HTTP, see `ArcadeDB-release-progress.md`; the Bolt helper and the transfer-study scripts were removed). Every row-returning call is read as **NDJSON** (`shared/arcadedb_http.stream_rows`, `Accept: application/x-ndjson`; decision 2026-10-30): the buffered JSON response builds the whole result in the server heap (about 1 GB for a 2.4M-row output) and set the minimum heap of graph500-22, the stream costs none. `PROFILE`, status checks and DDL stay on `application/json`. The timed Graphalytics calls of **every vendor** are **compute only** (`GRAPHALYTICS_OUTPUT=count`, default): the whole algorithm runs and one summary row `(n, aggregate)` comes back, checked against the reference by `bench_common.check_summary`; `GRAPHALYTICS_OUTPUT=full` returns the full output instead (fallback). Numbers published up to 2026-10-06 used mixed methods and are not comparable. After loading, must wait for GAV (CSR) to build (~60-90s).
 - **HugeGraph/Vermeer**: Requires a Docker network with master + worker containers. Worker must be assigned to the `$` pool before running.
 - **Kuzu, DuckPGQ**: Embedded (no Docker). Clean up their temp database dirs after.
 

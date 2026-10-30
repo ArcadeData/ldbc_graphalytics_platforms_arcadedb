@@ -4,6 +4,7 @@ import time
 import os
 
 from ._common import data_dir_merged, CYPHER_QUERIES, bench_common
+import arcadedb_http
 
 
 def run_benchmark():
@@ -244,10 +245,10 @@ def run_benchmark():
         start = time.perf_counter()
         try:
             def _once(query=query):
-                r = cypher(query.strip())
-                if r.status_code != 200:
-                    raise RuntimeError(r.text[:300])
-                return r.json()["result"][0]["count"]
+                # streamed (NDJSON), like every row-returning call of the ArcadeDB drivers
+                rows = list(arcadedb_http.stream_rows(f"{base}/api/v1", db, auth, query.strip(), language="opencypher",
+                                                      timeout=bench_common.QUERY_TIMEOUT))
+                return rows[0]["count"]
             elapsed, count = bench_common.measure_repeated(_once, name=qid)
             results[qid] = elapsed
             print(f"  {qid.upper()} time: {elapsed:.2f}s  (count={count})")

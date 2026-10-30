@@ -625,8 +625,9 @@ def run_vendor_isolated(suite, key, name, script, passthrough, metrics, dataset_
     status = "ok"
     result = None
     outcome = None
-    # The CPU is throttled on battery: wait (up to 30 minutes) for AC power instead of measuring.
-    for _ in range(60):
+    # The CPU is throttled on battery: wait (up to 30 minutes) for AC power instead of measuring. BENCH_ALLOW_BATTERY=1 skips the wait
+    # (memory-only experiments); the result is still flagged _on_battery.
+    for _ in range(0 if os.environ.get("BENCH_ALLOW_BATTERY") == "1" else 60):
         if bench_state.power_source() != "battery":
             break
         print(f"  On battery power: waiting 30s for AC before starting {name} (plug the Mac in)")
