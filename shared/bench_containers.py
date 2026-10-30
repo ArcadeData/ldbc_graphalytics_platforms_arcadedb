@@ -16,6 +16,7 @@ import socket
 import subprocess
 import time
 
+import bench_memory
 import bench_state
 
 HEAP = "12g"  # CLAUDE.md rule: same JVM heap for every JVM-based vendor
@@ -183,6 +184,12 @@ MEMGRAPH_ARGS = ["--storage-snapshot-on-exit=true", "--data-recovery-on-startup=
 MEMGRAPH_RUN = ["--user", "root"]  # a bind-mounted data dir is root-owned inside the container
 
 
+def _neo4j_probe_env():
+    """BENCH_JVM_PROBE: native memory tracking for the JVM probe (the image appends the value to its default JVM flags)."""
+    flags = bench_memory.jvm_probe_flags()
+    return {"NEO4J_server_jvm_additional": " ".join(flags)} if flags else {}
+
+
 ARCADEDB_IMAGE_DEFAULT = "arcadedata/arcadedb:26.10.2"
 
 
@@ -215,7 +222,7 @@ def _specs():
     return {
         ("graphalytics", "neo4j"): Spec(
             "neo4j-gds", neo4j_image, ["7688:7687", "7476:7474"],
-            {**NEO4J_ENV, "NEO4J_PLUGINS": '["graph-data-science"]'},
+            {**NEO4J_ENV, **_neo4j_probe_env(), "NEO4J_PLUGINS": '["graph-data-science"]'},
             [("data", "/data"), ("plugins", "/plugins")], ready_port=7688, settle=5),
         ("graphalytics", "memgraph"): Spec(
             "memgraph", memgraph_image, ["7687:7687"], {},

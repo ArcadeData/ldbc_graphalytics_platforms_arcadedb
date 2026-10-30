@@ -88,6 +88,7 @@ def run_timed_warm(name, func, timeout=QUERY_TIMEOUT):
     if _metric_key(name) in GRAPHALYTICS_SKIP:
         print(f"  {name}: skipped (GRAPHALYTICS_SKIP)", flush=True)
         return "N/A", None
+    _probe_jvm("_before")                                        # resident memory before the first operation (once)
     first, result = run_timed(name, func, timeout=timeout)       # warm-up call: not reported
     if not isinstance(first, (int, float)):
         return first, result
@@ -103,7 +104,24 @@ def run_timed_warm(name, func, timeout=QUERY_TIMEOUT):
     print(f"  {name}: median of {len(times)} timed run(s) after the warm-up call: {headline:.3f}s", flush=True)
     _PARTIAL["done"][_metric_key(name)] = headline
     _flush_partial(_PARTIAL)
+    _probe_jvm(_metric_key(name))                                # after the timed runs, outside every timed window
     return headline, result
+
+
+def _probe_jvm(key):
+    """BENCH_JVM_PROBE: live heap and JVM footprint of the vendor's container (bench_memory.jvm_probe), kept in the partial file."""
+    container = os.environ.get(bench_memory.JVM_CONTAINER_ENV)
+    probes = _PARTIAL.setdefault("jvm", {})
+    if not container or (key == "_before" and key in probes):
+        return
+    p = bench_memory.jvm_probe(container)
+    if p is None:
+        print(f"  [jvm-memory] {key}: probe of {container} failed", flush=True)
+        return
+    probes[key] = p
+    print(f"  [jvm-memory] {key}: live heap {p['live_heap_mb']:.0f} MB, JVM footprint {p.get('jvm_footprint_mb', 0):.0f} MB, "
+          f"container footprint {p.get('container_footprint_mb', 0):.0f} MB (full GC {p['probe_gc_s']:.1f}s)", flush=True)
+    _flush_partial(_PARTIAL)
 
 
 # ------------------------------------------------------------ partial results
@@ -633,6 +651,8 @@ def run_vendor_isolated(suite, key, name, script, passthrough, metrics, dataset_
     containers = (["vermeer-master", "vermeer-worker"] if key == "hugegraph"
                   else [spec.name] if spec is not None else own_containers.get(key, []))
     sampler = bench_memory.MemorySampler(containers) if os.environ.get("BENCH_NO_MEMORY") != "1" else None
+    if bench_memory.jvm_probe_enabled() and key in bench_memory.JVM_VENDORS and containers:
+        env[bench_memory.JVM_CONTAINER_ENV] = containers[0]
     try:
         if spec is not None:
             bench_containers.ensure_running(suite, key, spec)
@@ -677,7 +697,10 @@ def run_vendor_isolated(suite, key, name, script, passthrough, metrics, dataset_
         if sampler:
             sampler.stop()
             try:
-                memory = sampler.summarize((bench_isolation.read_json(partial_file, {}) or {}).get("ops"))
+                partial_now = bench_isolation.read_json(partial_file, {}) or {}
+                memory = sampler.summarize(partial_now.get("ops"))
+                if memory is not None and partial_now.get("jvm"):
+                    memory["jvm"] = partial_now["jvm"]
             except Exception:  # noqa: BLE001
                 memory = None
         try:
@@ -717,6 +740,8 @@ def run_vendor_isolated(suite, key, name, script, passthrough, metrics, dataset_
         result["_memory"] = memory
         line = bench_memory.describe(name, memory)
         if line:
+            print(line)
+        for line in bench_memory.describe_jvm(name, memory.get("jvm")):
             print(line)
     if result is not None and "error" not in result:
         _apply_load_cache(suite, key, version_tag, dataset_sig, result)

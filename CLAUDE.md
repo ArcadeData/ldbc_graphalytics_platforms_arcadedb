@@ -233,6 +233,14 @@ Graphalytics driver) must be listed in `own_containers` in `run_vendor_isolated`
 `memory_pressure` before a long run: a Docker VM that still holds its memory plus an in-process engine can push the Mac into swap and
 distort timings (the harness waits while free memory is below 25%).
 
+`BENCH_JVM_PROBE=1` looks inside the JVM of ArcadeDB Docker and Neo4j: before the first timed operation and after the timed runs of each
+one, `jcmd GC.class_histogram` (a full GC on any collector; `GC.run` is a no-op on Neo4j, which runs with `-XX:+DisableExplicitGC`) gives
+the live heap and `jcmd VM.native_memory summary` the JVM's native memory; the result stores them in `result["_memory"]["jvm"]` with the
+container footprint (container working set minus the unused part of the fixed heap). It adds `-XX:NativeMemoryTracking=summary` to both
+JVMs. Quote the footprint, not the container size, when comparing JVM systems on memory; first results in
+`results-jvm-memory-2026-10-29.md`. `ARCADEDB_SERVER_FLAGS` passes extra settings to the ArcadeDB Docker server (e.g.
+`-Darcadedb.maxPageRAM=512`: the page cache is on the heap and defaults to a quarter of it).
+
 ### One vendor at a time — no parallel containers
 
 **NEVER start multiple Docker containers simultaneously.** The orchestrator runs vendors sequentially and does this for you; the manual procedure is:

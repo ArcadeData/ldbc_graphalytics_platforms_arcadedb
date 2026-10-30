@@ -14,6 +14,7 @@ What the numbers mean (be careful comparing them):
     into; the embedded ArcadeDB benchmark additionally prints the live heap after a full GC.
 """
 
+import os
 import re
 import subprocess
 import threading
@@ -135,6 +136,98 @@ class MemorySampler:
             rss = [s[1] for s in self.samples if s[1] is not None]
             out["client_rss_peak_mb"] = round(max(rss), 1) if rss else None
         return out
+
+
+# ------------------------------------------------------------ JVM probe
+#
+# BENCH_JVM_PROBE=1 looks inside the JVM of the Docker vendors that run one (ArcadeDB, Neo4j), so their memory is not just the fixed
+# 12 GB heap. The child runs the probe through `docker exec` once before the first timed operation and once after the timed runs of
+# every operation (outside the timed window; the next operation's warm-up call absorbs the pause):
+#   - live heap: `jcmd GC.class_histogram` forces a full GC on any collector and totals the live objects. `GC.run` is not used because
+#     Neo4j starts with -XX:+DisableExplicitGC, which turns it into a no-op;
+#   - JVM native memory (`jcmd VM.native_memory summary`, needs -XX:NativeMemoryTracking=summary, see jvm_probe_flags()): everything
+#     the JVM accounts for outside the heap (metaspace, threads, code, GC structures, direct and Unsafe buffers);
+#   - the container working set at that moment (`docker stats`).
+# Two footprints follow. jvm_footprint = live heap + JVM native memory: what the JVM itself accounts for. container_footprint =
+# container working set - (committed heap - live heap): the measured container with only the unused part of the fixed heap removed,
+# which also counts native memory NMT does not see (Neo4j's page cache, native libraries). Both leave out the headroom a collector
+# needs above the live set, so they are the floor of what the engine needs, not a recommended heap size.
+
+JVM_PROBE_ENV = "BENCH_JVM_PROBE"
+JVM_CONTAINER_ENV = "BENCH_JVM_CONTAINER"
+JVM_VENDORS = ("arcadedb", "neo4j")
+
+_FIND_JVM = "jcmd -l | grep -v JCmd | head -1 | cut -d' ' -f1"
+
+
+def jvm_probe_enabled():
+    return os.environ.get(JVM_PROBE_ENV) == "1"
+
+
+def jvm_probe_flags():
+    """JVM flags the probed containers need (empty when the probe is off)."""
+    return ["-XX:NativeMemoryTracking=summary"] if jvm_probe_enabled() else []
+
+
+def parse_histogram_total(text):
+    """Live bytes from the `Total <instances> <bytes>` line of GC.class_histogram, in MB."""
+    m = re.search(r"^Total\s+\d+\s+(\d+)\s*$", text, re.M)
+    return int(m.group(1)) / 1024 ** 2 if m else None
+
+
+def parse_nmt(text):
+    """(total committed MB, Java heap committed MB) from VM.native_memory summary."""
+    total = re.search(r"^Total:\s+reserved=\d+KB,\s+committed=(\d+)KB", text, re.M)
+    heap = re.search(r"Java Heap \(reserved=\d+KB,\s+committed=(\d+)KB", text)
+    return (int(total.group(1)) / 1024 if total else None, int(heap.group(1)) / 1024 if heap else None)
+
+
+def _exec(container, script, user=None, timeout=300):
+    cmd = ["docker", "exec", *(["-u", user] if user else []), container, "sh", "-c", script]
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
+
+
+def jvm_probe(container):
+    """One probe of the JVM inside `container` (see above). Returns a dict of MB values, or None when it cannot attach."""
+    try:
+        pid = _exec(container, _FIND_JVM, timeout=30).strip()
+        if not pid.isdigit():
+            return None
+        user = _exec(container, f"stat -c %U /proc/{pid}", timeout=30).strip() or None   # jcmd attaches as the JVM's own user
+        t0 = time.time()
+        live = parse_histogram_total(_exec(container, f"jcmd {pid} GC.class_histogram", user))
+        gc_seconds = time.time() - t0
+        nmt_total, heap_committed = parse_nmt(_exec(container, f"jcmd {pid} VM.native_memory summary", user))
+        stats = subprocess.run(["docker", "stats", "--no-stream", "--format", "{{.MemUsage}}", container],
+                               capture_output=True, text=True, timeout=60).stdout
+        container_mb = _to_mb(_ANSI.sub("", stats).split("/")[0]) if stats.strip() else None
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if live is None:
+        return None
+    out = {"live_heap_mb": round(live, 1), "probe_gc_s": round(gc_seconds, 2)}
+    if heap_committed is not None:
+        out["heap_committed_mb"] = round(heap_committed, 1)
+    if nmt_total is not None and heap_committed is not None:
+        out["jvm_native_mb"] = round(nmt_total - heap_committed, 1)
+        out["jvm_footprint_mb"] = round(live + nmt_total - heap_committed, 1)
+    if container_mb is not None:
+        out["container_mb"] = round(container_mb, 1)
+        if heap_committed is not None:
+            out["container_footprint_mb"] = round(container_mb - (heap_committed - live), 1)
+    return out
+
+
+def describe_jvm(name, probes):
+    """One log line per probe: live heap, the two footprints and the container working set."""
+    if not probes:
+        return []
+    gib = lambda mb: f"{mb / 1024:.2f} GiB" if mb is not None else "n/a"  # noqa: E731
+    lines = [f"  JVM memory {name} (live heap after a full GC; footprints exclude the unused part of the fixed heap):"]
+    for op, p in probes.items():
+        lines.append(f"    {op:10} live heap {gib(p.get('live_heap_mb'))}, JVM footprint {gib(p.get('jvm_footprint_mb'))}, "
+                     f"container footprint {gib(p.get('container_footprint_mb'))} (container {gib(p.get('container_mb'))})")
+    return lines
 
 
 def describe(name, memory):

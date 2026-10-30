@@ -155,7 +155,7 @@ Seconds; ArcadeDB embedded is shown with the Graph Analytical View (OLAP) and wi
 - [docs/benchmark-graphalytics-official.md](docs/benchmark-graphalytics-official.md), [docs/benchmark-graphalytics-multivendor.md](docs/benchmark-graphalytics-multivendor.md), [docs/benchmark-graphalytics-graph500-22.md](docs/benchmark-graphalytics-graph500-22.md), [docs/benchmark-lsqb.md](docs/benchmark-lsqb.md), [docs/benchmark-arcadedb-native-image.md](docs/benchmark-arcadedb-native-image.md): one page per benchmark (how to run, method, full tables, notes).
 - [docs/vendor-notes.md](docs/vendor-notes.md): SurrealDB and Dgraph (excluded from default runs, see also [SURREALDB.md](SURREALDB.md)) and FalkorDB.
 - [docs/architecture.md](docs/architecture.md): file structure, the Graph Analytical View (CSR) engine, execution modes.
-- [ArcadeDB-release-progress.md](ArcadeDB-release-progress.md): ArcadeDB across releases. `results-*.md`: raw results and history of earlier runs (latest: [results-native-vs-jvm-2026-10-10.md](results-native-vs-jvm-2026-10-10.md)). `CLAUDE.md`: benchmark rules for the harness.
+- [ArcadeDB-release-progress.md](ArcadeDB-release-progress.md): ArcadeDB across releases. `results-*.md`: raw results and history of earlier runs (latest: [results-jvm-memory-2026-10-29.md](results-jvm-memory-2026-10-29.md), what ArcadeDB and Neo4j use under the fixed 12 GB heap). `CLAUDE.md`: benchmark rules for the harness.
 
 ## License
 

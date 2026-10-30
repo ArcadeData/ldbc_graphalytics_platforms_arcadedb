@@ -3,6 +3,7 @@
 import time
 
 import bench_containers
+import bench_memory
 import os
 import shutil
 
@@ -298,7 +299,8 @@ public class ArcadeDBEmbeddedLoader {
     else:
         return {"error": f"host port {http_port} is already in use by another process (set ARCADEDB_BENCH_HTTP_PORT to a free port)"}
     settings = ["-Darcadedb.server.rootPassword=benchmark",
-                "-Darcadedb.server.httpQueryMaxResultRows=5000000"]   # full per-vertex output of graph500-22 (2.4M rows)
+                "-Darcadedb.server.httpQueryMaxResultRows=5000000",   # full per-vertex output of graph500-22 (2.4M rows)
+                *os.environ.get("ARCADEDB_SERVER_FLAGS", "").split()]  # extra settings, e.g. -Darcadedb.maxPageRAM=512
     if native:
         # no JVM, no shell, no JAVA_OPTS: the entrypoint is the native binary and takes the heap size and the properties as arguments
         # (no --add-modules: the Vector ops are enabled anyway, see the startup log); the binary port is not published, nothing uses it
@@ -309,7 +311,7 @@ public class ArcadeDBEmbeddedLoader {
         run_cmd = ["docker", "run", "-d", "--name", container,
                    "-p", f"{http_port}:2480", "-p", f"{binary_port}:2424",
                    "-e", "ARCADEDB_OPTS_MEMORY=-Xms12g -Xmx12g",
-                   "-e", "JAVA_OPTS=--add-modules jdk.incubator.vector " + " ".join(settings),
+                   "-e", "JAVA_OPTS=--add-modules jdk.incubator.vector " + " ".join(settings + bench_memory.jvm_probe_flags()),
                    "-v", f"{data_root}:/home/arcadedb/databases",
                    "-v", f"{log_root}:/home/arcadedb/log",
                    image]
