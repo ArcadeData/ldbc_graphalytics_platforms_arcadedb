@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1793589567556,
+  "lastUpdate": 1793675889878,
   "repoUrl": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb",
   "entries": {
     "ArcadeDB Mode 2 — Embedded (datagen-7_5-fb)": [
@@ -3590,6 +3590,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "CDLP",
             "value": 6.96,
+            "unit": "s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Luca Garulli",
+            "username": "lvca",
+            "email": "lvca@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "Luca Garulli",
+            "username": "lvca",
+            "email": "lvca@users.noreply.github.com"
+          },
+          "id": "1ee2053afba59e3938e29a22df73268fb164cf2d",
+          "message": "Stream ArcadeDB results as NDJSON; re-measure minimum RAM after ArcadeDB #11013\n\nEvery row-returning call of the ArcadeDB drivers (Graphalytics and LSQB) now reads the result as NDJSON\n(Accept: application/x-ndjson, shared/arcadedb_http.stream_rows): the buffered application/json response\nbuilds the whole result in the server heap (about 1 GB for a 2.4M-row output) and set the minimum heap of\ngraph500-22. The stream fails on a missing stats line, a mid-stream error or a truncated result. PROFILE,\nstatus checks and DDL stay on application/json. Checked: datagen outputs 6/6 valid with the published\ncompute times, LSQB 9/9 counts.\n\nMinimum-memory experiment switches: the driver stops when the view reports FAILED (with buildError);\nARCADEDB_CLEAN_STOP=1 stops the server gracefully so the view is persisted and reused; ARCADEDB_GC replaces\nZGC; BENCH_ALLOW_BATTERY=1 skips the AC wait (result still flagged); min_heap.py --compute-only passes on\nthe summary checks without the full-output export.\n\nResults (results-min-memory-11013-2026-10-30.md, chart docs/images/ram-arcadedb-neo4j-memgraph.svg),\ncontainer RAM for the full validated suite with default settings:\ndatagen-7_5-fb: ArcadeDB 2.24 GiB, Neo4j + GDS 2.59 GiB, Memgraph 25.63 GiB.\ngraph500-22: ArcadeDB 2.80 GiB, Neo4j + GDS 5.21 GiB, Memgraph out of memory at 32 GiB.\nAt rest on datagen: ArcadeDB 0.92 GiB, Neo4j 2.0 GiB. With a 128 MB page cache and a clean restart\nArcadeDB runs graph500-22 in 2.24 GiB; without the edge weights in the view, 1.46 GiB.",
+          "timestamp": "2026-10-30T21:50:08Z",
+          "url": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb/commit/1ee2053afba59e3938e29a22df73268fb164cf2d"
+        },
+        "date": 1793675889253,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "LOAD",
+            "value": 96.39,
+            "unit": "s"
+          },
+          {
+            "name": "PR",
+            "value": 0.42,
+            "unit": "s"
+          },
+          {
+            "name": "WCC",
+            "value": 0.03,
+            "unit": "s"
+          },
+          {
+            "name": "BFS",
+            "value": 0.06,
+            "unit": "s"
+          },
+          {
+            "name": "LCC",
+            "value": 9.69,
+            "unit": "s"
+          },
+          {
+            "name": "SSSP",
+            "value": 1.79,
+            "unit": "s"
+          },
+          {
+            "name": "CDLP",
+            "value": 5.62,
             "unit": "s"
           }
         ]
