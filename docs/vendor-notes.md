@@ -1,6 +1,6 @@
-# Vendor notes: SurrealDB, Dgraph, FalkorDB
+# Vendor notes: SurrealDB, Dgraph, FalkorDB, TigerGraph
 
-Systems that need more than a table row: why SurrealDB and Dgraph are excluded from default runs, what Dgraph can still answer, and what the harness has to handle for FalkorDB.
+Systems that need more than a table row: why SurrealDB and Dgraph are excluded from default runs, what Dgraph can still answer, what the harness has to handle for FalkorDB, and why TigerGraph is not benchmarked at all.
 
 ## SurrealDB
 
@@ -137,3 +137,17 @@ python3 lsqb_benchmark.py falkordb
 ```
 
 *Tested with FalkorDB 6.0.1 on October 2026.*
+
+
+## TigerGraph
+
+TigerGraph is not benchmarked, and no driver exists for it. Its license forbids it.
+
+### Why it's excluded
+
+- **License** — the [TigerGraph license agreement](https://www.tigergraph.com/license-agreement/) (updated 5 March 2026) forbids using the free **Community Edition** (and the Enterprise Evaluation license) "for any benchmarking purposes including running benchmark tests" or "publishing benchmark, performance, or comparison tests or results, in whole or in part" (Section 3). The paid Enterprise license allows running benchmarks but not disclosing or publishing them. Running it even privately would breach the Community Edition terms, so it cannot appear in these tables without TigerGraph's written permission.
+- **Platform** — the `tigergraph/community` Docker image is published only for linux/amd64. On the Apple Silicon machine used for these results it would run under Rosetta emulation, which makes timings incomparable (users report loading jobs freezing under Rosetta).
+
+If TigerGraph grants written permission to run and publish the Graphalytics and LSQB results, a driver could be added (REST++ / GSQL, with the GDS library algorithms reduced to a summary row like the other vendors) and measured on an x86 Linux machine.
+
+*Checked in November 2026 against the license dated 5 March 2026 and Community Edition 4.2.*
