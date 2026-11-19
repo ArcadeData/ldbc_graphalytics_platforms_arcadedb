@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794971903097,
+  "lastUpdate": 1795058297291,
   "repoUrl": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb",
   "entries": {
     "ArcadeDB Mode 2 — Embedded (datagen-7_5-fb)": [
@@ -4502,6 +4502,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "CDLP",
             "value": 7.04,
+            "unit": "s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Luca Garulli",
+            "username": "lvca",
+            "email": "lvca@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "Luca Garulli",
+            "username": "lvca",
+            "email": "lvca@users.noreply.github.com"
+          },
+          "id": "67bd57f5bc4857e27386476bcbdfa7bdd9e8ef2c",
+          "message": "Added TigerGraph in the notes",
+          "timestamp": "2026-11-15T05:59:59Z",
+          "url": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb/commit/67bd57f5bc4857e27386476bcbdfa7bdd9e8ef2c"
+        },
+        "date": 1795058296894,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "LOAD",
+            "value": 86.03,
+            "unit": "s"
+          },
+          {
+            "name": "PR",
+            "value": 0.28,
+            "unit": "s"
+          },
+          {
+            "name": "WCC",
+            "value": 0.03,
+            "unit": "s"
+          },
+          {
+            "name": "BFS",
+            "value": 0.05,
+            "unit": "s"
+          },
+          {
+            "name": "LCC",
+            "value": 9.08,
+            "unit": "s"
+          },
+          {
+            "name": "SSSP",
+            "value": 1.91,
+            "unit": "s"
+          },
+          {
+            "name": "CDLP",
+            "value": 4.73,
             "unit": "s"
           }
         ]
