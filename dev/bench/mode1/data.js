@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795317544017,
+  "lastUpdate": 1795403851991,
   "repoUrl": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb",
   "entries": {
     "ArcadeDB Mode 1 — Official LDBC Graphalytics": [
@@ -6723,6 +6723,88 @@ window.BENCHMARK_DATA = {
           {
             "name": "WCC processing",
             "value": 11.621,
+            "unit": "s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]",
+            "email": "49699333+dependabot[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "1ecc081fa55141709af9ce4b72b78e9c8afafe8c",
+          "message": "Bump com.arcadedb:arcadedb-engine from 26.10.2 to 26.11.1 (#44) [skip ci]\n\nBumps [com.arcadedb:arcadedb-engine](https://github.com/ArcadeData/arcadedb) from 26.10.2 to 26.11.1.\n- [Release notes](https://github.com/ArcadeData/arcadedb/releases)\n- [Changelog](https://github.com/ArcadeData/arcadedb/blob/main/docs/release-26.11.1.md)\n- [Commits](https://github.com/ArcadeData/arcadedb/compare/26.10.2...26.11.1)\n\n---\nupdated-dependencies:\n- dependency-name: com.arcadedb:arcadedb-engine\n  dependency-version: 26.11.1\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-11-21T17:04:16Z",
+          "url": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb/commit/1ecc081fa55141709af9ce4b72b78e9c8afafe8c"
+        },
+        "date": 1795403851136,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "SSSP load",
+            "value": 84.398,
+            "unit": "s"
+          },
+          {
+            "name": "SSSP processing",
+            "value": 21.681,
+            "unit": "s"
+          },
+          {
+            "name": "CDLP load",
+            "value": 62.908,
+            "unit": "s"
+          },
+          {
+            "name": "CDLP processing",
+            "value": 34.849,
+            "unit": "s"
+          },
+          {
+            "name": "PR load",
+            "value": 62.908,
+            "unit": "s"
+          },
+          {
+            "name": "PR processing",
+            "value": 8.614,
+            "unit": "s"
+          },
+          {
+            "name": "BFS load",
+            "value": 62.908,
+            "unit": "s"
+          },
+          {
+            "name": "BFS processing",
+            "value": 21.327,
+            "unit": "s"
+          },
+          {
+            "name": "LCC load",
+            "value": 62.908,
+            "unit": "s"
+          },
+          {
+            "name": "LCC processing",
+            "value": 21.913,
+            "unit": "s"
+          },
+          {
+            "name": "WCC load",
+            "value": 62.908,
+            "unit": "s"
+          },
+          {
+            "name": "WCC processing",
+            "value": 11.608,
             "unit": "s"
           }
         ]
