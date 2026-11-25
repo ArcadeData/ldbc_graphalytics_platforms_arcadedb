@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795490205522,
+  "lastUpdate": 1795576575832,
   "repoUrl": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb",
   "entries": {
     "ArcadeDB Mode 2 — Embedded (datagen-7_5-fb)": [
@@ -4844,6 +4844,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "CDLP",
             "value": 5.82,
+            "unit": "s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]",
+            "email": "49699333+dependabot[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "1ecc081fa55141709af9ce4b72b78e9c8afafe8c",
+          "message": "Bump com.arcadedb:arcadedb-engine from 26.10.2 to 26.11.1 (#44) [skip ci]\n\nBumps [com.arcadedb:arcadedb-engine](https://github.com/ArcadeData/arcadedb) from 26.10.2 to 26.11.1.\n- [Release notes](https://github.com/ArcadeData/arcadedb/releases)\n- [Changelog](https://github.com/ArcadeData/arcadedb/blob/main/docs/release-26.11.1.md)\n- [Commits](https://github.com/ArcadeData/arcadedb/compare/26.10.2...26.11.1)\n\n---\nupdated-dependencies:\n- dependency-name: com.arcadedb:arcadedb-engine\n  dependency-version: 26.11.1\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-11-21T17:04:16Z",
+          "url": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb/commit/1ecc081fa55141709af9ce4b72b78e9c8afafe8c"
+        },
+        "date": 1795576575419,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "LOAD",
+            "value": 96.03,
+            "unit": "s"
+          },
+          {
+            "name": "PR",
+            "value": 0.46,
+            "unit": "s"
+          },
+          {
+            "name": "WCC",
+            "value": 0.06,
+            "unit": "s"
+          },
+          {
+            "name": "BFS",
+            "value": 0.04,
+            "unit": "s"
+          },
+          {
+            "name": "LCC",
+            "value": 10.58,
+            "unit": "s"
+          },
+          {
+            "name": "SSSP",
+            "value": 2.93,
+            "unit": "s"
+          },
+          {
+            "name": "CDLP",
+            "value": 6.79,
             "unit": "s"
           }
         ]
