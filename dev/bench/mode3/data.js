@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795749422154,
+  "lastUpdate": 1795835798096,
   "repoUrl": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb",
   "entries": {
     "ArcadeDB Mode 3 — LSQB Embedded (SF0.1)": [
@@ -6310,6 +6310,78 @@ window.BENCHMARK_DATA = {
           {
             "name": "Q4",
             "value": 0.01,
+            "unit": "s"
+          },
+          {
+            "name": "Q5",
+            "value": 0.03,
+            "unit": "s"
+          },
+          {
+            "name": "Q6",
+            "value": 0.02,
+            "unit": "s"
+          },
+          {
+            "name": "Q7",
+            "value": 0.01,
+            "unit": "s"
+          },
+          {
+            "name": "Q8",
+            "value": 0.02,
+            "unit": "s"
+          },
+          {
+            "name": "Q9",
+            "value": 0.03,
+            "unit": "s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]",
+            "email": "49699333+dependabot[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "1ecc081fa55141709af9ce4b72b78e9c8afafe8c",
+          "message": "Bump com.arcadedb:arcadedb-engine from 26.10.2 to 26.11.1 (#44) [skip ci]\n\nBumps [com.arcadedb:arcadedb-engine](https://github.com/ArcadeData/arcadedb) from 26.10.2 to 26.11.1.\n- [Release notes](https://github.com/ArcadeData/arcadedb/releases)\n- [Changelog](https://github.com/ArcadeData/arcadedb/blob/main/docs/release-26.11.1.md)\n- [Commits](https://github.com/ArcadeData/arcadedb/compare/26.10.2...26.11.1)\n\n---\nupdated-dependencies:\n- dependency-name: com.arcadedb:arcadedb-engine\n  dependency-version: 26.11.1\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-11-21T17:04:16Z",
+          "url": "https://github.com/ArcadeData/ldbc_graphalytics_platforms_arcadedb/commit/1ecc081fa55141709af9ce4b72b78e9c8afafe8c"
+        },
+        "date": 1795835797824,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "LOAD",
+            "value": 16.06,
+            "unit": "s"
+          },
+          {
+            "name": "Q1",
+            "value": 0.02,
+            "unit": "s"
+          },
+          {
+            "name": "Q2",
+            "value": 0.03,
+            "unit": "s"
+          },
+          {
+            "name": "Q3",
+            "value": 0.01,
+            "unit": "s"
+          },
+          {
+            "name": "Q4",
+            "value": 0.02,
             "unit": "s"
           },
           {
